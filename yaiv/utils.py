@@ -337,6 +337,7 @@ def grep_ticks_labels_KPATH(file):
     ticks=np.zeros(0)
     q0=np.zeros(0)
     repeat=False
+    N=100
     labels=[]
     path_section=False
     for line in KPATH:
@@ -345,7 +346,7 @@ def grep_ticks_labels_KPATH(file):
                 X=float(line.split()[0])
                 Y=float(line.split()[1])
                 Z=float(line.split()[2])
-                q1=np.array([X,Y,Z,100])
+                q1=np.array([X,Y,Z,N])
                 label=line.split('!')[1].split()[0]
                 if not np.array_equal(q0,q1):
                     labels=labels+[label]
@@ -364,12 +365,15 @@ def grep_ticks_labels_KPATH(file):
                             repeat=False
                 else:
                     repeat=True
-        if re.search('Reciprocal',line,flags=re.IGNORECASE):
+        elif re.search('Reciprocal',line,flags=re.IGNORECASE):
             path_section=True
+        else:
+            try:
+                N=int(line.split()[0])
+            except ValueError:
+                pass
     ticks[len(ticks)-1,3]=1
-
     num_q=len(ticks[:,0])
-
     num_labels=num_q
     path=True
     for i in range(num_q):
@@ -690,8 +694,10 @@ def grep_kpoints_energies(file,filetype=None,vectors=np.array(None)):
                 num_bands=int(line.split('=')[1])
             if re.search('number of k points',line):
                 num_points=int(line.split()[4])
+                data=np.zeros([num_points,num_bands+3])
             if re.search('wk =',line) and read_weights==True:
                 w=float(line.split()[-1])
+                data[len(weights),:3]=[float(x) for x in line.split('(')[2].split(')')[0].split()]
                 weights = weights + [w]
                 if len(weights) == num_points:
                     read_weights=False
@@ -707,7 +713,6 @@ def grep_kpoints_energies(file,filetype=None,vectors=np.array(None)):
                 RELAX_calc=True
             if re.search('Final scf calculation at the relaxed', line):
                 RELAXED=True
-        data=np.zeros([num_points,num_bands+3])
         data_lines=lines[results_line:]
         i,j=-1,1
         coord0=np.zeros(3)
@@ -716,15 +721,8 @@ def grep_kpoints_energies(file,filetype=None,vectors=np.array(None)):
             if re.search('Writing.*output',line):    #Reading is completed
                 break
             elif re.search('bands \(ev\)',line):    #New k_point
-                if '-' in line:
-                    l=plot.__insert_space_before_minus(line)
-                    l=l.split()
-                else:
-                    l=line.split()
-                coord=np.array(l[2:5]).astype(float)  # Already in reciprocal cartesian coord (not like VASP)
                 i=i+1
                 j=3
-                data[i,0:3]=coord
                 read_energies=True
             elif re.search('occupation numbers',line):          #Stop reading energies when occupations
                 read_energies=False
@@ -1414,6 +1412,7 @@ def grid_generator(grid,from_zero=False):
         for c in coords:
             c[c > 0.5] -= 1 #remove 1 to all values above 0.5
     return coords
+
 
 #& Postprocessing functions----------------------------------------------------------------
 
