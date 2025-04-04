@@ -1,6 +1,7 @@
 #PYTHON module for ploting 
 
 import numpy as np
+import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import re
@@ -600,7 +601,7 @@ def bands_compare(files,KPATH=None,fermi=None,legends=None,title=None,aux_file=N
     title = 'Your nice and original title for the plot'
     window = Window of energies to plot around Fermi, it can be a single number or 2
             either window=0.5 or window=[-0.5,0.5] => Same result
-    colors = list with colors
+    colors = list with colors or matplotlib sequence of colors
     styles = list with style lines (solid, dashed, dotted...)
     figsize = (int,int) => Size and shape of the figure
     save_as = 'wathever.format'
@@ -608,6 +609,8 @@ def bands_compare(files,KPATH=None,fermi=None,legends=None,title=None,aux_file=N
     axis = ax in which to plot, if no axis is present new figure is created
     """
     styles=styles*4
+    if type(colors) is str:
+        colors=matplotlib.color_sequences.get(colors)
     colors=colors*4
     markers=markers*4
 
@@ -1030,11 +1033,13 @@ def phonons_compare(files,KPATH=None,ph_outs=None,legends=None,title=None,matdyn
     save_as='wathever.format'
     figsize = (int,int) => Size and shape of the figure
     linewidth = linewidth of your plot
-    colors = list with colors
+    colors = list with colors or matplotlib sequence of colors
     styles = list with style lines (solid, dashed, dotted...)
     axis = ax in which to plot, if no axis is present new figure is created
     """
     styles=styles*4
+    if type(colors) is str:
+        colors=matplotlib.color_sequences.get(colors)
     colors=colors*4
 
     if legends==None:
