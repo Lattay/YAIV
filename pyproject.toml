@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "yaiv"
-version = "0.3.1"
+dynamic = ["version"]
 authors = [
   { name="Martin Gutierrez-Amigo", email="martin.gutierrez.amigo@gmail.com" },
 ]
@@ -21,6 +21,9 @@ classifiers = [
     "Operating System :: OS Independent",
     "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
 ]
+
+[tool.setuptools_scm]
+version_file = "yaiv/__init__.py"
 
 [project.urls]
 "Homepage" = "https://github.com/mgamigo/YAIV"
