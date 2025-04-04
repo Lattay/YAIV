@@ -10,6 +10,7 @@ import spglib as spg
 import yaiv.utils as ut
 import yaiv.constants as cons
 import yaiv.cell_analyzer as cell
+import yaiv.defaults as defaults
 
 # PLOTTING BANDS----------------------------------------------------------------
 
@@ -566,7 +567,7 @@ def bands_compare(files,KPATH=None,fermi=None,legends=None,title=None,aux_file=N
                   ticks=np.array(None),labels=None,window=1,figsize=None,save_as=None,filetypes=None,
                   styles=['-','--','-.',':'],
                   markers=['','','',''],
-                  colors=['tab:blue','tab:red','tab:green','tab:orange'],
+                  colors=defaults.colors,
                   IgnoreWeight=True,
                   axis=None):
     """Plots the:
@@ -1005,7 +1006,7 @@ def phonons(file,KPATH=None,ph_out=None,title=None,matdyn_in=None,grid=True,vect
 
 def phonons_compare(files,KPATH=None,ph_outs=None,legends=None,title=None,matdyn_in=None,grid=True,
                          vectors=np.array(None),ticks=np.array(None),labels=None,units='cm-1',save_as=None,
-                         colors=['tab:blue','tab:red','tab:green','tab:orange'],
+                         colors=defaults.colors,
                          styles=['solid','dashed','dashdot','dotted'],linewidth=1,figsize=None,axis=None):
     """Plots phonon spectra provided by Quantum Espresso output 
     (it supports discontinous paths and highlights the computed points)
