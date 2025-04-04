@@ -27,7 +27,7 @@ class file:
         #Read attributes:
         if self.filetype in ['qe_scf_out','qe_scf_in','qe_bands_in','qe_ph_out','outcar','poscar']:
             self.lattice = grep_lattice(self.file,filetype=self.filetype)
-        if self.filetype in ['qe_scf_out','outcar']:
+        if self.filetype in ['qe_scf_out','outcar','eigenval']:
             self.electrons = grep_electrons(file,filetype=self.filetype)
             self.fermi = grep_fermi(file,filetype=self.filetype,silent=True)
         if self.filetype == 'kpath':
@@ -299,7 +299,7 @@ def grep_fermi(file,filetype=None,silent=False):
 def grep_electrons(file,filetype=None):
     """Greps the number of electrons from a scf.pwo or OUTCAR file.
     The filetype should be detected automatically, but it supports:
-    qe_scf_out (Quantum Espresso), OUTCAR (VASP)
+    qe_scf_out (Quantum Espresso), OUTCAR (VASP), EIGENVAL (VASP)
     """
     num_elec=None
     if filetype == None:
@@ -311,11 +311,19 @@ def grep_electrons(file,filetype=None):
         for line in scf_out:
             if re.search('number of electrons',line):
                 num_elec=int(float(line.split()[4]))
+                break
     elif filetype=='outcar':
         OUTCAR=open(file,'r')
         for line in OUTCAR:
             if re.search('NELECT',line):
                 num_elec=int(float(line.split()[2]))
+                break
+    elif filetype=='eigenval':
+        FILE=open(file,'r')
+        for line in FILE:
+            if len(line.split()) == 3:
+                num_elec=int(line.split()[0])
+                break
     return num_elec
 
 def grep_ticks_labels_KPATH(file):
@@ -662,7 +670,7 @@ def grep_number_of_bands(file,window=None,fermi=None,filetype=None,silent=True):
             print("The number of bands between",str(window[0])+"eV and",str(window[1])+"eV is",bands)
     return bands
 
-def grep_kpoints_energies(file,filetype=None,vectors=np.array(None)):
+def grep_kpoints_energies(file,filetype=None,vectors=None):
     """Process the kpoints, energies and weights for different file kinds.
     returns energies, weights
     
@@ -741,10 +749,10 @@ def grep_kpoints_energies(file,filetype=None,vectors=np.array(None)):
         data_lines=lines[7:]
 
         data=np.zeros([num_points,num_bands+3])
-        if vectors.all()!=None:                      #If there is no cell in the input
-            K_vec=np.linalg.inv(vectors).transpose() #reciprocal vectors in columns
-        else:
+        if vectors is None:                      #If there is no cell in the input
             K_vec=np.identity(3)   #If there is no cell it gives the out in crystaline units
+        else:
+            K_vec=np.linalg.inv(vectors).transpose() #reciprocal vectors in columns
         for i,num in enumerate(range(0,len(data_lines),num_bands+2)):    #load the x position
             line=data_lines[num]
             line=line.split()
@@ -816,7 +824,7 @@ def grep_gap(file,filetype=None):
         filetype = grep_filetype(file)
     F=ut.file(file,filetype)
     KE,W=F.grep_kpoints_energies()
-    K,E=KE[:,:3],KE[:,3:]-F.fermi
+    K,E=KE[:,:3],KE[:,3:]
     valence=E[:,F.electrons-1]
     conduction=E[:,F.electrons]
     IND_GAP=np.min(conduction)-np.max(valence)
