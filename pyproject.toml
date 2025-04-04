@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "yaiv"
+version = "0.3.1"
+authors = [
+  { name="Martin Gutierrez-Amigo", email="martin.gutierrez.amigo@gmail.com" },
+]
+description="Yet another Ab Initio Visualizer with a variety of tools"
+readme = "README.md"
+dependencies = [
+        "ipympl",
+        "ase==3.22.1",
+        "spglib"
+]
+requires-python = ">=3.6"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/mgamigo/YAIV"
+"Bug Tracker" = "https://github.com/mgamigo/YAIV/issues"
