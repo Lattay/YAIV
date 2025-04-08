@@ -1,15 +1,16 @@
 import re, os
+import setuptools
+
 def get_version():
-    with open(os.path.join("your_package", "__init__.py"), "r") as f:
+    with open(os.path.join("yaiv", "__init__.py"), "r") as f:
         content = f.read()
     return re.search(r'^__version__ = ["\']([^"\']*)["\']', content, re.M).group(1)
 
-from setuptools import setup
 
 with open("README.md", "r") as fh:
     long_description = fh.read()
 
-setup(
+setuptools.setup(
     name="yaiv", # Replace with your username
     version=get_version(),
     author="Martin Gutierrez-Amigo",
