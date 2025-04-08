@@ -23,7 +23,7 @@ setup(
         "ipympl",
         "ase==3.22.1",
         "spglib",
-        "crystal-toolkit",
+#        "crystal-toolkit",
         #OLD (with ase-noteook)
 #        "ipympl==0.9.1",
 #        "matplotlib==3.5.3",
