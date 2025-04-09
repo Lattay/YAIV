@@ -14,14 +14,14 @@ from ase import Atoms
 import yaiv.constants as const
 import yaiv.utils as ut
 
-from crystal_toolkit.renderables import StructureGraph
-from pymatgen.analysis.local_env import MinimumDistanceNN
-from pymatgen.core import Structure
-from pymatgen.io.ase import AseAtomsAdaptor
-from crystal_toolkit.core.legend import Legend
-from crystal_toolkit.renderables.structuregraph import get_structure_graph_scene
+#from crystal_toolkit.renderables import StructureGraph
+#from pymatgen.analysis.local_env import MinimumDistanceNN
+#from pymatgen.core import Structure
+#from pymatgen.io.ase import AseAtomsAdaptor
+#from crystal_toolkit.core.legend import Legend
+#from crystal_toolkit.renderables.structuregraph import get_structure_graph_scene
 
-from yaiv.experimental.matview.visualizers.crystal import CrystalVisualizer
+#from yaiv.experimental.matview.visualizers.crystal import CrystalVisualizer
 
 
 def __get_brillouin_zone_3d(cell):

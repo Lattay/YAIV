@@ -564,8 +564,8 @@ def bands(file,KPATH=None,aux_file=None,title=None,proj_file=None,vectors=np.arr
     if axis == None:
         plt.show()
 
-def bands_compare(files,KPATH=None,fermi=None,legends=None,title=None,aux_file=None,vectors=np.array(None),
-                  ticks=np.array(None),labels=None,window=1,figsize=None,save_as=None,filetypes=None,
+def bands_compare(files,KPATH=None,fermi=None,legends=None,title=None,aux_file=None,vectors=None,
+                  ticks=None,labels=None,window=1,figsize=None,save_as=None,filetypes=None,
                   styles=['-','--','-.',':'],
                   markers=['','','',''],
                   colors=defaults.colors,
@@ -635,10 +635,10 @@ def bands_compare(files,KPATH=None,fermi=None,legends=None,title=None,aux_file=N
     if KPATH!=None:
         ticks,labels=KPATH.path,KPATH.labels
     for i,kind in enumerate(filetypes):            #Automatically read vectors if possible
-        if kind[:2]=='qe' and aux_file==None and vectors.any()==None:
+        if kind[:2]=='qe' and aux_file==None and vectors is None:
             vectors=ut.grep_lattice(files[i])
             break
-    if aux_file!=None and vectors.any()==None:
+    if aux_file!=None and vectors is None:
         vectors=aux_file.lattice
     
     if axis == None:
@@ -668,7 +668,7 @@ def bands_compare(files,KPATH=None,fermi=None,legends=None,title=None,aux_file=N
         delta_y=limits[3]-limits[2]
         ax.set_ylim(limits[2]-delta_y*0.05,limits[3]+delta_y*0.1)
     
-    if vectors.any()!=None and ticks.any()!=None:    #ticks and labels
+    if vectors is not None and ticks is not None:    #ticks and labels
         ticks=__ticks_generator(vectors,ticks)
         if labels != None :
             ax.set_xticks(ticks,labels)
