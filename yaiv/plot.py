@@ -28,11 +28,11 @@ def __insert_space_before_minus(string):
 def __ticks_generator(vectors,ticks,grid=None):
     """From the real vectors, the High Sym points for the path in crystal reciprocal space units and the 
     grid, it generates the positions for the hight sym points (tick_pos) and grid (grid_pos):
-    
+
     vectors=[[a1,a2,a3],...,[c1,c2,c3]]
     ticks=[[tick1x,tick1y,tick1z,100],...,[ticknx,tickny,ticknz,1]]
     grid=[[grid1x,grid1y,grid1z],...,[gridnx,gridny,gridnz]]
-    
+
     returns either tick_pos or tick_pos, grid_pos
     """
     K_vec=ut.K_basis(vectors)
@@ -244,7 +244,7 @@ def DOS_projected(file,proj_file,fermi='auto',smearing=0.02,window=[-5,5],steps=
     if axis == None:
         plt.show()
 
-def __process_electron_bands(filename,filetype=None,vectors=np.array(None),IgnoreWeight=True):
+def __process_electron_bands(filename,filetype=None,vectors=None,IgnoreWeight=True):
     """Process the bands from various file types with each band separately separated by blank lines
     to a matrix where each column is a band and first column is x axis
     
@@ -323,7 +323,7 @@ def __process_electron_bands(filename,filetype=None,vectors=np.array(None),Ignor
         data_lines=lines[7:]
 
         data=np.zeros([num_points,num_bands+1])
-        if vectors.all()!=None:                      #If there is no cell in the input
+        if vectors is not None:                      #If there is no cell in the input
             vectors = vectors/np.linalg.norm(vectors[0])
             K_vec=ut.K_basis(vectors)
         else:
@@ -376,7 +376,7 @@ def __process_electron_bands(filename,filetype=None,vectors=np.array(None),Ignor
         data[:,0]=data[:,0]-data[0,0]
     return data
 
-def __plot_electrons(file,filetype=None,vectors=np.array(None),ticks=np.array(None),fermi=None,color=None,style=None,
+def __plot_electrons(file,filetype=None,vectors=None,ticks=None,fermi=None,color=None,style=None,
                      linewidth=None,marker=None,legend=None,num_elec=None,IgnoreWeight=True,save_raw_data=None,ax=None,
                      plot=True):
     """Print the bands given by __process_electron_bands 
@@ -405,7 +405,7 @@ def __plot_electrons(file,filetype=None,vectors=np.array(None),ticks=np.array(No
     if fermi!=None:                       #Fermi energy
         data[:,1:]=data[:,1:]-fermi
 
-    if vectors.any()!=None and ticks.any()!=None:    #ticks and labels
+    if vectors is not None and ticks is not None:    #ticks and labels
         ticks=__ticks_generator(vectors,ticks)
         x_lim=ticks[ticks.shape[0]-1]                #resize x_data for wannier and other codes output
         data[:,0]=data[:,0]*(x_lim/data[:,0].max())
@@ -423,7 +423,7 @@ def __plot_electrons(file,filetype=None,vectors=np.array(None),ticks=np.array(No
 
     return [data[:,0].min(),data[:,0].max(),data[:,1:].min(),data[:,1:].max()]
 
-def bands(file,KPATH=None,aux_file=None,title=None,proj_file=None,vectors=np.array(None),ticks=np.array(None),labels=None,
+def bands(file,KPATH=None,aux_file=None,title=None,proj_file=None,vectors=None,ticks=None,labels=None,
                fermi=None,window=None,plot_DOS=True,DOS_file='aux',num_elec=None,color=None,filetype=None,figsize=(8,4),legend=None,
                 style=None,plot_ticks=True,linewidth=1,ratio=0.2,IgnoreWeight=True,save_as=None,save_raw_data=None,axis=None):
     """Plots the:
@@ -495,7 +495,7 @@ def bands(file,KPATH=None,aux_file=None,title=None,proj_file=None,vectors=np.arr
             fermi=f
         if num_elec==None:
             num_elec=n
-        if vectors.any()==None:
+        if vectors is None:
             vectors=v
 
     if fermi!=None:
@@ -529,7 +529,7 @@ def bands(file,KPATH=None,aux_file=None,title=None,proj_file=None,vectors=np.arr
             delta_y=limits[3]-limits[2]
             ax.set_ylim(limits[2]-delta_y*0.05,limits[3]+delta_y*0.1)
 
-    if vectors.any()!=None and ticks.any()!=None and plot_ticks==True:    #ticks and labels
+    if vectors is not None and ticks is not None and plot_ticks==True:    #ticks and labels
         ticks=__ticks_generator(vectors,ticks)
         if labels != None :
             ax.set_xticks(ticks,labels)
@@ -693,7 +693,7 @@ def bands_compare(files,KPATH=None,fermi=None,legends=None,title=None,aux_file=N
 
 def bands_fat(file,proj_file,KPATH=None,aux_file=None,species=None,atoms=None,l=None,j=None,mj=None,
           title=None,color='Reds',colormap=True,vmin=0,vmax=1,shift=0,size=50,legend=None,only_fat=False,
-          vectors=np.array(None),ticks=np.array(None),labels=None,fermi=None,window=None,
+          vectors=None,ticks=None,labels=None,fermi=None,window=None,
           back_color='gray',style=None,linewidth=0.5,filetype=None,proj_filetype=None,
           figsize=(8,4),plot_ticks=True,
           IgnoreWeight=True,save_as=None,axis=None):
@@ -785,7 +785,7 @@ def bands_fat(file,proj_file,KPATH=None,aux_file=None,species=None,atoms=None,l=
         n=aux_file.electrons
         if fermi==None:
             fermi=f
-        if vectors.any()==None:
+        if vectors is None:
             vectors=v
 
     if fermi!=None:
@@ -832,7 +832,7 @@ def bands_fat(file,proj_file,KPATH=None,aux_file=None,species=None,atoms=None,l=
             delta_y=limits[3]-limits[2]
             ax.set_ylim(limits[2]-delta_y*0.05,limits[3]+delta_y*0.1)
 
-    if vectors.any()!=None and ticks.any()!=None and plot_ticks==True and only_fat==False:    #ticks and labels
+    if vectors is not None and ticks is not None and plot_ticks==True and only_fat==False:    #ticks and labels
         ticks=__ticks_generator(vectors,ticks)
         if labels != None :
             ax.set_xticks(ticks,labels)
@@ -884,9 +884,10 @@ def __process_phonon_bands(gnu_file,QE_path):
         for line in lines:
             if line < data.shape[0]-1:
                 data[line+1:,0]=data[line+1:,0]-(data[line+1,0]-data[line,0])
+    print(data)
     return data
 
-def __plot_phonons(file,linewidth,vectors=np.array(None),ticks=np.array(None),
+def __plot_phonons(file,linewidth,vectors=None,ticks=None,
                         units='cm-1',color=None,style=None,legend=None,QE_path=None,ax=None):
     """Print the phonons.freq.gp file of matdyn output (Quantum Espresso)
     BUT DOES NOT SHOW THE OUTPUT (not plt.show())
@@ -906,7 +907,7 @@ def __plot_phonons(file,linewidth,vectors=np.array(None),ticks=np.array(None),
     if units=='meV':
         data[:,1:]=data[:,1:]*cons.cm2meV
 
-    if vectors.any()!=None and ticks.any()!=None:    #ticks and labels
+    if vectors is not None and ticks is not None:    #ticks and labels
         ticks=__ticks_generator(vectors,ticks)
         x_lim=ticks[ticks.shape[0]-1]                #resize x_data for wannier and other codes output
         data[:,0]=data[:,0]*(x_lim/data[:,0].max())
@@ -923,8 +924,8 @@ def __plot_phonons(file,linewidth,vectors=np.array(None),ticks=np.array(None),
 
     return [data[:,0].min(),data[:,0].max(),data[:,1:].min(),data[:,1:].max()]
 
-def phonons(file,KPATH=None,ph_out=None,title=None,matdyn_in=None,grid=True,vectors=np.array(None),
-                ticks=np.array(None),labels=None,units='cm-1',save_as=None,figsize=None,color=None,style=None,linewidth=1,legend=None,axis=None):
+def phonons(file,KPATH=None,ph_out=None,title=None,matdyn_in=None,grid=True,vectors=None,
+                ticks=None,labels=None,units='cm-1',save_as=None,figsize=None,color=None,style=None,linewidth=1,legend=None,axis=None):
     """Plots phonon spectra provided by Quantum Espresso output 
     (it supports discontinous paths and highlights the computed points)
     Minimal plots can be done with just:
@@ -956,7 +957,7 @@ def phonons(file,KPATH=None,ph_out=None,title=None,matdyn_in=None,grid=True,vect
         ticks,labels=ut.grep_ticks_labels_KPATH(KPATH)
     if matdyn_in!=None:
         ticks=ut.grep_ticks_QE(matdyn_in)
-    if ph_out!=None and vectors.any()==None:
+    if ph_out!=None and vectors is None:
         vectors=ut.grep_lattice(ph_out)
     if axis == None:
         fig=plt.figure(figsize=figsize)
@@ -975,7 +976,7 @@ def phonons(file,KPATH=None,ph_out=None,title=None,matdyn_in=None,grid=True,vect
     delta_y=limits[3]-limits[2]
     ax.set_ylim(limits[2]-delta_y*0.05,limits[3]+delta_y*0.1) #Limits in the y axis
 
-    if vectors.any()!=None and ticks.any()!=None:    #ticks and labels
+    if vectors is not None and ticks is not None:    #ticks and labels
         if ph_out!=None and grid==True:
             grid_points=ut.grep_ph_grid_points(ph_out,expanded=True,decimals=15) #to correctly find distances
             ticks,grid=__ticks_generator(vectors,ticks,grid_points)
@@ -1008,7 +1009,7 @@ def phonons(file,KPATH=None,ph_out=None,title=None,matdyn_in=None,grid=True,vect
         plt.show()
 
 def phonons_compare(files,KPATH=None,ph_outs=None,legends=None,title=None,matdyn_in=None,grid=True,
-                         vectors=np.array(None),ticks=np.array(None),labels=None,units='cm-1',save_as=None,
+                         vectors=None,ticks=None,labels=None,units='cm-1',save_as=None,
                          colors=defaults.colors,
                          styles=['solid','dashed','dashdot','dotted'],linewidth=1,figsize=None,axis=None):
     """Plots phonon spectra provided by Quantum Espresso output 
@@ -1048,7 +1049,7 @@ def phonons_compare(files,KPATH=None,ph_outs=None,legends=None,title=None,matdyn
         ticks,labels=ut.grep_ticks_labels_KPATH(KPATH)
     if matdyn_in!=None:
         ticks=ut.grep_ticks_QE(matdyn_in)
-    if ph_outs!=None and vectors.any()==None:
+    if ph_outs!=None and vectors is None:
         vectors=ut.grep_lattice(ph_outs[0])
 
     if axis == None:
@@ -1078,7 +1079,7 @@ def phonons_compare(files,KPATH=None,ph_outs=None,legends=None,title=None,matdyn
     delta_y=limits[3]-limits[2]
     ax.set_ylim(limits[2]-delta_y*0.05,limits[3]+delta_y*0.1) #Limits in the y axis
 
-    if vectors.any()!=None and ticks.any()!=None:    #ticks and labels
+    if vectors is not None and ticks is not None:    #ticks and labels
         if ph_outs!=None and grid==True:
             grid_points=ut.grep_ph_grid_points(ph_outs[0],expanded=True,decimals=15)
             path=ticks
