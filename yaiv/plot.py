@@ -314,7 +314,6 @@ def __process_electron_bands(filename,filetype=None,vectors=None,IgnoreWeight=Tr
                 energies=np.array(l).astype(float)
                 data[i,j:j+len(energies)]=energies
                 j=j+len(energies)
-       
     elif filetype=="eigenval":
         file=open(filename,'r')
         lines=file.readlines()
@@ -821,7 +820,7 @@ def bands_fat(file,proj_file,KPATH=None,aux_file=None,species=None,atoms=None,l=
             ax.scatter(-1,0,c=0.7,cmap=color,s=20,label=legend,vmin=0,vmax=1)                #Dummy point (outside the plot) for the legend
         else:
             ax.scatter(-1,0,c=color,s=20,label=legend)
-            
+
     if fermi!=None and only_fat==False:                       #Fermi energy
         ax.axhline(y=0,color='black',linewidth=0.4)
         if window!=None:                   #Limits y axis
@@ -884,7 +883,6 @@ def __process_phonon_bands(gnu_file,QE_path):
         for line in lines:
             if line < data.shape[0]-1:
                 data[line+1:,0]=data[line+1:,0]-(data[line+1,0]-data[line,0])
-    print(data)
     return data
 
 def __plot_phonons(file,linewidth,vectors=None,ticks=None,
