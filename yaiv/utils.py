@@ -12,18 +12,16 @@ import yaiv.cell_analyzer as cell
 #& GREPPING utilities----------------------------------------------------------------
 
 class file:
-    """A class for file scraping, depending on the filetype a different set of attributes will initialize.
-    The filetype should be automatically detected, but can be manually introduced:
-    QuantumEspresso: qe_scf_in, qe_scf_out, qe_bands_in, qe_ph_out, matdyn_in
-    VASP: POSCAR, OUTCAR, KPATH (KPOINTS in line mode), EIGENVAL
     """
-    def __init__(self,file,filetype=None):
+    A class for file scraping, depending on the filetype a different set of attributes will initialize.
+
+    - QuantumEspresso: qe_scf_in, qe_scf_out, qe_bands_in, qe_ph_out, matdyn_in
+    - VASP: POSCAR, OUTCAR, KPATH (KPOINTS in line mode), EIGENVAL
+    """
+    def __init__(self,file):
         self.file = file
         #Define file type
-        if filetype == None:
-            self.filetype = grep_filetype(file)
-        else:
-            self.filetype = filetype.lower()
+        self.filetype = grep_filetype(file)
         #Read attributes:
         if self.filetype in ['qe_scf_out','qe_scf_in','qe_bands_in','qe_ph_out','outcar','poscar']:
             self.lattice = grep_lattice(self.file,filetype=self.filetype)
@@ -170,10 +168,13 @@ class file:
         return out
 
 def grep_filetype(file):
-    """Returns the filetype, currently it supports:
-    QuantumEspresso: qe_scf_in, qe_scf_out, qe_bands_in, qe_ph_out, matdyn_in
-    VASP: POSCAR, OUTCAR, KPATH (KPOINTS in line mode), EIGENVAL
-    Anything else is considered a general 'data' type
+    """
+    Returns the filetype, currently it supports:
+
+    - QuantumEspresso: qe_scf_in, qe_scf_out, qe_bands_in, qe_ph_out, matdyn_in
+    - VASP: POSCAR, OUTCAR, KPATH (KPOINTS in line mode), EIGENVAL
+
+    Anything else will have None filetype.
     """
     lines = open(file)
     counter=0
@@ -212,14 +213,14 @@ def grep_filetype(file):
             filetype='poscar'
             break
         else:
-            filetype='data'
+            filetype=None
     return filetype
 
 def grep_lattice(file,alat=False,filetype=None):
     """Greps the lattice vectors (in Angstroms) from a variety of outputs (it uses ase)
 
     alat = Bolean controling if you want your lattice normalized (mod(a0) = 1, alat units)
-   
+
     The filetype should be given by the function grep_filetype(file)
 
     OUTPUT= np.array([vec1,vec2,vec3])
