@@ -13,6 +13,7 @@ import yaiv.cell_analyzer as cell
 
 class file:
     """
+    TODO: REMOVE
     A class for file scraping, depending on the filetype a different set of attributes will initialize.
 
     - QuantumEspresso: qe_scf_in, qe_scf_out, qe_bands_in, qe_ph_out, matdyn_in
@@ -242,7 +243,7 @@ def grep_lattice(file,alat=False,filetype=None):
                 Z=float(line.split()[5])
                 vec=np.array([X,Y,Z])
                 try:
-                    lattice=np.vstack((lattice,vec))            
+                    lattice=np.vstack((lattice,vec))
                 except NameError:
                     lattice=vec
                 if lattice.shape == (3,3):
