@@ -13,10 +13,6 @@ def __filetype(file: str) -> str:
     """
     Detects the filetype of the provided file.
 
-    Currently it supports:
-    - QuantumEspresso: qe_scf_in, qe_scf_out, qe_bands_in, qe_ph_out, matdyn_in
-    - VASP: POSCAR, OUTCAR, KPATH (KPOINTS in line mode), EIGENVAL
-
     Parameters
     ----------
     file : str
@@ -27,51 +23,44 @@ def __filetype(file: str) -> str:
     filetype : str
         Detected filetype (None if not filetype is detected).
     """
-    lines = open(file)
-    counter = 0
-    for line in lines:
-        if re.search("calculation.*scf.*", line, re.IGNORECASE) or re.search(
-            "calculation.*nscf.*", line, re.IGNORECASE
-        ):
-            filetype = "qe_scf_in"
-            break
-        elif re.search("Program PWSCF", line, re.IGNORECASE):
-            filetype = "qe_scf_out"
-            break
-        elif re.search("Program PHONON", line, re.IGNORECASE):
-            filetype = "qe_ph_out"
-            break
-        elif re.search("calculation.*bands.*", line, re.IGNORECASE):
-            filetype = "qe_bands_in"
-            break
-        elif re.search("flfrc", line, re.IGNORECASE):
-            filetype = "matdyn_in"
-            break
-        elif re.search("projwave", line, re.IGNORECASE):
-            filetype = "qe_proj_out"
-            break
-        elif re.search("PROCAR", line, re.IGNORECASE):
-            filetype = "procar"
-            break
-        elif re.search("vasp", line, re.IGNORECASE):
-            filetype = "outcar"
-            break
-        elif len(line.split()) == 4 and all([x.isdigit() for x in line.split()]):
-            filetype = "eigenval"
-            break
-        elif re.search("line.mode", line, re.IGNORECASE):
-            filetype = "kpath"
-            break
-        elif (
-            re.search("direct", line, re.IGNORECASE)
-            and not re.search("directory", line, re.IGNORECASE)
-            or re.search("cartesian", line, re.IGNORECASE)
-        ):
-            filetype = "poscar"
-            break
-        else:
-            filetype = None
-    lines.close()
+    filetype = None
+    with open(file, "r") as lines:
+        for line in lines:
+            line = line.strip().lower()
+
+            if re.search(r"calculation.*scf|calculation.*nscf", line):
+                filetype = "qe_scf_in"
+                break
+            elif "program pwscf" in line:
+                filetype = "qe_scf_out"
+                break
+            elif "program phonon" in line:
+                filetype = "qe_ph_out"
+                break
+            elif "calculation" in line and "bands" in line:
+                filetype = "qe_bands_in"
+                break
+            elif "flfrc" in line:
+                filetype = "matdyn_in"
+                break
+            elif "projwave" in line:
+                filetype = "qe_proj_out"
+                break
+            elif "procar" in line:
+                filetype = "procar"
+                break
+            elif "vasp" in line:
+                filetype = "outcar"
+                break
+            elif len(line.split()) == 4 and all(x.isdigit() for x in line.split()):
+                filetype = "eigenval"
+                break
+            elif "line-mode" in line:
+                filetype = "kpath"
+                break
+            elif ("direct" in line and "directory" not in line) or "cartesian" in line:
+                filetype = "poscar"
+                break
     return filetype
 
 
@@ -101,27 +90,26 @@ def electrons(file: str) -> int:
         The number of electrons was not found in the provided file.
     """
     filetype = __filetype(file)
-    lines = open(file)
-    if filetype == "qe_scf_out":
-        for line in lines:
-            if re.search("number of electrons", line):
-                num_elec = int(float(line.split()[4]))
-                break
-    elif filetype == "outcar":
-        for line in lines:
-            if re.search("NELECT", line):
-                num_elec = int(float(line.split()[2]))
-                break
-    elif filetype == "eigenval":
-        for line in lines:
-            if len(line.split()) == 3:
-                num_elec = int(line.split()[0])
-                break
-    else:
-        raise NotImplementedError("Unsupported filetype")
-    if "num_elec" not in locals():
-        raise NameError("Number of electrons not found.")
-    lines.close()
+    with open(file, "r") as lines:
+        if filetype == "qe_scf_out":
+            for line in lines:
+                if "number of electrons" in line:
+                    num_elec = int(float(line.split()[4]))
+                    break
+        elif filetype == "outcar":
+            for line in lines:
+                if "NELECT" in line:
+                    num_elec = int(float(line.split()[2]))
+                    break
+        elif filetype == "eigenval":
+            for line in lines:
+                if len(line.split()) == 3:
+                    num_elec = int(line.split()[0])
+                    break
+        else:
+            raise NotImplementedError("Unsupported filetype")
+        if "num_elec" not in locals():
+            raise NameError("Number of electrons not found.")
     return num_elec
 
 
@@ -146,20 +134,23 @@ def lattice(file: str, alat: bool = False) -> np.ndarray:
     filetype = __filetype(file)
     if filetype == "qe_ph_out":
         READ = False
-        lines = open(file, "r")
-        for line in lines:
-            if re.search("lattice parameter", line):
-                line = line.split()
-                alat_au = float(line[4])
-            elif read_vectors:
-                values = line.split()
-                vec = np.array([float(values[3]), float(values[4]), float(values[5])])
-                lattice = np.vstack([lattice, vec]) if "lattice" in locals() else vec
-                if lattice.shape == (3, 3):
-                    break
-            elif re.search("crystal axes", line, flags=re.IGNORECASE):
-                READ = True
-        lines.close()
+        with open(file, "r") as lines:
+            for line in lines:
+                if "lattice parameter" in line:
+                    line = line.split()
+                    alat_au = float(line[4])
+                elif read_vectors:
+                    values = line.split()
+                    vec = np.array(
+                        [float(values[3]), float(values[4]), float(values[5])]
+                    )
+                    lattice = (
+                        np.vstack([lattice, vec]) if "lattice" in locals() else vec
+                    )
+                    if lattice.shape == (3, 3):
+                        break
+                elif re.search("crystal axes", line, flags=re.IGNORECASE):
+                    READ = True
         if alat == True:
             return lattice
         else:
@@ -194,31 +185,30 @@ def fermi(file: str) -> float:
         The Fermi energy was not found.
     """
     filetype = __filetype(file)
-    lines = open(file)
-    if filetype == "qe_scf_out":
-        for line in lines:
-            # If smearing is used
-            if re.search("Fermi energy is", line):
-                E_f = float(line.split()[4])
-                break
-            # If fixed occupations is used
-            if re.search("highest occupied", line):
-                if re.search("unoccupied", line):
-                    split = line.split()
-                    E1, E2 = float(split()[6]), float(split()[7])
-                    # Fermi level between the unoccupied and occupied bands
-                    E_f = E1 + (E2 - E1) / 2
-                else:
+    with open(file, "r") as lines:
+        if filetype == "qe_scf_out":
+            for line in lines:
+                # If smearing is used
+                if "Fermi energy is" in line:
                     E_f = float(line.split()[4])
-                break
-    elif filetype == "outcar":
-        for line in lines:
-            if re.search("E-fermi", line):
-                E_f = float(line.split()[2])
-                break
-    else:
-        raise NotImplementedError("Unsupported filetype")
-    lines.close()
+                    break
+                # If fixed occupations is used
+                if "highest occupied" in line:
+                    if "unoccupied" in line:
+                        split = line.split()
+                        E1, E2 = float(split()[6]), float(split()[7])
+                        # Fermi level between the unoccupied and occupied bands
+                        E_f = E1 + (E2 - E1) / 2
+                    else:
+                        E_f = float(line.split()[4])
+                    break
+        elif filetype == "outcar":
+            for line in lines:
+                if "E-fermi" in line:
+                    E_f = float(line.split()[2])
+                    break
+        else:
+            raise NotImplementedError("Unsupported filetype")
     if "E_f" not in locals():
         raise NameError("Fermi energy not found.")
     return E_f
@@ -243,7 +233,7 @@ def total_energy(
     -------
     energy : float | SimpleNamespace
         If decomposition is False a single float with the free energy is returned.
-        If decomposition is True a class with the following attributes is returned:
+        If decomposition is True a namespace with the following attributes is returned:
             -  F            -> Total Free energy
             - -TS           -> Smearing contribution
             -  U (= F+TS)   -> Internal energy
@@ -260,60 +250,52 @@ def total_energy(
         The energy was not found in the provided file.
     """
     filetype = __filetype(file)
-    lines = open(file)
-    if filetype == "qe_scf_out":
-        for line in reversed(list(lines)):
-            if re.search("!", line):
-                l = line.split()
-                F = float(l[4])
-                break
-            elif re.search("smearing contrib", line):
-                l = line.split()
-                TS = float(l[4])
-            elif re.search("internal energy", line):
-                l = line.split()
-                U = float(l[4])
-            elif re.search("one-electron", line):
-                l = line.split()
-                U_one_electron = float(l[3])
-            elif re.search("hartree contribution", line):
-                l = line.split()
-                U_h = float(l[3])
-            elif re.search("xc contribution", line):
-                l = line.split()
-                U_xc = float(l[3])
-            elif re.search("ewald", line):
-                l = line.split()
-                U_ewald = float(l[3])
-        if decomposition and "TS" in locals():
-            energy = SimpleNamespace(
-                F=F,
-                TS=TS,
-                U=U,
-                U_one_electron=U_one_electron,
-                U_h=U_h,
-                U_xc=U_xc,
-                U_ewald=U_ewald,
-            )
+    with open(file, "r") as lines:
+        if filetype == "qe_scf_out":
+            for line in reversed(list(lines)):
+                if "!" in line:
+                    F = float(line.split()[4])
+                    break
+                elif "smearing contrib" in line:
+                    TS = float(line.split()[4])
+                elif "internal energy" in line:
+                    U = float(line.split()[4])
+                elif "one-electron" in line:
+                    U_one_electron = float(line.split()[3])
+                elif "hartree contribution" in line:
+                    U_h = float(line.split()[3])
+                elif "xc contribution" in line:
+                    U_xc = float(line.split()[3])
+                elif "ewald" in line:
+                    U_ewald = float(line.split()[3])
+            if decomposition and "TS" in locals():
+                energy = SimpleNamespace(
+                    F=F,
+                    TS=TS,
+                    U=U,
+                    U_one_electron=U_one_electron,
+                    U_hartree=U_h,
+                    U_xc=U_xc,
+                    U_ewald=U_ewald,
+                )
+            else:
+                energy = F
+        elif filetype == "outcar":
+            for line in reversed(list(lines)):
+                if "sigma->" in line:
+                    l = line.split()
+                    energy = float(l[-1])
+                    break
+            energy = energy * const.eV2Ry
         else:
-            energy = F
-    elif filetype == "outcar":
-        for line in reversed(list(lines)):
-            if re.search("sigma->", line):
-                l = line.split()
-                energy = float(l[-1])
-                break
-        energy = energy * const.eV2Ry
-    else:
-        raise NotImplementedError("Unsupported filetype")
-    lines.close()
+            raise NotImplementedError("Unsupported filetype")
     if "energy" not in locals():
         raise NameError("Total energy not found.")
     if meV and isinstance(energy, SimpleNamespace):
         for attr in vars(energy):
             setattr(energy, attr, getattr(energy, attr) * const.Ry2meV)
     elif meV:
-        energy *= const.Rym2eV
+        energy *= const.Ry2meV
     return energy
 
 
@@ -339,31 +321,278 @@ def stress_tensor(file: str) -> np.ndarray:
         The energy was not found in the provided file.
     """
     filetype = __filetype(file)
-    lines = open(file, "r")
     READ = False
-    if filetype == "qe_scf_out":
-        for line in lines:
-            if READ == True:
-                vec = np.array([float(x) for x in line.split()[:3]])
-                stress = np.vstack([stress, vec]) if "stress" in locals() else vec
-                if stress.shape == (3, 3):
-                    break
-            elif re.search("total.*stress", line):
-                READ = True
-        stress = stress * (const.Ry2jul / (const.bohr2metre**3)) * const.pas2bar / 1000
-    elif filetype == "outcar":
-        for line in lines:
-            if re.search("in kB", line):
-                l = [float(x) for x in line.split()[2:]]
-                voigt = np.array([l[0], l[1], l[2], l[4], l[5], l[3]])
-                stress = ut.voigt2cartesian(voigt)
-                warnings.warn(
-                    "According to VASP this is kB units, but when comparing to QE it appears to be GPa.",
-                    UserWarning,
-                )
-    else:
-        raise NotImplementedError("Unsupported filetype")
-    lines.close()
+    with open(file, "r") as lines:
+        if filetype == "qe_scf_out":
+            for line in lines:
+                if READ == True:
+                    vec = np.array([float(x) for x in line.split()[:3]])
+                    stress = np.vstack([stress, vec]) if "stress" in locals() else vec
+                    if stress.shape == (3, 3):
+                        break
+                elif re.search("total.*stress", line):
+                    READ = True
+            stress = (
+                stress * (const.Ry2jul / (const.bohr2metre**3)) * const.pas2bar / 1000
+            )
+        elif filetype == "outcar":
+            for line in lines:
+                if "in kB" in line:
+                    l = [float(x) for x in line.split()[2:]]
+                    voigt = np.array([l[0], l[1], l[2], l[4], l[5], l[3]])
+                    stress = ut.voigt2cartesian(voigt)
+                    warnings.warn(
+                        "According to VASP this is kB units, but when comparing to QE it appears to be GPa.",
+                        UserWarning,
+                    )
+        else:
+            raise NotImplementedError("Unsupported filetype")
+        lines.close()
     if "stress" not in locals():
         raise NameError("Stress tensor not found.")
     return stress
+
+
+def kpath(file: str, labels: bool = True) -> SimpleNamespace | np.ndarray:
+    """
+    Greps the coordinates, labels and number of poiints from the path in reciprocal space.
+
+    Currently supports:
+    - QuantumEspresso: qe_bands_in, matdyn_in.
+    - VASP: KPATH (KPOINTS in line mode).
+
+    The code expects the labels to be after the high-symmetry points commented with a `!` as:
+    ...
+    0   0   0   ! Gamma
+    0   0.5 0   ! X
+    ...
+
+    Parameters
+    ----------
+    file : str
+        File from which to extract the kpath.
+    labels : bool, optional
+        Whether labels for the high-symmetry points are extracted. Default is True.
+
+    Returns
+    -------
+    kpath : SimpleNamespace | np.ndarray
+        If labels is True, a namespace with attributes `path` and `labels` is returned.
+        Otherwise, the kpath is returned as an ndarray.
+
+
+    Raises
+    ------
+    NameError:
+        If label or kpath is not found.
+    NotImplementedError:
+        The function is not currently implemeted for the provided filetype.
+    """
+    filetype = __filetype(file)
+    READ = False
+    with open(file, "r") as lines:
+        # QE input format
+        if filetype == "qe_bands_in":
+            for line in lines:
+                if READ:
+                    if "N" not in locals():
+                        N = int(line.split()[0])
+                    else:
+                        if labels:
+                            try:
+                                kpoint, label = line.split("!")
+                            except ValueError:
+                                raise NameError(
+                                    "Label not found, try using labels=False."
+                                )
+                        else:
+                            kpoint = line
+                        # Grep K point
+                        kpoint = [float(x) for x in kpoint.split()]
+                        kpath = (
+                            np.vstack([kpath, kpoint])
+                            if "kpath" in locals()
+                            else [kpoint]
+                        )
+                        # Grep K point label
+                        if labels:
+                            k_names = (
+                                k_names + [label.split()[0]]
+                                if "k_names" in locals()
+                                else [label.split()[0]]
+                            )
+                        # Check if path is complete
+                        if len(kpath) == N:
+                            break
+                elif re.search("K_POINTS.*crystal_b", line, flags=re.IGNORECASE):
+                    READ = True
+
+        # VASP KPATH format
+        elif filetype == "kpath":
+            for line in lines:
+                # Grep number of points for each subpath
+                if "N" not in locals():
+                    try:
+                        N = int(line.split()[0])
+                    except ValueError:
+                        pass
+                # Read path and labels
+                elif READ:
+                    if labels:
+                        try:
+                            kpoint, label = line.split("!")
+                        except ValueError:
+                            raise NameError("Label not found, try using labels=False.")
+                    else:
+                        kpoint = line
+                    kpoint = [float(x) for x in kpoint.split()]
+                    if "kpath" not in locals():
+                        kpath = np.array([kpoint + [N]])
+                        if labels:
+                            k_names = [label.split()[0]]
+                    elif (kpoint[:3] != kpath[-1][:3]).any():
+                        if len(kpath) % 2 == 0:
+                            kpath = np.vstack([kpath, kpoint + [1]])
+                        else:
+                            kpath = np.vstack([kpath, kpoint + [N]])
+                        if labels:
+                            k_names = k_names + [label.split()[0]]
+                    else:
+                        kpath[-1, -1] = N
+                elif re.search("Reciprocal", line, flags=re.IGNORECASE):
+                    READ = True
+        else:
+            raise NotImplementedError("Unsupported filetype")
+    if "kpath" not in locals():
+        raise NameError("Kpath not found.")
+    if labels:
+        # Post-process labels
+        [l.replace("Gamma", r"\Gamma") for l in k_names]
+        return SimpleNamespace(path=kpath, labels=k_names)
+    else:
+        return kpath
+
+
+def kpointsEnergies(file: str):
+    """
+    Grep the kpoints, energies and kpoint-weights for different file kinds.
+
+    Energies are given in eV and kpoints in reciprocal lattice units.
+    Currently supports:
+    - QuantumEspresso: qe_scf_out.
+    - VASP: OUTCAR, EIGENVAL.
+
+    Parameters
+    ----------
+    file : str
+        File from which to extract the spectrum.
+
+    Returns
+    -------
+    spectrum : SimpleNamespace
+        Namespace with the following attributes:
+        - energies : np.ndarray
+            List of energies, each row corresponds to a particular k-point.
+        - kpoints : knp.ndarray
+            List of k-points.
+        - weights : np.ndarray
+            List of kpoint-weights.
+
+    Raises
+    ------
+    NotImplementedError:
+        The function is not currently implemeted for the provided filetype.
+    """
+    filetype = __filetype(file)
+    READ_energies = READ_kpoints = RELAX_calc = RELAXED = False
+    KPOINTS = ENERGIES = WEIGHTS = E = None
+    with open(file, "r") as lines:
+        if filetype == "qe_scf_out":
+            for line in lines:
+                # Grep number of bands
+                if "number of Kohn-Sham" in line:
+                    num_bands = int(line.split("=")[1])
+                elif "number of k points" in line:
+                    num_points = int(line.split()[4])
+                elif " cryst. coord." in line:
+                    READ_kpoints = True
+                elif "force convergence" in line:
+                    RELAX_calc = True
+                elif "Final scf calculation at the relaxed" in line:
+                    RELAXED = True
+                elif re.search("End of .* calculation", line):
+                    if (RELAX_calc == False) or (
+                        RELAX_calc == True and RELAXED == True
+                    ):
+                        READ_energies = True
+                elif READ_kpoints:
+                    k = [float(x) for x in line.split("(")[2].split(")")[0].split()]
+                    w = float(line.split()[-1])
+                    KPOINTS = np.vstack([KPOINTS, k]) if KPOINTS is not None else np.array([k])
+                    WEIGHTS = np.hstack([WEIGHTS, w]) if WEIGHTS is not None else np.array([w])
+                    if len(WEIGHTS) == num_points:
+                        READ_kpoints = False
+                elif READ_energies:
+                    if line.strip() != "" and not line.lstrip().startswith("k"):
+                        e = [float(x) for x in re.findall(r"[-+]?\d*\.\d+|\d+", line)]
+                        E = np.hstack([E, e]) if E is not None else e
+                        if len(E) == num_bands:
+                            ENERGIES = (
+                                np.vstack([ENERGIES, E]) if ENERGIES is not None else E
+                            )
+                            E = None
+        elif filetype == "eigenval":
+            for i, line in enumerate(lines):
+                l = line.split()
+                if i == 5:
+                    num_points, num_bands = int(l[1]), int(l[2])
+                    READ_kpoints = READ_energies = True
+                elif READ_kpoints:
+                    # Kpoint line
+                    if len(l) == 4:
+                        k = [float(x) for x in l[:3]]
+                        w = float(l[-1])
+                        KPOINTS = np.vstack([KPOINTS, k]) if KPOINTS is not None else np.array([k])
+                        WEIGHTS = np.hstack([WEIGHTS, w]) if WEIGHTS is not None else np.array([w])
+                    # Energy line
+                    elif len(l) == 3:
+                        e = float(l[1])
+                        E = np.hstack([E, e]) if E is not None else [e]
+                        if len(E) == num_bands:
+                            ENERGIES = (
+                                np.vstack([ENERGIES, E]) if ENERGIES is not None else E
+                            )
+                            E = None
+        elif filetype == "outcar":
+            for line in lines:
+                if "NBANDS" in line:
+                    num_bands = int(line.split()[-1])
+                elif "Coordinates" in line and KPOINTS is None:
+                    READ_kpoints = True
+                elif "band No." in line:
+                    READ_energies = True
+                elif READ_kpoints:
+                    l = line.split()
+                    if len(l) != 0:
+                        k = [float(x) for x in l[:3]]
+                        w = float(l[-1])
+                        KPOINTS = np.vstack([KPOINTS, k]) if KPOINTS is not None else np.array([k])
+                        WEIGHTS = np.hstack([WEIGHTS, w]) if WEIGHTS is not None else np.array([w])
+                    else:
+                        num_points = len(KPOINTS)
+                        READ_kpoints = False
+                elif READ_energies:
+                    l = line.split()
+                    if len(l) == 3:
+                        e = float(l[1])
+                        E = np.hstack([E, e]) if E is not None else [e]
+                        if len(E) == num_bands:
+                            ENERGIES = (
+                                np.vstack([ENERGIES, E]) if ENERGIES is not None else E
+                            )
+                            if len(ENERGIES) == num_points:
+                                break
+                            E = None
+        else:
+            raise NotImplementedError("Unsupported filetype")
+    return SimpleNamespace(energies=ENERGIES, kpoints=KPOINTS, weights=WEIGHTS)
