@@ -1,15 +1,15 @@
 # PYTHON module focussed on text scraping
 
-import numpy as np
+import warnings
 import re
+import numpy as np
 from ase import io
 from types import SimpleNamespace
-import warnings
-import yaiv.constants as const
-import yaiv.utils as ut
+from yaiv import constants as const
+from yaiv import utils as ut
 
 
-def __filetype(file: str) -> str:
+def _filetype(file: str) -> str:
     """
     Detects the filetype of the provided file.
 
@@ -43,6 +43,9 @@ def __filetype(file: str) -> str:
             elif "flfrc" in line:
                 filetype = "matdyn_in"
                 break
+            elif "&plot nbnd=" in line:
+                filetype = "qe_freq_out"
+                break
             elif "projwave" in line:
                 filetype = "qe_proj_out"
                 break
@@ -64,7 +67,7 @@ def __filetype(file: str) -> str:
     return filetype
 
 
-def electrons(file: str) -> int:
+def electron_num(file: str) -> int:
     """
     Greps the number of electrons.
 
@@ -89,7 +92,7 @@ def electrons(file: str) -> int:
     NameError:
         The number of electrons was not found in the provided file.
     """
-    filetype = __filetype(file)
+    filetype = _filetype(file)
     with open(file, "r") as lines:
         if filetype == "qe_scf_out":
             for line in lines:
@@ -115,9 +118,9 @@ def electrons(file: str) -> int:
 
 def lattice(file: str, alat: bool = False) -> np.ndarray:
     """
-    Greps the lattice vectors (in Angstroms) from a variety of outputs.
+    Greps the lattice vectors in Å from a variety of outputs.
 
-    When possible it uses ASE internally
+    When possible it uses ASE internally.
 
     Parameters
     ----------
@@ -131,7 +134,7 @@ def lattice(file: str, alat: bool = False) -> np.ndarray:
     lattice : np.ndarray
         np.array([[ax, ay, az], [bx, by, bz], [cx, cy, cz]])
     """
-    filetype = __filetype(file)
+    filetype = _filetype(file)
     if filetype == "qe_ph_out":
         READ = False
         with open(file, "r") as lines:
@@ -184,10 +187,10 @@ def fermi(file: str) -> float:
     NameError:
         The Fermi energy was not found.
     """
-    filetype = __filetype(file)
+    filetype = _filetype(file)
     with open(file, "r") as lines:
         if filetype == "qe_scf_out":
-            for line in lines:
+            for line in reversed(list(lines)):
                 # If smearing is used
                 if "Fermi energy is" in line:
                     E_f = float(line.split()[4])
@@ -203,7 +206,7 @@ def fermi(file: str) -> float:
                         E_f = float(line.split()[4])
                     break
         elif filetype == "outcar":
-            for line in lines:
+            for line in reversed(list(lines)):
                 if "E-fermi" in line:
                     E_f = float(line.split()[2])
                     break
@@ -249,7 +252,7 @@ def total_energy(
     NameError:
         The energy was not found in the provided file.
     """
-    filetype = __filetype(file)
+    filetype = _filetype(file)
     with open(file, "r") as lines:
         if filetype == "qe_scf_out":
             for line in reversed(list(lines)):
@@ -320,7 +323,7 @@ def stress_tensor(file: str) -> np.ndarray:
     NameError:
         The energy was not found in the provided file.
     """
-    filetype = __filetype(file)
+    filetype = _filetype(file)
     READ = False
     with open(file, "r") as lines:
         if filetype == "qe_scf_out":
@@ -388,7 +391,7 @@ def kpath(file: str, labels: bool = True) -> SimpleNamespace | np.ndarray:
     NotImplementedError:
         The function is not currently implemeted for the provided filetype.
     """
-    filetype = __filetype(file)
+    filetype = _filetype(file)
     READ = False
     with open(file, "r") as lines:
         # QE input format
@@ -477,7 +480,7 @@ def kpointsEnergies(file: str):
     """
     Grep the kpoints, energies and kpoint-weights for different file kinds.
 
-    Energies are given in eV and kpoints in reciprocal lattice units.
+    Energies are given in eV and kpoints in reciprocal crystal units.
     Currently supports:
     - QuantumEspresso: qe_scf_out.
     - VASP: OUTCAR, EIGENVAL.
@@ -493,7 +496,7 @@ def kpointsEnergies(file: str):
         Namespace with the following attributes:
         - energies : np.ndarray
             List of energies, each row corresponds to a particular k-point.
-        - kpoints : knp.ndarray
+        - k_cryst : np.ndarray
             List of k-points.
         - weights : np.ndarray
             List of kpoint-weights.
@@ -503,7 +506,7 @@ def kpointsEnergies(file: str):
     NotImplementedError:
         The function is not currently implemeted for the provided filetype.
     """
-    filetype = __filetype(file)
+    filetype = _filetype(file)
     READ_energies = READ_kpoints = RELAX_calc = RELAXED = False
     KPOINTS = ENERGIES = WEIGHTS = E = None
     with open(file, "r") as lines:
@@ -528,8 +531,16 @@ def kpointsEnergies(file: str):
                 elif READ_kpoints:
                     k = [float(x) for x in line.split("(")[2].split(")")[0].split()]
                     w = float(line.split()[-1])
-                    KPOINTS = np.vstack([KPOINTS, k]) if KPOINTS is not None else np.array([k])
-                    WEIGHTS = np.hstack([WEIGHTS, w]) if WEIGHTS is not None else np.array([w])
+                    KPOINTS = (
+                        np.vstack([KPOINTS, k])
+                        if KPOINTS is not None
+                        else np.array([k])
+                    )
+                    WEIGHTS = (
+                        np.hstack([WEIGHTS, w])
+                        if WEIGHTS is not None
+                        else np.array([w])
+                    )
                     if len(WEIGHTS) == num_points:
                         READ_kpoints = False
                 elif READ_energies:
@@ -552,8 +563,16 @@ def kpointsEnergies(file: str):
                     if len(l) == 4:
                         k = [float(x) for x in l[:3]]
                         w = float(l[-1])
-                        KPOINTS = np.vstack([KPOINTS, k]) if KPOINTS is not None else np.array([k])
-                        WEIGHTS = np.hstack([WEIGHTS, w]) if WEIGHTS is not None else np.array([w])
+                        KPOINTS = (
+                            np.vstack([KPOINTS, k])
+                            if KPOINTS is not None
+                            else np.array([k])
+                        )
+                        WEIGHTS = (
+                            np.hstack([WEIGHTS, w])
+                            if WEIGHTS is not None
+                            else np.array([w])
+                        )
                     # Energy line
                     elif len(l) == 3:
                         e = float(l[1])
@@ -576,8 +595,16 @@ def kpointsEnergies(file: str):
                     if len(l) != 0:
                         k = [float(x) for x in l[:3]]
                         w = float(l[-1])
-                        KPOINTS = np.vstack([KPOINTS, k]) if KPOINTS is not None else np.array([k])
-                        WEIGHTS = np.hstack([WEIGHTS, w]) if WEIGHTS is not None else np.array([w])
+                        KPOINTS = (
+                            np.vstack([KPOINTS, k])
+                            if KPOINTS is not None
+                            else np.array([k])
+                        )
+                        WEIGHTS = (
+                            np.hstack([WEIGHTS, w])
+                            if WEIGHTS is not None
+                            else np.array([w])
+                        )
                     else:
                         num_points = len(KPOINTS)
                         READ_kpoints = False
@@ -595,4 +622,59 @@ def kpointsEnergies(file: str):
                             E = None
         else:
             raise NotImplementedError("Unsupported filetype")
-    return SimpleNamespace(energies=ENERGIES, kpoints=KPOINTS, weights=WEIGHTS)
+    return SimpleNamespace(energies=ENERGIES, k_cryst=KPOINTS, weights=WEIGHTS)
+
+
+def kpointsFrequencies(file: str) -> SimpleNamespace:
+    """
+    Grep the kpoints and frequencies from phonon ouputs.
+
+    Frequencies are given in cm-1 and kpoints in reciprocal alat.
+    Currently supports:
+    - QuantumEspresso: qe_freq_out.
+
+    Parameters
+    ----------
+    file : str
+        File from which to extract the spectrum.
+
+    Returns
+    -------
+    spectrum : SimpleNamespace
+        Namespace with the following attributes:
+        - freqs : np.ndarray
+            List of frequencies, each row corresponds to a particular k-point.
+        - k_alat : np.ndarray
+            List of k-points.
+
+    Raises
+    ------
+    NotImplementedError:
+        The function is not currently implemeted for the provided filetype.
+    """
+    filetype = _filetype(file)
+    KPOINTS = FREQS = F = None
+    READ_freqs = False
+    with open(file, "r") as lines:
+        if filetype == "qe_freq_out":
+            for line in lines:
+                l = line.split()
+                if "nbnd" in line:
+                    num_bands, num_points = int(l[2][:-1]), int(l[-2])
+                elif len(l) == 3:
+                    k = [float(x) for x in l]
+                    KPOINTS = (
+                        np.vstack([KPOINTS, k])
+                        if KPOINTS is not None
+                        else np.array([k])
+                    )
+                    READ_freqs = True
+                elif READ_freqs:
+                    f = [float(x) for x in l]
+                    F = np.hstack([F, f]) if F is not None else f
+                    if len(F) == num_bands:
+                        FREQS = np.vstack([FREQS, F]) if FREQS is not None else F
+                        F = None
+        else:
+            raise NotImplementedError("Unsupported filetype")
+    return SimpleNamespace(freqs=FREQS, k_alat=KPOINTS)

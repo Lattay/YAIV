@@ -1,14 +1,14 @@
 # PYTHON module with nice tu have utilitary tools, mostly focussed on text scraping
 
+import warnings
 import numpy as np
 import re
 from ase import io
 from types import SimpleNamespace
-import warnings
-import yaiv.utils as ut
-import yaiv.constants as const
-import yaiv.plot as plot
-import yaiv.cell_analyzer as cell
+from yaiv import utils as ut
+from yaiv import constants as const
+from yaiv import plot as plot
+from yaiv import cell_analyzer as cell
 
 # GREPPING utilities----------------------------------------------------------------
 
@@ -132,156 +132,6 @@ def grep_number_of_bands(file, window=None, fermi=None, filetype=None, silent=Tr
                 bands,
             )
     return bands
-
-
-def grep_kpoints_energies(file, filetype=None, vectors=None):
-    """Process the kpoints, energies and weights for different file kinds.
-    returns energies, weights
-
-    1- Energies and Kpoints are given as:
-    The first three numbers are the K-point coordinate in 2/pi*a units
-    The rest of the numbers are the energies for that K point.
-
-    2- The weights are given in a separate numpy array.
-
-    file = File with the bands
-    filetype = qe (quantum espresso bands.pwo, scf.pwo, nscf.pwo, relax.pwo)
-               vaps (VASP OUTCAR file)
-               eigenval (VASP EIGENVAL file)
-    vectors = np.array([[a1,a2,a3],...,[c1,c2,c3]])
-              Real space lattice vectors in order to convert VASP K points (in crystal coord) to cartesian coord
-    """
-    if filetype == None:
-        filetype = grep_filetype(file)
-
-    weights = []
-    read_weights = True
-    RELAX_calc, RELAXED = False, False
-    if filetype[:2] == "qe":
-        file = open(file, "r")
-        lines = file.readlines()
-        for i, line in enumerate(lines):
-            # Grep number of bands
-            if re.search("number of Kohn-Sham", line):
-                num_bands = int(line.split("=")[1])
-            if re.search("number of k points", line):
-                num_points = int(line.split()[4])
-                data = np.zeros([num_points, num_bands + 3])
-            if re.search("wk =", line) and read_weights == True:
-                w = float(line.split()[-1])
-                data[len(weights), :3] = [
-                    float(x) for x in line.split("(")[2].split(")")[0].split()
-                ]
-                weights = weights + [w]
-                if len(weights) == num_points:
-                    read_weights = False
-                    weights = np.array(weights)
-            if re.search("End of .* calculation", line):
-                if RELAX_calc == False:
-                    results_line = i + 1
-                    break
-                if RELAX_calc == True and RELAXED == True:
-                    results_line = i + 1
-                    break
-            if re.search("force convergence", line):
-                RELAX_calc = True
-            if re.search("Final scf calculation at the relaxed", line):
-                RELAXED = True
-        data_lines = lines[results_line:]
-        i, j = -1, 1
-        coord0 = np.zeros(3)
-        read_energies = False
-        for line in data_lines:
-            if re.search("Writing.*output", line):  # Reading is completed
-                break
-            elif re.search("bands \(ev\)", line):  # New k_point
-                i = i + 1
-                j = 3
-                read_energies = True
-            elif re.search(
-                "occupation numbers", line
-            ):  # Stop reading energies when occupations
-                read_energies = False
-            elif read_energies == True:  # Load energies
-                line = plot.__insert_space_before_minus(line)
-                l = line.split()
-                energies = np.array(l).astype(float)
-                data[i, j : j + len(energies)] = energies
-                j = j + len(energies)
-
-    elif filetype == "eigenval":
-        file = open(file, "r")
-        lines = file.readlines()
-        num_points = int(lines[5].split()[1])
-        num_bands = int(lines[5].split()[2])
-        data_lines = lines[7:]
-
-        data = np.zeros([num_points, num_bands + 3])
-        if vectors is None:  # If there is no cell in the input
-            K_vec = np.identity(
-                3
-            )  # If there is no cell it gives the out in crystaline units
-        else:
-            K_vec = np.linalg.inv(vectors).transpose()  # reciprocal vectors in columns
-        for i, num in enumerate(
-            range(0, len(data_lines), num_bands + 2)
-        ):  # load the x position
-            line = data_lines[num]
-            line = line.split()
-            point = np.array(line).astype(float)[0:3]
-            coord = np.matmul(point, K_vec)
-            data[i, :3] = coord
-            w = float(line[-1])
-            weights = weights + [w]
-        for band in range(1, num_bands + 1):  # load the bands
-            i = 0
-            for num in range(band, len(data_lines), num_bands + 2):
-                line = data_lines[num]
-                line = line.split()
-                data[i, band + 2] = line[1]
-                i = i + 1
-        weights = np.array(weights)
-    elif filetype == "outcar" or filetype == "vasp":
-        read_weights = False
-        read_energies = False
-        file = open(file, "r")
-        lines = file.readlines()
-        for i, line in enumerate(lines):
-            if re.search("k-points in reciprocal lattice", line):
-                read_weights = False
-            if read_weights == True:
-                l = line.split()
-                if l != []:
-                    k = np.array([float(x) for x in l[0:3]])
-                    try:
-                        K = np.vstack((K, k))
-                    except NameError:
-                        K = k
-                    w = float(l[-1])
-                    weights = weights + [w]
-            if re.search("2pi/SCALE", line):
-                read_weights = True
-            if read_energies == True:
-                l = line.split()
-                if l != []:
-                    e = float(line.split()[1])
-                    E = E + [e]
-                else:
-                    E = np.array(E)
-                    try:
-                        energies = np.vstack((energies, E))
-                    except NameError:
-                        energies = E
-                    read_energies = False
-            if re.search("band No.", line):
-                read_energies = True
-                E = []
-        weights = np.array(weights)
-        data = np.hstack((K, energies))
-    else:
-        print("Not implemented for", filetype)
-        data, weights = None, None
-    return data, weights
 
 
 def grep_gap(file, filetype=None):

@@ -1,174 +1,179 @@
 # PYTHON module with the electron classes for electronic spectrum
 
-import yaiv.utils as ut
+import warnings
+import numpy as np
+import ase.io.formats
+import matplotlib.axes._axes
+import matplotlib.pyplot as plt
+from yaiv import grep as grep
+from yaiv import utils as ut
 
 
-class electronBands:
-    """Class for handling electronic bandstructures"""
-    def __init__(self, filepath):
-        self.filepath = filepath
-        self.filetype = ut.grep_filetype(filepath)
-    def grep_total_energy(self, meV=False):
-        """Returns the total energy in (Ry). Check grep_total_energy"""
-        out = ut.grep_total_energy(self.file, meV=meV, filetype=self.filetype)
-        self.total_energy = out
-        return out
-
-
-class file:
+class _has_lattice:
     """
-    TODO: REMOVE
-    A class for file scraping, depending on the filetype a different set of attributes will initialize.
+    Mixin class that provides lattice-related functionality:
+    loading a lattice, computing its reciprocal basis, and transforming k-points.
 
-    - QuantumEspresso: qe_scf_in, qe_scf_out, qe_bands_in, qe_ph_out, matdyn_in
-    - VASP: POSCAR, OUTCAR, KPATH (KPOINTS in line mode), EIGENVAL
+    Attributes
+    ----------
+    lattice : np.ndarray
+        3x3 matrix of direct lattice vectors in Å.
+    k_lattice : np.ndarray
+        3x3 matrix of reciprocal lattice vectors in 2πÅ⁻¹.
     """
-    def __init__(self,file):
-        self.file = file
-        #Define file type
-        self.filetype = grep_filetype(file)
-        #Read attributes:
-        if self.filetype in ['qe_scf_out','qe_scf_in','qe_bands_in','qe_ph_out','outcar','poscar']:
-            self.lattice = grep_lattice(self.file,filetype=self.filetype)
-        if self.filetype in ['qe_scf_out','outcar','eigenval']:
-            self.electrons = grep_electrons(file,filetype=self.filetype)
-            self.fermi = grep_fermi(file,filetype=self.filetype,silent=True)
-        if self.filetype == 'kpath':
-            self.path,self.labels = grep_ticks_labels_KPATH(file)
-        if self.filetype in ['qe_bands_in','matdyn_in']:
-            self.path = grep_ticks_QE(self.file,self.filetype)
-    def __str__(self):
-        return str(self.filetype) + ':\n' + self.file
-    def grep_lattice(self,alat=False):
-        """Check grep_lattice function"""
-        self.lattice = grep_lattice(self.file,filetype=self.filetype,alat=alat)
-        return self.lattice
-    def reciprocal_lattice(self,alat=False):
-        """Check K_basis function"""
-        if hasattr(self, 'lattice'):
-            return K_basis(self.lattice,alat=alat)
-        else:
-            print('No lattice data in order to compute reciprocal lattice')
-    def grep_ph_grid_points(self,expanded=False,decimals=3):
-        """Check grep_ph_grid_points function"""
-        if self.filetype != 'qe_ph_out':
-            print('This method if for ph.x outputs, which this is not...')
-            print('Check the documentation for grep_ph_grid_points function')
-        else:
-            grid = grep_ph_grid_points(self.file,expanded=expanded,decimals=decimals)
-            self.ph_grid_points = grid
-            return grid
-    def grep_total_energy(self,meV=False):
-        """Returns the total energy in (Ry). Check grep_total_energy"""
-        out= grep_total_energy(self.file,meV=meV,filetype=self.filetype)
-        self.total_energy = out
-        return out
-    def grep_energy_decomposition(self,meV=False):
-        """Greps the total energy decomposition with it's contributions. Check grep_energy_decomposition"""
-        F, TS, U, U_one_electron, U_h, U_xc, U_ewald = grep_energy_decomposition(self.file,meV=meV,filetype=self.filetype)
-        self.total_energy = F
-        self.F = F
-        self.TS = TS
-        self.U = U
-        self.U_one_electron = U_one_electron
-        self.U_h = U_h
-        self.U_xc = U_xc
-        self.U_ewald = U_ewald
-    def grep_stress_tensor(self,kbar=True):
-        """Returns the total stress tensor in (kbar) or default unit (Ry/bohr**3 for QE and X for VASP)"""
-        out=grep_stress_tensor(self.file,kbar=kbar,filetype=self.filetype)
-        self.stress=out
-        return out
-    def grep_kpoints_energies(self):
-        """ Greps the Kpoints, energies and weights...
-        For more info check grep_kpoints_energies function"""
-        out=grep_kpoints_energies(self.file,filetype=self.filetype,vectors=self.grep_lattice())
-        self.kpoints_energies=out[0]
-        self.kpoints_weights=out[1]
-        return out
-    def grep_gap(self):
-        """Get the direct and indirect gaps
-        For more info check grep_gap
-        return direct_gap, indirect_gap"""
-        out=grep_gap(self.file,filetype=self.filetype)
-        self.direct_gap=out[0]
-        self.indirect_gap=out[1]
-        return out
-    def grep_kpoints_energies_projections(filename,filetype,IgnoreWeight=True):
-        """
-        Grep the kpoints and energies and projections
 
-        returns STATES, KPOINTS, ENERGIES, PROJECTIONS
-        For more info check the grep_kpoints_energies_projections function
+    def update_lattice(self, lattice: np.ndarray = None):
         """
-        out=grep_kpoints_energies_projections(filename,filetype)
-        self.states=out[0]
-        self.kpoints=out[1]
-        self.energies=out[2]
-        self.projections=out[3]
-        return out
-    def grep_DOS(self,fermi='auto',smearing=0.02,window=None,steps=500,precision=3):
-        """
-        Grep the density of states from a scf or nscf file. 
-        For more info check grep_DOS function
-        """
-        if fermi == 'auto':
-            fermi=grep_fermi(self.file,silent=True)
-            if fermi==None:
-                fermi=0
-        out=grep_DOS(self.file,fermi=fermi,smearing=smearing,window=window,
-                     steps=steps,precision=precision)
-        self.DOS=out
-        return out
+        Refreshes the lattice attribute and updates reciprocal lattice and kpath accordingly.
 
-    def grep_DOS_projected(self,aux_file,fermi='auto',smearing=0.02,window=None,steps=500,precision=3,species=None,atoms=None,l=None,j=None,mj=None,symprec=1e-5,silent=False):
+        Parameters
+        ----------
+        lattice : np.ndarray, optional
+            3x3 matrix with the lattice in Å. If not provided, the lattice is loaded
+            from the original file if possible.
         """
-        Grep the projected density of states from a scf or nscf file, together with a proj.pwo or PROCAR file. 
-        For more info check grep_DOS_projected
+        try:
+            if lattice is None:
+                self.lattice = grep.lattice(self.filepath)
+            else:
+                self.lattice = lattice
+
+            self.k_lattice = ut.K_basis(self.lattice)
+
+            if hasattr(self, "spectrum") and hasattr(self.spectrum, "k_cryst"):
+                self.spectrum.k_cart = ut.cryst2cartesian(
+                    self.spectrum.k_cryst, self.k_lattice, list_of_vec=True
+                )
+            elif hasattr(self, "spectrum") and hasattr(self.spectrum, "k_alat"):
+                alat_k_lattice = ut.K_basis(self.lattice, alat=True)
+                self.spectrum.k_cryst = ut.cartesian2cryst(
+                    self.spectrum.k_alat, alat_k_lattice, list_of_vec=True
+                )
+
+        except ase.io.formats.UnknownFileTypeError:
+            warnings.warn(
+                f"Could not read lattice from {self.filepath}. Lattice set to None."
+            )
+            self.lattice = None
+            self.k_lattice = None
+
+
+class _has_spectrum:
+    """
+    Mixin class that provides spectrum-related functionality:
+
+    Attributes
+    ----------
+    spectrum : SimpleNamespace
+        Object containing `energies/frequencies` (eV/cm-1), `kpoints`, and `weights`.
+        - energies/freqs : np.ndarray
+            List of energies/freqs, each row corresponds to a particular k-point.
+        - kpoints : np.ndarray
+            List of k-points.
+        - weights : np.ndarray
+            List of kpoint-weights.
+    """
+
+    def plot(
+        self, ax: matplotlib.axes._axes.Axes = None, shift_fermi: bool = True, **kwargs
+    ) -> matplotlib.axes._axes.Axes:
         """
-        if self.filetype in ['procar','qe_proj_out']:
-            proj_file=self.file
-            file = aux_file
+        Plot the electronic band structure.
+
+        Parameters
+        ----------
+        ax : matplotlib.axes._axes.Axes, optional
+            Axes to plot on. If None, a new figure and axes are created.
+        shift_fermi : bool, optional
+            Whether to shift the energies so that the Fermi level is at 0. Default is True.
+        **kwargs : dict
+            Additional matplotlib arguments passed to `plot()`.
+
+        Returns
+        -------
+        ax : matplotlib.axes._axes.Axes
+            The axes with the band structure plot.
+        """
+        if ax is None:
+            fig, ax = plt.subplots()
+
+        # electronic bands
+        if hasattr(self.spectrum, "energies"):
+            bands = self.spectrum.energies  # shape: (nkpts, nbands)
+            if shift_fermi:
+                bands = bands - self.fermi
+        # phonon bands
+        elif hasattr(self.spectrum, "freqs"):
+            bands = self.spectrum.freqs  # shape: (nkpts, nbands)
+
+        # Get x-coord for the plot
+        if hasattr(self.spectrum, "k_cart"):
+            delta_k = np.diff(self.spectrum.k_cart, axis=0)  # shape (N-1, 3)
+        elif hasattr(self.spectrum, "k_alat"):
+            delta_k = np.diff(self.spectrum.k_alat, axis=0)  # shape (N-1, 3)
         else:
-            proj_file=aux_file
-            file=self.file
-        filetype,proj_filetype=None,None
-        if fermi == 'auto':
-            fermi=grep_fermi(aux_file,silent=True)
-            if fermi==None:
-                fermi=0
-        out = grep_DOS_projected(file,proj_file,fermi,smearing,window,steps,precision,filetype,
-                                 proj_filetype,species,atoms,l,j,mj,symprec,silent)
-        self.DOS_projected=out
-        return out
-    def grep_number_of_bands(self,window=None,fermi=None,filetype=None,silent=True):
-        """
-        Counts the number of bands in an energy window
-        For more info check grep_number_of_bands function
-        """
-        if fermi==None:
-            fermi=self.fermi
-        out=grep_number_of_bands(self.file,window,fermi,self.filetype,silent)
-        return out
-    def grep_frequencies(self,return_star=True,filetype=None):
-        """
-        Greps the frequencies (in cm-1)  and q-points (QE alat units) from a qe.ph.out file.
-        For more info check grep_frequencies function
-        """
-        out=grep_frequencies(self.file,return_star,self.filetype)
-        self.frequencies=out[1]
-        self.frequencies_points=out[0]
-        return out
-    def grep_electron_phonon_nesting(self,return_star=True,filetype=None):
-        """
-        Greps the nesting, frequencies (in cm-1),lamdas (e-ph coupling), gamma-linewidths (GHz) and q-points (QE alat units) from a qe.ph.out file
-        For more info check grep_electron_phonon_nesting function
-        """
-        out=grep_electron_phonon_nesting(self.file,return_star,self.filetype)
-        self.frequencies_points=out[0]
-        self.nestings=out[1]
-        self.frequencies=out[2]
-        self.lambdas=out[3]
-        self.gammas=out[4]
-        return out
+            warnings.warn("K-path generated from crystal units!", UserWarning)
+            delta_k = np.diff(self.spectrum.k_cryst, axis=0)  # shape (N-1, 3)
+        segment_lengths = np.linalg.norm(delta_k, axis=1)  # shape (N-1,)
+        x = np.concatenate([[0], np.cumsum(segment_lengths)])  # len (N)
+        ax.plot(x, bands, **kwargs)
+        return ax
 
+
+class electronBands(_has_lattice, _has_spectrum):
+    """
+    Class for handling electronic bandstructures and spectrums.
+
+    Attributes
+    ----------
+    filepath : str
+        Path to the file containing electronic structure output.
+    filetype : str
+        Type of the file (e.g., 'qe_scf_out', 'eigenval', etc.).
+    electron_num : int
+        Total number of electrons in the system.
+    spectrum : SimpleNamespace
+        Object containing `energies` (eV), `kpoints` (crystal units), and `weights`.
+    lattice : np.ndarray
+        3x3 matrix of lattice vectors in Å.
+    k_lattice : np.ndarray
+        3x3 matrix of reciprocal lattice vectors in 2πÅ⁻¹.
+    fermi : float
+        Fermi energy in eV (0 if not found).
+    """
+
+    def __init__(self, file):
+        self.filepath = file
+        self.filetype = grep._filetype(self.filepath)
+        self.electron_num = grep.electron_num(self.filepath)
+        self.spectrum = grep.kpointsEnergies(self.filepath)
+        self.update_lattice()
+        try:
+            self.fermi = grep.fermi(self.filepath)
+        except (NameError, NotImplementedError):
+            self.fermi = 0
+
+
+class phononBands(_has_lattice, _has_spectrum):
+    """
+    Class for handling phonon bandstructures and spectrums.
+
+    Attributes
+    ----------
+    filepath : str
+        Path to the file containing phonon frequencies output.
+    filetype : str
+        Type of the file (e.g., 'qe_freq_out', 'eigenval', etc.).
+    spectrum : SimpleNamespace
+        Object containing `frequencies` (cm-1) and `kpoints` (alat units).
+    lattice : np.ndarray
+        3x3 matrix of lattice vectors in Å.
+    k_lattice : np.ndarray
+        3x3 matrix of reciprocal lattice vectors in 2πÅ⁻¹.
+    """
+
+    def __init__(self, file):
+        self.filepath = file
+        self.filetype = grep._filetype(self.filepath)
+        self.spectrum = grep.kpointsFrequencies(self.filepath)
+        self.update_lattice()

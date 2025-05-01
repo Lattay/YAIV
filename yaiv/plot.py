@@ -15,16 +15,6 @@ import yaiv.defaults as defaults
 
 # PLOTTING BANDS----------------------------------------------------------------
 
-def __insert_space_before_minus(string):
-    """A simple tool to reformat strings and improve reading"""
-    new_string=''
-    for i in string:
-        if i=='-':
-            new_string=new_string+' -'
-        else:
-            new_string=new_string+i
-    return new_string
-
 def __ticks_generator(vectors,ticks,grid=None):
     """From the real vectors, the High Sym points for the path in crystal reciprocal space units and the 
     grid, it generates the positions for the hight sym points (tick_pos) and grid (grid_pos):
@@ -422,7 +412,7 @@ def __plot_electrons(file,filetype=None,vectors=None,ticks=None,fermi=None,color
 
     return [data[:,0].min(),data[:,0].max(),data[:,1:].min(),data[:,1:].max()]
 
-def bands(file,KPATH=None,aux_file=None,title=None,proj_file=None,vectors=None,ticks=None,labels=None,
+def bands_old(file,KPATH=None,aux_file=None,title=None,proj_file=None,vectors=None,ticks=None,labels=None,
                fermi=None,window=None,plot_DOS=True,DOS_file='aux',num_elec=None,color=None,filetype=None,figsize=(8,4),legend=None,
                 style=None,plot_ticks=True,linewidth=1,ratio=0.2,IgnoreWeight=True,save_as=None,save_raw_data=None,axis=None):
     """Plots the:
