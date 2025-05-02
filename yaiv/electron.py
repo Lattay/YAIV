@@ -5,8 +5,21 @@ import numpy as np
 import ase.io.formats
 import matplotlib.axes._axes
 import matplotlib.pyplot as plt
+from .units import ureg
 from yaiv import grep as grep
 from yaiv import utils as ut
+
+
+class data_with_units:
+    def __init__(self, data, units="arb."):
+        self.data = data
+        self.units = units
+
+    def __array__(self, dtype=None):
+        return self.data.astype(dtype) if dtype else self.data
+
+    def __repr__(self):
+        return f"<EigenArray shape={self.data.shape} units={self.units}>"
 
 
 class _has_lattice:
@@ -58,69 +71,68 @@ class _has_lattice:
             self.k_lattice = None
 
 
-class _has_spectrum:
+class spectrum:
     """
-    Mixin class that provides spectrum-related functionality:
+    General class for storing the eigenvalues of a periodic operator over k-points.
+
+    This can represent band structures, phonon spectra, or eigenvalues of other operators.
 
     Attributes
     ----------
-    spectrum : SimpleNamespace
-        Object containing `energies/frequencies` (eV/cm-1), `kpoints`, and `weights`.
-        - energies/freqs : np.ndarray
-            List of energies/freqs, each row corresponds to a particular k-point.
-        - kpoints : np.ndarray
-            List of k-points.
-        - weights : np.ndarray
-            List of kpoint-weights.
+    eigenvalues : np.ndarray
+        Array of shape (nkpts, neigs), e.g., energy or frequency values.
+    kpoints : np.ndarray
+        Array of shape (nkpts, 3), in crystal or Cartesian coordinates.
+    weights : np.ndarray, optional
+        Optional weights for each k-point.
     """
 
+    def __init__(self, eigenvalues, kpoints, weights=None):
+        self.eigenvalues = eigenvalues
+        self.kpoints = kpoints
+        self.weights = weights if weights is not None else None
+
     def plot(
-        self, ax: matplotlib.axes._axes.Axes = None, shift_fermi: bool = True, **kwargs
+        self, ax: matplotlib.axes._axes.Axes = None, shift: float = 0.0, **kwargs
     ) -> matplotlib.axes._axes.Axes:
         """
-        Plot the electronic band structure.
+        Plot the spectrum over a cumulative k-path.
 
         Parameters
         ----------
         ax : matplotlib.axes._axes.Axes, optional
             Axes to plot on. If None, a new figure and axes are created.
-        shift_fermi : bool, optional
-            Whether to shift the energies so that the Fermi level is at 0. Default is True.
+        shift : float, optional
+            A constant shift applied to the eigenvalues (e.g., Fermi level).
         **kwargs : dict
             Additional matplotlib arguments passed to `plot()`.
 
         Returns
         -------
         ax : matplotlib.axes._axes.Axes
-            The axes with the band structure plot.
+            The axes with the spectrum plot.
         """
         if ax is None:
             fig, ax = plt.subplots()
 
-        # electronic bands
-        if hasattr(self.spectrum, "energies"):
-            bands = self.spectrum.energies  # shape: (nkpts, nbands)
-            if shift_fermi:
-                bands = bands - self.fermi
-        # phonon bands
-        elif hasattr(self.spectrum, "freqs"):
-            bands = self.spectrum.freqs  # shape: (nkpts, nbands)
+        # Compute 1D k-path
+        delta_k = np.diff(self.kpoints, axis=0)
+        segment_lengths = np.linalg.norm(delta_k, axis=1)
+        kpath = np.concatenate([[0]*self.kpoints.units, np.cumsum(segment_lengths)])
 
-        # Get x-coord for the plot
-        if hasattr(self.spectrum, "k_cart"):
-            delta_k = np.diff(self.spectrum.k_cart, axis=0)  # shape (N-1, 3)
-        elif hasattr(self.spectrum, "k_alat"):
-            delta_k = np.diff(self.spectrum.k_alat, axis=0)  # shape (N-1, 3)
-        else:
-            warnings.warn("K-path generated from crystal units!", UserWarning)
-            delta_k = np.diff(self.spectrum.k_cryst, axis=0)  # shape (N-1, 3)
-        segment_lengths = np.linalg.norm(delta_k, axis=1)  # shape (N-1,)
-        x = np.concatenate([[0], np.cumsum(segment_lengths)])  # len (N)
-        ax.plot(x, bands, **kwargs)
+        # Apply shift to eigenvalues
+        bands = self.eigenvalues - shift
+
+        for band in bands.T:
+            ax.plot(kpath, band, **kwargs)
+
+        ax.set_xlabel(f"k-path ({self.kpoints.units})")
+        ax.set_ylabel(f"Eigenvalues ({self.eigenvalues.units})")
+
         return ax
 
 
-class electronBands(_has_lattice, _has_spectrum):
+class electronBands(_has_lattice):
     """
     Class for handling electronic bandstructures and spectrums.
 
@@ -154,7 +166,7 @@ class electronBands(_has_lattice, _has_spectrum):
             self.fermi = 0
 
 
-class phononBands(_has_lattice, _has_spectrum):
+class phononBands(_has_lattice):
     """
     Class for handling phonon bandstructures and spectrums.
 

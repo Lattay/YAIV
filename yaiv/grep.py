@@ -5,8 +5,9 @@ import re
 import numpy as np
 from ase import io
 from types import SimpleNamespace
-from yaiv import constants as const
-from yaiv import utils as ut
+from .units import ureg
+import yaiv.utils as ut
+from .electron import spectrum
 
 
 def _filetype(file: str) -> str:
@@ -118,52 +119,57 @@ def electron_num(file: str) -> int:
 
 def lattice(file: str, alat: bool = False) -> np.ndarray:
     """
-    Greps the lattice vectors in Å from a variety of outputs.
-
-    When possible it uses ASE internally.
+    Greps the lattice vectors from various outputs.
 
     Parameters
     ----------
     file : str
         File from which to extract the lattice.
     alat : bool, optional
-        Whether the lattice is given in alat units. Default is False.
+        Whether to return lattice in internal units (alat). Default is False (return in Å).
 
     Returns
     -------
     lattice : np.ndarray
-        np.array([[ax, ay, az], [bx, by, bz], [cx, cy, cz]])
+        3x3 array of lattice vectors with attached units (ureg.Quantity).
+        Units are either Å or 'alat', depending on the `alat` flag.
     """
     filetype = _filetype(file)
+
     if filetype == "qe_ph_out":
         READ = False
         with open(file, "r") as lines:
             for line in lines:
                 if "lattice parameter" in line:
                     line = line.split()
-                    alat_au = float(line[4])
-                elif read_vectors:
+                    ALAT = float(line[4]) * ureg.bohr  # lattice parameter in Bohr
+                elif re.search("crystal axes", line, flags=re.IGNORECASE):
+                    READ = True
+                    lattice = []
+                elif READ:
                     values = line.split()
                     vec = np.array(
                         [float(values[3]), float(values[4]), float(values[5])]
                     )
-                    lattice = (
-                        np.vstack([lattice, vec]) if "lattice" in locals() else vec
-                    )
-                    if lattice.shape == (3, 3):
+                    lattice.append(vec)
+                    if len(lattice) == 3:
                         break
-                elif re.search("crystal axes", line, flags=re.IGNORECASE):
-                    READ = True
-        if alat == True:
-            return lattice
+        if alat:
+            return lattice * ureg("alat")  # lattice in lattice units
         else:
-            return lattice * alat_au * const.au2ang
+            # Convert alat to Å
+            lattice = np.array(lattice) * ALAT.to("angstrom")
+            return lattice
+
     else:
-        # Get with ASE
-        lattice = io.read(file).cell.T
-        if alat == True:
-            lattice = lattice / np.linalg.norm(lattice[0])
-    return lattice
+        # Fallback to ASE
+        lattice = io.read(file).cell.T  # (3, 3) in Å
+        if alat:
+            # Normalize to lattice units
+            a_norm = np.linalg.norm(lattice[0])
+            return (lattice / a_norm) * ureg("alat")
+        else:
+            return lattice * ureg.angstrom
 
 
 def fermi(file: str) -> float:
@@ -214,12 +220,10 @@ def fermi(file: str) -> float:
             raise NotImplementedError("Unsupported filetype")
     if "E_f" not in locals():
         raise NameError("Fermi energy not found.")
-    return E_f
+    return E_f * ureg("eV")
 
 
-def total_energy(
-    file: str, meV: bool = False, decomposition: bool = False
-) -> float | SimpleNamespace:
+def total_energy(file: str, decomposition: bool = False) -> float | SimpleNamespace:
     """
     Greps the total free energy or it's decomposition and returns the value in Ry.
 
@@ -227,8 +231,6 @@ def total_energy(
     ----------
     file : str
         File from which to extract the energy.
-    meV : bool, optional
-        Whether the energy is given in meV units. Default is False.
     decomposition : bool, optional
         If True an energy decomposition is returned instead. Default is False.
 
@@ -257,20 +259,20 @@ def total_energy(
         if filetype == "qe_scf_out":
             for line in reversed(list(lines)):
                 if "!" in line:
-                    F = float(line.split()[4])
+                    F = float(line.split()[4]) * ureg("Ry")
                     break
                 elif "smearing contrib" in line:
-                    TS = float(line.split()[4])
+                    TS = float(line.split()[4]) * ureg("Ry")
                 elif "internal energy" in line:
-                    U = float(line.split()[4])
+                    U = float(line.split()[4]) * ureg("Ry")
                 elif "one-electron" in line:
-                    U_one_electron = float(line.split()[3])
+                    U_one_electron = float(line.split()[3]) * ureg("Ry")
                 elif "hartree contribution" in line:
-                    U_h = float(line.split()[3])
+                    U_h = float(line.split()[3]) * ureg("Ry")
                 elif "xc contribution" in line:
-                    U_xc = float(line.split()[3])
+                    U_xc = float(line.split()[3]) * ureg("Ry")
                 elif "ewald" in line:
-                    U_ewald = float(line.split()[3])
+                    U_ewald = float(line.split()[3]) * ureg("Ry")
             if decomposition and "TS" in locals():
                 energy = SimpleNamespace(
                     F=F,
@@ -289,16 +291,11 @@ def total_energy(
                     l = line.split()
                     energy = float(l[-1])
                     break
-            energy = energy * const.eV2Ry
+            energy = energy * ureg("eV").to("Ry")
         else:
             raise NotImplementedError("Unsupported filetype")
     if "energy" not in locals():
         raise NameError("Total energy not found.")
-    if meV and isinstance(energy, SimpleNamespace):
-        for attr in vars(energy):
-            setattr(energy, attr, getattr(energy, attr) * const.Ry2meV)
-    elif meV:
-        energy *= const.Ry2meV
     return energy
 
 
@@ -335,15 +332,13 @@ def stress_tensor(file: str) -> np.ndarray:
                         break
                 elif re.search("total.*stress", line):
                     READ = True
-            stress = (
-                stress * (const.Ry2jul / (const.bohr2metre**3)) * const.pas2bar / 1000
-            )
+            stress = stress * (ureg("Ry") / ureg("bohr") ** 3).to("kbar")
         elif filetype == "outcar":
             for line in lines:
                 if "in kB" in line:
                     l = [float(x) for x in line.split()[2:]]
                     voigt = np.array([l[0], l[1], l[2], l[4], l[5], l[3]])
-                    stress = ut.voigt2cartesian(voigt)
+                    stress = ut.voigt2cartesian(voigt) * ureg("kbar")
                     warnings.warn(
                         "According to VASP this is kB units, but when comparing to QE it appears to be GPa.",
                         UserWarning,
@@ -476,7 +471,7 @@ def kpath(file: str, labels: bool = True) -> SimpleNamespace | np.ndarray:
         return kpath
 
 
-def kpointsEnergies(file: str):
+def kpointsEnergies(file: str) -> spectrum:
     """
     Grep the kpoints, energies and kpoint-weights for different file kinds.
 
@@ -492,14 +487,18 @@ def kpointsEnergies(file: str):
 
     Returns
     -------
-    spectrum : SimpleNamespace
-        Namespace with the following attributes:
-        - energies : np.ndarray
+    spectrum : spectrum
+        Spectrum class with the following attributes:
+        - eigenvalues : np.ndarray
             List of energies, each row corresponds to a particular k-point.
-        - k_cryst : np.ndarray
+        - kpoints : np.ndarray
             List of k-points.
         - weights : np.ndarray
             List of kpoint-weights.
+        - eigen_units : str, optional
+            Units of the eigenvalues (e.g., eV, THz, cm⁻¹).
+        - k_units : str, optional
+            Units of the kpoints (e.g., 'crystal', '1/Å', '2π/Å', '2π/alat').
 
     Raises
     ------
@@ -622,10 +621,10 @@ def kpointsEnergies(file: str):
                             E = None
         else:
             raise NotImplementedError("Unsupported filetype")
-    return SimpleNamespace(energies=ENERGIES, k_cryst=KPOINTS, weights=WEIGHTS)
+    return spectrum(ENERGIES * ureg("eV"), KPOINTS / ureg("crystal"), WEIGHTS)
 
 
-def kpointsFrequencies(file: str) -> SimpleNamespace:
+def kpointsFrequencies(file: str) -> spectrum:
     """
     Grep the kpoints and frequencies from phonon ouputs.
 
@@ -640,12 +639,18 @@ def kpointsFrequencies(file: str) -> SimpleNamespace:
 
     Returns
     -------
-    spectrum : SimpleNamespace
-        Namespace with the following attributes:
-        - freqs : np.ndarray
+    spectrum : spectrum
+        Spectrum class with the following attributes:
+        - eigenvalues : np.ndarray
             List of frequencies, each row corresponds to a particular k-point.
-        - k_alat : np.ndarray
+        - kpoints : np.ndarray
             List of k-points.
+        - weights : np.ndarray
+            List of kpoint-weights.
+        - eigen_units : str, optional
+            Units of the eigenvalues (e.g., eV, THz, cm⁻¹).
+        - k_units : str, optional
+            Units of the kpoints (e.g., 'crystal', '1/Å', '2π/Å', '2π/alat').
 
     Raises
     ------
@@ -677,4 +682,7 @@ def kpointsFrequencies(file: str) -> SimpleNamespace:
                         F = None
         else:
             raise NotImplementedError("Unsupported filetype")
-    return SimpleNamespace(freqs=FREQS, k_alat=KPOINTS)
+    #Give proper units
+    FREQS = FREQS * ureg("c") / ureg("cm")
+    KPOINTS = KPOINTS * (ureg("_2pi") / ureg("alat"))
+    return spectrum(FREQS, KPOINTS, None)

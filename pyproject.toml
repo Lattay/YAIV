@@ -1,30 +1,33 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=61.0", "setuptools-scm"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "yaiv"
 dynamic = ["version"]
 authors = [
-  { name="Martin Gutierrez-Amigo", email="martin.gutierrez.amigo@gmail.com" },
+  { name = "Martin Gutierrez-Amigo", email = "martin.gutierrez.amigo@gmail.com" }
 ]
-description="Yet another Ab Initio Visualizer with a variety of tools"
+description = "Yet another Ab Initio Visualizer with a variety of tools"
 readme = "README.md"
 dependencies = [
-        "ipympl",
-        "ase==3.22.1",
-        "spglib"
+  "ipympl",
+  "ase==3.22.1",
+  "spglib"
 ]
 requires-python = ">=3.6"
 classifiers = [
-    "Programming Language :: Python :: 3",
-    "Operating System :: OS Independent",
-    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+  "Programming Language :: Python :: 3",
+  "Operating System :: OS Independent",
+  "License :: OSI Approved :: GNU General Public License v3 (GPLv3)"
 ]
+
+[project.urls]
+Homepage = "https://github.com/mgamigo/YAIV"
+"Bug Tracker" = "https://github.com/mgamigo/YAIV/issues"
 
 [tool.setuptools_scm]
 version_file = "yaiv/__init__.py"
 
-[project.urls]
-"Homepage" = "https://github.com/mgamigo/YAIV"
-"Bug Tracker" = "https://github.com/mgamigo/YAIV/issues"
+[tool.setuptools.package-data]
+yaiv = ["extra_units.txt"]
