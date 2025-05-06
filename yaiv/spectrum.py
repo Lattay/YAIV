@@ -27,14 +27,15 @@ yaiv.utils    : Basis universal utilities
 # PYTHON module with the electron classes for electronic spectrum
 
 import warnings
+from types import SimpleNamespace
 
 import numpy as np
 import matplotlib.axes._axes
 import matplotlib.pyplot as plt
 
 from yaiv.defaults.config import ureg
+import yaiv.utils as ut
 from yaiv import grep as grep
-from yaiv import utils as ut
 
 
 class _has_lattice:
@@ -80,7 +81,22 @@ class _has_lattice:
         self._lattice = ut.reciprocal_basis(value)
 
 
-class spectrum(_has_lattice):
+class _has_kpath:
+    """
+    Mixin that provides lattice-related functionality:
+
+    Attributes
+    ----------
+    kpath : SimpleNamespace | np.ndarray
+        A namespace with attributes `path`(ndarray) and `labels`(list)
+        or just a ndarray.
+    """
+
+    def __init__(self, kpath: SimpleNamespace | np.ndarray = None):
+        self.kpath = kpath
+
+
+class spectrum(_has_lattice, _has_kpath):
     """
     General class for storing the eigenvalues of a periodic operator over k-points.
 
@@ -99,6 +115,9 @@ class spectrum(_has_lattice):
         3x3 matrix of direct lattice vectors in [length] units.
     k_lattice : np.ndarray
         3x3 matrix of reciprocal lattice vectors in 2π[length]⁻¹ units.
+    kpath : SimpleNamespace | np.ndarray
+        A namespace with attributes `path`(ndarray) and `labels`(list)
+        or just a ndarray.
     """
 
     def __init__(
@@ -107,13 +126,15 @@ class spectrum(_has_lattice):
         kpoints: np.ndarray = None,
         weights: list | np.ndarray = None,
         lattice: np.ndarray = None,
+        kpath: SimpleNamespace | np.ndarray = None,
     ):
         self.eigenvalues = eigenvalues
         self.kpoints = kpoints
         self.weights = weights
         _has_lattice.__init__(self, lattice)
+        _has_kpath.__init__(self, kpath)
 
-    def get_kpath(self, patched=True) -> np.ndarray:
+    def get_1Dkpath(self, patched=True) -> np.ndarray:
         """
         Computes the 1D cumulative k-path from the k-point coordinates.
 
@@ -162,6 +183,7 @@ class spectrum(_has_lattice):
         ax: matplotlib.axes._axes.Axes = None,
         shift: float = None,
         patched: bool = True,
+        bands: list[int] = None,
         **kwargs,
     ) -> matplotlib.axes._axes.Axes:
         """
@@ -178,6 +200,8 @@ class spectrum(_has_lattice):
             If True, attempts to patch discontinuities in the k-path.
             This prevents artificially connected lines in band structure
             plots (e.g., flat bands across high-symmetry points).
+        bands : list of int, optional
+            Indices of the bands to plot. If None, all bands are plotted.
         **kwargs : dict
             Additional matplotlib arguments passed to `plot()`.
 
@@ -190,18 +214,30 @@ class spectrum(_has_lattice):
             fig, ax = plt.subplots()
 
         # Apply shift to eigenvalues
-        if shift is None and hasattr(self, "fermi"):
-            shift = self.fermi
-        else:
-            shift = 0
+        if shift is None:
+            if hasattr(self, "fermi"):
+                shift = self.fermi if self.fermi is not None else 0
+            else:
+                shift = 0
 
-        bands = self.eigenvalues - shift
-        kpath = self.get_kpath(patched)
-        kpath = kpath / kpath[-1].magnitude
+        eigen = self.eigenvalues - shift
+        kpath = self.get_1Dkpath(patched)
+        x = kpath / kpath[-1]
+        if isinstance(eigen, ureg.Quantity):
+            eigen = eigen.magnitude
+        if isinstance(x, ureg.Quantity):
+            x = x.magnitude
 
-        for band in bands.T:
-            ax.plot(kpath, band, **kwargs)
+        band_indices = bands if bands is not None else range(eigen.shape[1])
 
+        label = kwargs.pop("label", None)   # remove label from kwargs
+        for j, i in enumerate(band_indices):
+            if j==0:
+                ax.plot(x, eigen[:, i], label=label, **kwargs)
+            else:
+                ax.plot(x, eigen[:, i], **kwargs)
+
+        ax.set_xlim(0, 1)
         ax.set_xlabel(f"k-path ({kpath.units})")
         ax.set_ylabel(f"Eigenvalues ({self.eigenvalues.units})")
 
@@ -244,7 +280,7 @@ class electronBands(spectrum):
             try:
                 self.fermi = grep.fermi(self.filepath)
             except (NameError, NotImplementedError):
-                self.fermi = 0
+                self.fermi = None
             try:
                 lattice = grep.lattice(self.filepath)
             except NotImplementedError:
@@ -258,8 +294,7 @@ class electronBands(spectrum):
                 lattice=lattice,
             )
         else:
-            self.electron_num = None
-            self.fermi = 0
+            self.electron_num = self.fermi = None
             spectrum.__init__(self)
 
 

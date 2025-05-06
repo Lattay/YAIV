@@ -129,6 +129,8 @@ def cryst2cartesian(
     """
     if isinstance(crystal_coord, ureg.Quantity):
         cryst = crystal_coord.magnitude
+    else:
+        cryst = crystal_coord
 
     if np.ndim(cryst) == 1 or list_of_vec:
         cartesian_coord = np.matmul(cryst, cryst_basis)

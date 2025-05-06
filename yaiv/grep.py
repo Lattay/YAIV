@@ -39,6 +39,7 @@ yaiv.spectrum : Data container and plotter for eigenvalue spectra
 yaiv.utils    : Basis universal utilities
 """
 
+from __future__ import annotations
 import re
 import warnings
 from types import SimpleNamespace
@@ -48,7 +49,6 @@ from ase import io
 
 from yaiv.defaults.config import ureg
 import yaiv.utils as ut
-from yaiv.spectrum import spectrum
 
 
 def _filetype(file: str) -> str:
@@ -439,43 +439,44 @@ def kpath(file: str, labels: bool = True) -> SimpleNamespace | np.ndarray:
     """
     filetype = _filetype(file)
     READ = False
+
+    def read_qe_path(line_iter):
+        for line in line_iter:
+            if "N" not in locals():
+                N = int(line.split()[0])
+            else:
+                if labels:
+                    try:
+                        kpoint, label = line.split("!")
+                    except ValueError:
+                        raise NameError("Label not found, try using labels=False.")
+                else:
+                    kpoint = line
+                # Grep K point
+                kpoint = [float(x) for x in kpoint.split()]
+                kpath = np.vstack([kpath, kpoint]) if "kpath" in locals() else [kpoint]
+                # Grep K point label
+                if labels:
+                    k_names = (
+                        k_names + [label.split()[0]]
+                        if "k_names" in locals()
+                        else [label.split()[0]]
+                    )
+                # Check if path is complete
+                if len(kpath) == N:
+                    break
+        return kpath, k_names
+
     with open(file, "r") as lines:
         # QE input format
-        if filetype == "qe_bands_in":
-            for line in lines:
-                if READ:
-                    if "N" not in locals():
-                        N = int(line.split()[0])
-                    else:
-                        if labels:
-                            try:
-                                kpoint, label = line.split("!")
-                            except ValueError:
-                                raise NameError(
-                                    "Label not found, try using labels=False."
-                                )
-                        else:
-                            kpoint = line
-                        # Grep K point
-                        kpoint = [float(x) for x in kpoint.split()]
-                        kpath = (
-                            np.vstack([kpath, kpoint])
-                            if "kpath" in locals()
-                            else [kpoint]
-                        )
-                        # Grep K point label
-                        if labels:
-                            k_names = (
-                                k_names + [label.split()[0]]
-                                if "k_names" in locals()
-                                else [label.split()[0]]
-                            )
-                        # Check if path is complete
-                        if len(kpath) == N:
-                            break
-                elif re.search("K_POINTS.*crystal_b", line, flags=re.IGNORECASE):
-                    READ = True
-
+        if filetype in ["qe_bands_in", "matdyn_in"]:
+            line_iter = iter(lines)
+            for line in line_iter:
+                if re.search("K_POINTS.*crystal_b", line, flags=re.IGNORECASE) or (
+                    filetype == "matdyn_in" and re.search("/", line.split()[0])
+                ):
+                    kpath, k_names = read_qe_path(line_iter)
+                    break
         # VASP KPATH format
         elif filetype == "kpath":
             for line in lines:
@@ -485,6 +486,8 @@ def kpath(file: str, labels: bool = True) -> SimpleNamespace | np.ndarray:
                         N = int(line.split()[0])
                     except ValueError:
                         pass
+                elif re.search("Reciprocal", line, flags=re.IGNORECASE):
+                    READ = True
                 # Read path and labels
                 elif READ:
                     if labels:
@@ -508,12 +511,11 @@ def kpath(file: str, labels: bool = True) -> SimpleNamespace | np.ndarray:
                             k_names = k_names + [label.split()[0]]
                     else:
                         kpath[-1, -1] = N
-                elif re.search("Reciprocal", line, flags=re.IGNORECASE):
-                    READ = True
         else:
             raise NotImplementedError("Unsupported filetype")
     if "kpath" not in locals():
         raise NameError("Kpath not found.")
+    kpath = kpath * ureg._2pi / ureg.crystal
     if labels:
         # Post-process labels
         [l.replace("Gamma", r"\Gamma") for l in k_names]
@@ -543,8 +545,7 @@ def kpointsEnergies(file: str) -> spectrum:
         - eigenvalues : np.ndarray
             List of energies, each row corresponds to a particular k-point.
         - kpoints : np.ndarray
-            List of k-points.
-        - weights : np.ndarray
+            List of k-points.  - weights : np.ndarray
             List of kpoint-weights.
 
     Raises
@@ -552,6 +553,9 @@ def kpointsEnergies(file: str) -> spectrum:
     NotImplementedError:
         The function is not currently implemeted for the provided filetype.
     """
+
+    from yaiv.spectrum import spectrum
+
     filetype = _filetype(file)
     READ_energies = READ_kpoints = RELAX_calc = RELAXED = False
     KPOINTS = ENERGIES = WEIGHTS = E = None
@@ -702,6 +706,9 @@ def kpointsFrequencies(file: str) -> spectrum:
     NotImplementedError:
         The function is not currently implemeted for the provided filetype.
     """
+
+    from yaiv.spectrum import spectrum
+
     filetype = _filetype(file)
     KPOINTS = FREQS = F = None
     READ_freqs = False

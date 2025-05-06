@@ -412,7 +412,7 @@ def __plot_electrons(file,filetype=None,vectors=None,ticks=None,fermi=None,color
 
     return [data[:,0].min(),data[:,0].max(),data[:,1:].min(),data[:,1:].max()]
 
-def bands_old(file,KPATH=None,aux_file=None,title=None,proj_file=None,vectors=None,ticks=None,labels=None,
+def bands(file,KPATH=None,aux_file=None,title=None,proj_file=None,vectors=None,ticks=None,labels=None,
                fermi=None,window=None,plot_DOS=True,DOS_file='aux',num_elec=None,color=None,filetype=None,figsize=(8,4),legend=None,
                 style=None,plot_ticks=True,linewidth=1,ratio=0.2,IgnoreWeight=True,save_as=None,save_raw_data=None,axis=None):
     """Plots the:
