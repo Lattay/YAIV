@@ -186,6 +186,7 @@ def bands(
     window: list[float] | float = [-1, 1],
     colors: list[str] = None,
     labels: list[str] = None,
+    deg: bool = False,
     **kwargs,
 ) -> matplotlib.axes._axes.Axes:
     """
@@ -314,13 +315,8 @@ def phonons(
 
     if band.kpath is not None:
         kpath(ax, band.kpath, band.k_lattice)
-    #
-    #    if band.fermi is not None:
-    #        ax.axhline(y=0, color=pdef.fermi_c, linewidth=pdef.fermi_w)
-    #
-    #    if type(window) is int or type(window) is float:
-    #        window = [-window, window]
-    #    ax.set_ylim(window[0], window[1])
+
+    ax.axhline(y=0, color=pdef.fermi_c, linewidth=pdef.fermi_w)
 
     plt.tight_layout()
     return ax
