@@ -30,4 +30,4 @@ Homepage = "https://github.com/mgamigo/YAIV"
 version_file = "yaiv/__init__.py"
 
 [tool.setuptools.package-data]
-yaiv = ["extra_units.txt"]
+yaiv = ["defaults/extra_units.txt"]

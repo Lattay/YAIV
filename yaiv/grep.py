@@ -1,13 +1,54 @@
-# PYTHON module focussed on text scraping
+"""
+YAIV | yaiv.grep
+================
 
-import warnings
+This module provides text-scraping utilities for extracting (grepping) structural and spectral
+information from first-principles calculation outputs. It supports common DFT packages
+such as Quantum ESPRESSO and VASP.
+
+The functions in this module perform low-level parsing (i.e., grepping) of data such as:
+
+- Electronic eigenvalues and k-points
+- Phonon frequencies and paths
+- Lattice vectors and stress tensors
+- Number of electrons and total energies
+- Fermi level and reciprocal space paths
+
+Supported formats include:
+- Quantum ESPRESSO output/input: `pw.x`, `ph.x`, `bands.in`, `projwfc.x`, `matdyn.x`
+- VASP output: `OUTCAR`, `EIGENVAL`, `KPOINTS`, `PROCAR`
+
+This module is intended to feed high-level classes like `electronBands` and `phononBands`
+by providing clean NumPy arrays or `spectrum` objects with physical units.
+
+Examples
+--------
+>>> from yaiv.grep import kpointsEnergies
+>>> spectrum = kpointsEnergies("OUTCAR")
+>>> spectrum.eigenvalues.shape
+(100, 32)
+
+>>> from yaiv.grep import lattice
+>>> a = lattice("qe.out")
+>>> a.shape
+(3, 3)
+
+See Also
+--------
+yaiv.spectrum : Data container and plotter for eigenvalue spectra
+yaiv.utils    : Basis universal utilities
+"""
+
 import re
+import warnings
+from types import SimpleNamespace
+
 import numpy as np
 from ase import io
-from types import SimpleNamespace
-from .units import ureg
+
+from yaiv.defaults.config import ureg
 import yaiv.utils as ut
-from .electron import spectrum
+from yaiv.spectrum import spectrum
 
 
 def _filetype(file: str) -> str:
@@ -133,6 +174,11 @@ def lattice(file: str, alat: bool = False) -> np.ndarray:
     lattice : np.ndarray
         3x3 array of lattice vectors with attached units (ureg.Quantity).
         Units are either Å or 'alat', depending on the `alat` flag.
+
+    Raises
+    ------
+    NotImplementedError:
+        The function is not currently implemeted for the provided filetype.
     """
     filetype = _filetype(file)
 
@@ -163,7 +209,12 @@ def lattice(file: str, alat: bool = False) -> np.ndarray:
 
     else:
         # Fallback to ASE
-        lattice = io.read(file).cell.T  # (3, 3) in Å
+        try:
+            lattice = io.read(file).cell.T  # (3, 3) in Å
+        except io.formats.UnknownFileTypeError:
+            raise NotImplementedError(
+                "Unsupported filetype: ASE is not handling it correctly"
+            )
         if alat:
             # Normalize to lattice units
             a_norm = np.linalg.norm(lattice[0])
@@ -174,7 +225,7 @@ def lattice(file: str, alat: bool = False) -> np.ndarray:
 
 def fermi(file: str) -> float:
     """
-    Greps the Fermi energy from a variety of filetypes and returns it in eV
+    Greps the Fermi energy from a variety of filetypes.
 
     Parameters
     ----------
@@ -225,7 +276,7 @@ def fermi(file: str) -> float:
 
 def total_energy(file: str, decomposition: bool = False) -> float | SimpleNamespace:
     """
-    Greps the total free energy or it's decomposition and returns the value in Ry.
+    Greps the total free energy or it's decomposition.
 
     Parameters
     ----------
@@ -301,7 +352,7 @@ def total_energy(file: str, decomposition: bool = False) -> float | SimpleNamesp
 
 def stress_tensor(file: str) -> np.ndarray:
     """
-    Greps the total stress tensor in kbar.
+    Greps the total stress tensor.
 
     Parameters
     ----------
@@ -495,10 +546,6 @@ def kpointsEnergies(file: str) -> spectrum:
             List of k-points.
         - weights : np.ndarray
             List of kpoint-weights.
-        - eigen_units : str, optional
-            Units of the eigenvalues (e.g., eV, THz, cm⁻¹).
-        - k_units : str, optional
-            Units of the kpoints (e.g., 'crystal', '1/Å', '2π/Å', '2π/alat').
 
     Raises
     ------
@@ -621,7 +668,9 @@ def kpointsEnergies(file: str) -> spectrum:
                             E = None
         else:
             raise NotImplementedError("Unsupported filetype")
-    return spectrum(ENERGIES * ureg("eV"), KPOINTS / ureg("crystal"), WEIGHTS)
+    return spectrum(
+        ENERGIES * ureg("eV"), KPOINTS * (ureg._2pi / ureg.crystal), WEIGHTS
+    )
 
 
 def kpointsFrequencies(file: str) -> spectrum:
@@ -647,10 +696,6 @@ def kpointsFrequencies(file: str) -> spectrum:
             List of k-points.
         - weights : np.ndarray
             List of kpoint-weights.
-        - eigen_units : str, optional
-            Units of the eigenvalues (e.g., eV, THz, cm⁻¹).
-        - k_units : str, optional
-            Units of the kpoints (e.g., 'crystal', '1/Å', '2π/Å', '2π/alat').
 
     Raises
     ------
@@ -682,7 +727,7 @@ def kpointsFrequencies(file: str) -> spectrum:
                         F = None
         else:
             raise NotImplementedError("Unsupported filetype")
-    #Give proper units
+    # Give proper units
     FREQS = FREQS * ureg("c") / ureg("cm")
     KPOINTS = KPOINTS * (ureg("_2pi") / ureg("alat"))
     return spectrum(FREQS, KPOINTS, None)
