@@ -2,6 +2,9 @@
 #
 build/
 dist/
+tmp/
+RESULTS/
+*.swp
 *egg-info/
 .ipynb_check*
 __pycache__/
