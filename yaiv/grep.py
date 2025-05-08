@@ -558,7 +558,7 @@ def kpointsEnergies(file: str) -> spectrum:
     from yaiv.spectrum import spectrum
 
     filetype = _filetype(file)
-    READ_energies = READ_kpoints = RELAX_calc = RELAXED = False
+    READ_energies = READ_kpoints = RELAX_calc = RELAXED = OCCUPATIONS = False
     KPOINTS = ENERGIES = WEIGHTS = E = None
     with open(file, "r") as lines:
         if filetype == "qe_scf_out":
@@ -595,7 +595,11 @@ def kpointsEnergies(file: str) -> spectrum:
                     if len(WEIGHTS) == num_points:
                         READ_kpoints = False
                 elif READ_energies:
-                    if line.strip() != "" and not line.lstrip().startswith("k"):
+                    if line.lstrip().startswith("k"):
+                        OCCUPATIONS = False
+                    elif OCCUPATIONS:
+                        pass
+                    elif line.strip() != "":
                         e = [float(x) for x in re.findall(r"[-+]?\d*\.\d+|\d+", line)]
                         E = np.hstack([E, e]) if E is not None else e
                         if len(E) == num_bands:
@@ -603,6 +607,7 @@ def kpointsEnergies(file: str) -> spectrum:
                                 np.vstack([ENERGIES, E]) if ENERGIES is not None else E
                             )
                             E = None
+                            OCCUPATIONS = True
         elif filetype == "eigenval":
             for i, line in enumerate(lines):
                 l = line.split()
