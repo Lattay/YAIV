@@ -546,6 +546,7 @@ def kpointsEnergies(file: str) -> spectrum:
             List of energies, each row corresponds to a particular k-point.
         - kpoints : np.ndarray
             List of k-points.  - weights : np.ndarray
+        - weights : np.ndarray
             List of kpoint-weights.
 
     Raises
