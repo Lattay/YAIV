@@ -127,13 +127,13 @@ def cryst2cartesian(
     TypeError
         If the input units are not correct (i.e., not providing crystal units).
     """
-    if isinstance(cartesian_coord, ureg.Quantity) and not isinstance(
+    if isinstance(crystal_coord, ureg.Quantity) and not isinstance(
         cryst_basis, ureg.Quantity
     ):
         raise TypeError(
             "Input and basis units are not compatible. Provide both with or without units."
         )
-    elif isinstance(cartesian_coord, ureg.Quantity) and isinstance(
+    elif isinstance(crystal_coord, ureg.Quantity) and isinstance(
         cryst_basis, ureg.Quantity
     ):
         in_units = crystal_coord.units
@@ -146,6 +146,8 @@ def cryst2cartesian(
             out_units = basis_units * in_units * (ureg.crystal / ureg._2pi)
         else:
             raise TypeError("Input units are not crystal units.")
+    else:
+        out_units=1
 
     cartesian_coord = crystal_coord @ cryst_basis
 
