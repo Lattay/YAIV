@@ -6,20 +6,21 @@ build-backend = "setuptools.build_meta"
 name = "yaiv"
 dynamic = ["version"]
 authors = [
-  { name = "Martin Gutierrez-Amigo", email = "martin.gutierrez.amigo@gmail.com" }
+{ name = "Martin Gutierrez-Amigo", email = "martin.gutierrez.amigo@gmail.com" }
 ]
 description = "Yet another Ab Initio Visualizer with a variety of tools"
 readme = "README.md"
 dependencies = [
-  "ipympl",
-  "ase==3.22.1",
-  "spglib"
+    "ipympl",
+    "ase==3.22.1",
+    "spglib",
+    "pint",
 ]
 requires-python = ">=3.6"
 classifiers = [
-  "Programming Language :: Python :: 3",
-  "Operating System :: OS Independent",
-  "License :: OSI Approved :: GNU General Public License v3 (GPLv3)"
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)"
 ]
 
 [project.urls]

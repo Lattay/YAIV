@@ -1,6 +1,7 @@
 import re, os
 import setuptools
 
+
 def get_version():
     with open(os.path.join("yaiv", "__init__.py"), "r") as f:
         content = f.read()
@@ -11,7 +12,7 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setuptools.setup(
-    name="yaiv", # Replace with your username
+    name="yaiv",  # Replace with your username
     version=get_version(),
     author="Martin Gutierrez-Amigo",
     author_email="<martin00gutierrez@outlook.com>",
@@ -24,18 +25,19 @@ setuptools.setup(
         "ipympl",
         "ase==3.22.1",
         "spglib",
-#        "crystal-toolkit",
-        #OLD (with ase-noteook)
-#        "ipympl==0.9.1",
-#        "matplotlib==3.5.3",
-#        "ase-notebook",
-#        "spglib",
-#        "pythreejs",
-        ],
+        "pint",
+        #        "crystal-toolkit",
+        # OLD (with ase-noteook)
+        #        "ipympl==0.9.1",
+        #        "matplotlib==3.5.3",
+        #        "ase-notebook",
+        #        "spglib",
+        #        "pythreejs",
+    ],
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
         "Operating System :: OS Independent",
     ],
-    python_requires='>=3.6',
+    python_requires=">=3.6",
 )
