@@ -83,9 +83,7 @@ def get_HSP_ticks(
 
     # Convert to Cartesian coordinates if lattice is provided
     if k_lattice is not None:
-        hsp_coords = ut.cryst2cartesian(
-            hsp_coords, k_lattice, list_of_vec=True
-        ).magnitude
+        hsp_coords = ut.cryst2cartesian(hsp_coords, k_lattice).magnitude
 
     delta_k = np.diff(hsp_coords, axis=0)
     segment_lengths = np.linalg.norm(delta_k, axis=1)

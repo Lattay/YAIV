@@ -157,9 +157,7 @@ class spectrum(_has_lattice, _has_kpath):
         if hasattr(self.kpoints, "units"):
             kpoints = self.kpoints
             if "crystal" in kpoints.units._units and self.k_lattice is not None:
-                kpoints = ut.cryst2cartesian(
-                    self.kpoints, self.k_lattice, list_of_vec=True
-                )
+                kpoints = ut.cryst2cartesian(self.kpoints, self.k_lattice)
             units = kpoints.units
             kpts_val = kpoints.magnitude
         else:
@@ -230,9 +228,9 @@ class spectrum(_has_lattice, _has_kpath):
 
         band_indices = bands if bands is not None else range(eigen.shape[1])
 
-        label = kwargs.pop("label", None)   # remove label from kwargs
+        label = kwargs.pop("label", None)  # remove label from kwargs
         for j, i in enumerate(band_indices):
-            if j==0:
+            if j == 0:
                 ax.plot(x, eigen[:, i], label=label, **kwargs)
             else:
                 ax.plot(x, eigen[:, i], **kwargs)
