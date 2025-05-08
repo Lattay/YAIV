@@ -45,97 +45,161 @@ def reciprocal_basis(lattice: np.ndarray) -> np.ndarray:
     return K_vec
 
 
-def _lenght2crystal(unit) -> ureg.Unit:
-    """
-    Replace all units of length in a compound Pint unit with 'crystal'.
-
-    Parameters
-    ----------
-    unit : pint.Unit
-        Compound unit expression.
-
-    Returns
-    -------
-    pint.Unit
-        Modified unit with all [length] units replaced by 'crystal'.
-    """
-    result = 1 * ureg.dimensionless
-    for name, exp in unit._units.items():
-        base = ureg(name)
-        if base.dimensionality == ureg.meter.dimensionality:
-            result *= ureg.crystal**exp
-        else:
-            result *= base**exp
-    return result.units
-
-
 def cartesian2cryst(
-    cartesian_coord: np.ndarray, cryst_basis: np.ndarray, list_of_vec=False
-) -> np.ndarray:
+    cartesian_coord: np.ndarray | ureg.Quantity, cryst_basis: np.ndarray | ureg.Quantity
+) -> np.ndarray | ureg.Quantity:
     """
     Convert from Cartesian to crystal coordinates.
 
     Parameters
     ----------
-    cartesian_coord : np.ndarray
-        Vector or matrix in Cartesian coordinates.
-    cryst_basis : np.ndarray
+    cartesian_coord : np.ndarray | ureg.Quantity
+        Vector or matrix in Cartesian coordinates. May include units.
+    cryst_basis : np.ndarray | ureg.Quantity
         Basis vectors written as rows. May include units.
-    list_of_vec : bool, optional
-        If True, treat input as a list of vectors.
 
     Returns
     -------
-    crystal_coord : Quantity
-        Result in crystal coordinates, possibly with modified units.
+    crystal_coord : np.ndarray | ureg.Quantity
+        Result in crystal coordinates, with modified units if possible.
+
+    Raises
+    ------
+    TypeError
+        If the input units are not compatible with the basis units (i.e., their ratio is not dimensionless).
     """
-    if isinstance(cartesian_coord, ureg.Quantity):
-        cartesian = cartesian_coord.magnitude
 
-    if isinstance(cryst_basis, ureg.Quantity):
-        basis = cryst_basis.magnitude
-        units = cryst_basis.units
-        final_units = _lenght2crystal(units)
+    if isinstance(cartesian_coord, ureg.Quantity) and not isinstance(
+        cryst_basis, ureg.Quantity
+    ):
+        raise TypeError(
+            "Input and basis units are not compatible. Provide both with or without units."
+        )
+    elif isinstance(cartesian_coord, ureg.Quantity) and isinstance(
+        cryst_basis, ureg.Quantity
+    ):
+        in_units = cartesian_coord.units
+        basis_units = cryst_basis.units
+        cartesian_coord = cartesian_coord.magnitude
+        cryst_basis = cryst_basis.magnitude
+        if not (in_units / basis_units).dimensionless:
+            raise TypeError(
+                "Input and basis units are not compatible for coordinate transformation"
+            )
 
-    inv = np.linalg.inv(basis)
-
-    if np.ndim(cartesian) == 1 or list_of_vec:
-        crystal_coord = np.matmul(cartesian, inv)
+        if in_units.dimensionality == ureg.meter.dimensionality:
+            out_units = in_units / basis_units * (ureg.crystal)
+        elif in_units.dimensionality == 1 / ureg.meter.dimensionality:
+            out_units = in_units / basis_units * (ureg._2pi / ureg.crystal)
+        else:
+            raise TypeError(
+                "Input units must have dimensionality of [length] or [1/length]"
+            )
     else:
-        crystal_coord = inv.T @ cartesian @ basis.T
+        out_units = 1
 
-    return crystal_coord * final_units
+    inv = np.linalg.inv(cryst_basis)
+    crystal_coord = cartesian_coord @ inv
+
+    return crystal_coord * out_units
 
 
 def cryst2cartesian(
-    crystal_coord: np.ndarray, cryst_basis: np.ndarray, list_of_vec: bool = False
-) -> np.ndarray:
+    crystal_coord: np.ndarray | ureg.Quantity, cryst_basis: np.ndarray | ureg.Quantity
+) -> np.ndarray | ureg.Quantity:
     """
     Convert from crystal to Cartesian coordinates.
 
     Parameters
     ----------
-        crystal_coord : np.ndarray
+        crystal_coord : np.ndarray | ureg.Quantity
             Coordinates or matrix in crystal units.
-        cryst_basis : np.ndarray
+        cryst_basis : np.ndarray | ureg.Quantity
             Basis vectors written as rows.
-        list_of_vec : bool, optional
-            If True, treat input as a list of vectors.
 
     Returns
     -------
-        cartesian_coord : ndarray or Quantity
-            Cartesian coordinates. Unit preserved if crystal_coord had one.
+        cartesian_coord : np.ndarray | ureg.Quantity
+            Result in cartesian coordinates, with modified units if possible.
+
+    Raises
+    ------
+    TypeError
+        If the input units are not correct (i.e., not providing crystal units).
     """
-    if isinstance(crystal_coord, ureg.Quantity):
-        cryst = crystal_coord.magnitude
-    else:
-        cryst = crystal_coord
+    if isinstance(cartesian_coord, ureg.Quantity) and not isinstance(
+        cryst_basis, ureg.Quantity
+    ):
+        raise TypeError(
+            "Input and basis units are not compatible. Provide both with or without units."
+        )
+    elif isinstance(cartesian_coord, ureg.Quantity) and isinstance(
+        cryst_basis, ureg.Quantity
+    ):
+        in_units = crystal_coord.units
+        basis_units = cryst_basis.units
+        crystal_coord = crystal_coord.magnitude
+        cryst_basis = cryst_basis.magnitude
+        if in_units.dimensionality == ureg.crystal.dimensionality:
+            out_units = basis_units * in_units * (1 / ureg.crystal)
+        elif in_units.dimensionality == 1 / ureg.crystal.dimensionality:
+            out_units = basis_units * in_units * (ureg.crystal / ureg._2pi)
+        else:
+            raise TypeError("Input units are not crystal units.")
 
-    if np.ndim(cryst) == 1 or list_of_vec:
-        cartesian_coord = np.matmul(cryst, cryst_basis)
-    else:
-        inv = np.linalg.inv(cryst_basis)
-        cartesian_coord = cryst_basis.T @ cryst @ inv.T
+    cartesian_coord = crystal_coord @ cryst_basis
 
-    return cartesian_coord
+    return cartesian_coord * out_units
+
+
+def grid_generator(grid: list[int], periodic: bool = False) -> np.ndarray:
+    """
+    Generate a uniform real-space grid of points within [-1, 1]^D or [0, 1)^D,
+    where D is the grid dimensionality.
+
+    This function constructs a D-dimensional mesh by specifying the number of
+    points along each axis. The resulting points are returned as a (N, D) array,
+    where N is the total number of grid points.
+
+    Parameters
+    ----------
+    grid : list[int]
+        List of integers specifying the number of points along each dimension.
+        For example, [10, 10, 10] creates a 10×10×10 grid.
+    periodic : bool, optional
+        If True, the grid will in periodic boundary style. Centered at 0(Γ) with
+        values (-0.5,0.5] avoiding duplicate zone borders.
+        If False (default), the grid spans from -1 to 1 (inclusive).
+
+    Returns
+    -------
+    np.ndarray
+        Array of shape (N, D), where each row is a point in the D-dimensional grid.
+    """
+    # Generate the GRID
+    DIM = len(grid)
+    temp = []
+    for g in grid:
+        if periodic:
+            s = 0
+            temp = temp + [np.linspace(s, 1, g, endpoint=False)]
+        elif g == 1:
+            s = 1
+            temp = temp + [np.linspace(s, 1, g)]
+        else:
+            s = -1
+            temp = temp + [np.linspace(s, 1, g)]
+    res_to_unpack = np.meshgrid(*temp)
+    assert len(res_to_unpack) == DIM
+
+    # Unpack the grid as points
+    for x in res_to_unpack:
+        c = x.reshape(np.prod(np.shape(x)), 1)
+        try:
+            coords = np.hstack((coords, c))
+        except NameError:
+            coords = c
+    if periodic == True:
+        for c in coords:
+            c[c > 0.5] -= 1  # remove 1 to all values above 0.5
+    return coords

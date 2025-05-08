@@ -1,5 +1,5 @@
 _2pi = 2 * pi
 # alat lattice normalized units:
-alat = [length]
+alat = [alat]
 # crystal lattice normalized units:
-crystal = [length]
+crystal = [crystal]
