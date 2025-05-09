@@ -23,7 +23,7 @@ setuptools.setup(
     packages=setuptools.find_packages(),
     install_requires=[
         "ipympl",
-        "ase==3.22.1",
+        "ase",
         "spglib",
         "pint",
         #        "crystal-toolkit",

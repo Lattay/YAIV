@@ -12,7 +12,7 @@ description = "Yet another Ab Initio Visualizer with a variety of tools"
 readme = "README.md"
 dependencies = [
     "ipympl",
-    "ase==3.22.1",
+    "ase",
     "spglib",
     "pint",
 ]
