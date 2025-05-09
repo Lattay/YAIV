@@ -12,8 +12,8 @@ description = "Yet another Ab Initio Visualizer with a variety of tools"
 readme = "README.md"
 dependencies = [
     "ipympl",
-    "ase",
     "pint",
+    "ase",
 ]
 requires-python = ">=3.6"
 classifiers = [

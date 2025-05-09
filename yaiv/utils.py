@@ -147,11 +147,65 @@ def cryst2cartesian(
         else:
             raise TypeError("Input units are not crystal units.")
     else:
-        out_units=1
+        out_units = 1
 
     cartesian_coord = crystal_coord @ cryst_basis
 
     return cartesian_coord * out_units
+
+
+def cartesian2voigt(xyz: np.ndarray | ureg.Quantity) -> np.ndarray | ureg.Quantity:
+    """
+    Convert a symmetric 3x3 tensor from Cartesian (matrix) to Voigt notation.
+
+    This is commonly used for stress and strain tensors, where the 3x3 symmetric
+    tensor is flattened into a 6-element vector:
+        [xx, yy, zz, yz, xz, xy]
+
+    Parameters
+    ----------
+    xyz : np.ndarray | ureg.Quantity
+        A 3x3 symmetric tensor in Cartesian notation. Can optionally carry physical units.
+
+    Returns
+    -------
+    np.ndarray | ureg.Quantity
+        A 1D array of length 6 in Voigt notation. If the input had units, they are preserved.
+    """
+    voigt = np.array([xyz[0, 0], xyz[1, 1], xyz[2, 2], xyz[1, 2], xyz[0, 2], xyz[0, 1]])
+    if isinstance(xyz, ureg.Quantity):
+        voigt = voigt * xyz.units
+    return voigt
+
+
+def voigt2cartesian(voigt: np.ndarray | ureg.Quantity) -> np.ndarray | ureg.Quantity:
+    """
+    Convert a symmetric tensor from Voigt to Cartesian (3x3 matrix) notation.
+
+    This reverses the `cartesian2voigt` operation, converting a 6-element vector into
+    a symmetric 3x3 matrix:
+        [xx, yy, zz, yz, xz, xy] → [[xx, xy, xz], [xy, yy, yz], [xz, yz, zz]]
+
+    Parameters
+    ----------
+    voigt : np.ndarray | ureg.Quantity
+        A 1D array of length 6 in Voigt notation. Can optionally carry physical units.
+
+    Returns
+    -------
+    np.ndarray | ureg.Quantity
+        A 3x3 symmetric tensor in Cartesian matrix notation. If the input had units, they are preserved.
+    """
+    xyz = np.array(
+        [
+            [voigt[0], voigt[5], voigt[4]],
+            [voigt[5], voigt[1], voigt[3]],
+            [voigt[4], voigt[3], voigt[2]],
+        ]
+    )
+    if isinstance(voigt, ureg.Quantity):
+        xyz = xyz * voigt.units
+    return xyz
 
 
 def grid_generator(grid: list[int], periodic: bool = False) -> np.ndarray:
