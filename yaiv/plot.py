@@ -16,7 +16,7 @@ The visualizations are based on `matplotlib`, and include options for:
 - Detecting and patching discontinuities in the k-path
 - Annotating high-symmetry points from KPOINTS or bands.in
 
-Examples (TODO!)
+Examples
 --------
 >>> from yaiv.plot import plot_spectrum
 >>> from yaiv.grep import kpointsEnergies
