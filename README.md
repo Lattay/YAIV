@@ -138,10 +138,10 @@ bands.plot()
 ### IV. Plot module
 This module provides plotting utilities for visualizing eigenvalue spectra from periodic systems. It supports electronic and vibrational spectra obtained from common ab initio codes such as Quantum ESPRESSO and VASP.
 ```py
-from yaiv.plot import plot_spectrum
-from yaiv.grep import kpointsEnergies
-spectrum = kpointsEnergies("OUTCAR")
-plot_spectrum(spectrum)
+from yaiv.spectrum import electronBands
+from yaiv import plot
+bands = electronBands("OUTCAR")
+plot.bands(bands)
 ---
 (Decorated Figure)
 ```
