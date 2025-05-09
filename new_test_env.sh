@@ -13,5 +13,7 @@ pip install ipykernel
 #jupyter kernelspec list
 cd $DIR
 #Autoinstall YAIV
-pip install -e ./ | tee install.log
 #pip install .
+#pip install -e ./ | tee install.log
+#pip install . --config-settings editable_mode=strict
+pip install -e . --config-settings editable_mode=strict

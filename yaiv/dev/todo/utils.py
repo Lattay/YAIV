@@ -579,24 +579,6 @@ def cartesian2spherical(xyz, degrees=False):
     return ptsnew
 
 
-def cartesian2voigt(xyz):
-    """From Cartesian to Voigt notation"""
-    voigt = np.array([xyz[0, 0], xyz[1, 1], xyz[2, 2], xyz[1, 2], xyz[0, 2], xyz[0, 1]])
-    return voigt
-
-
-def voigt2cartesian(voigt):
-    """From Voigt to Cartesian notation"""
-    xyz = np.array(
-        [
-            [voigt[0], voigt[5], voigt[4]],
-            [voigt[5], voigt[1], voigt[3]],
-            [voigt[4], voigt[3], voigt[2]],
-        ]
-    )
-    return xyz
-
-
 def spherical2cartesian(coord, degrees=False):
     """From spherical to cartesian coord
     coord = mod, theta(z^x), phi(x^y)"""

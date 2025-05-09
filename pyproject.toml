@@ -12,9 +12,9 @@ description = "Yet another Ab Initio Visualizer with a variety of tools"
 readme = "README.md"
 dependencies = [
     "ipympl",
+    "pint",
     "ase",
     "spglib",
-    "pint",
 ]
 requires-python = ">=3.6"
 classifiers = [

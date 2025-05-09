@@ -23,16 +23,9 @@ setuptools.setup(
     packages=setuptools.find_packages(),
     install_requires=[
         "ipympl",
+        "pint",
         "ase",
         "spglib",
-        "pint",
-        #        "crystal-toolkit",
-        # OLD (with ase-noteook)
-        #        "ipympl==0.9.1",
-        #        "matplotlib==3.5.3",
-        #        "ase-notebook",
-        #        "spglib",
-        #        "pythreejs",
     ],
     classifiers=[
         "Programming Language :: Python :: 3",
