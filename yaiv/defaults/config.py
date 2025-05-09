@@ -30,7 +30,7 @@ ureg.load_definitions(files("yaiv") / "defaults/extra_units.txt")
 
 def inv_quantity(matrix: np.ndarray | ureg.Quantity) -> np.ndarray | ureg.Quantity:
     """
-    Inverts a matrix with (or without) units.
+    Inverts a matrix with (or without) units of 1/[input_units].
 
     Parameters
     ----------
@@ -40,7 +40,7 @@ def inv_quantity(matrix: np.ndarray | ureg.Quantity) -> np.ndarray | ureg.Quanti
     Returns
     -------
     inverse : np.ndarray | ureg.Quantity
-        Square matrix, with or without units (depending on the input).
+        Square matrix, with (1/[input]) or without units (depending on the input).
     """
     if isinstance(matrix, ureg.Quantityt):
         return np.linalg.inv(matrix.magnitude) * (1 / matrix.units)
