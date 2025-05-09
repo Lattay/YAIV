@@ -48,7 +48,7 @@ import numpy as np
 from ase import io
 
 from yaiv.defaults.config import ureg
-import yaiv.utils as ut
+from yaiv import utils as ut
 
 
 def _filetype(file: str) -> str:

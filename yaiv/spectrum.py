@@ -34,7 +34,7 @@ import matplotlib.axes._axes
 import matplotlib.pyplot as plt
 
 from yaiv.defaults.config import ureg
-import yaiv.utils as ut
+from yaiv import utils as ut
 from yaiv import grep as grep
 
 

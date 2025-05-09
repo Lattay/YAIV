@@ -18,14 +18,10 @@ The visualizations are based on `matplotlib`, and include options for:
 
 Examples
 --------
->>> from yaiv.plot import plot_spectrum
->>> from yaiv.grep import kpointsEnergies
->>> spectrum = kpointsEnergies("OUTCAR")
->>> plot_spectrum(spectrum)
-
->>> from yaiv import electron
->>> bands = electron.electronBands("qe.out")
->>> bands.plot()  # internally uses yaiv.plot utilities
+>>> from yaiv.spectrum import electronBands
+>>> from yaiv import plot
+>>> bands = kpointsEnergies("OUTCAR")
+>>> plot.bands(bands)
 
 See Also
 --------
