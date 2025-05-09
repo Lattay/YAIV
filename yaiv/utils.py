@@ -15,6 +15,7 @@ yaiv.spectrum         : Core spectral class storing eigenvalues and k-points.
 import numpy as np
 
 from yaiv.defaults.config import ureg
+from yaiv.defaults.config import inv_quantity as invQ
 
 
 def reciprocal_basis(lattice: np.ndarray) -> np.ndarray:
@@ -31,17 +32,7 @@ def reciprocal_basis(lattice: np.ndarray) -> np.ndarray:
     K_vec : np.ndarray
         Reciprocal lattice vectors in rows, with units of 2π / [input_units].
     """
-    if isinstance(lattice, ureg.Quantity):
-        lat = lattice.magnitude
-        units = lattice.units
-    else:
-        lat = lattice
-        units = None
-
-    K_vec = np.linalg.inv(lat).transpose()  # reciprocal vectors in rows
-    if units is not None:
-        K_vec = K_vec * (ureg._2pi / units)
-
+    K_vec=()invQ(lattice)*ureg._2pi).transpose() # reciprocal vectors in rows
     return K_vec
 
 
@@ -75,33 +66,26 @@ def cartesian2cryst(
         raise TypeError(
             "Input and basis units are not compatible. Provide both with or without units."
         )
-    elif isinstance(cartesian_coord, ureg.Quantity) and isinstance(
-        cryst_basis, ureg.Quantity
-    ):
-        in_units = cartesian_coord.units
-        basis_units = cryst_basis.units
-        cartesian_coord = cartesian_coord.magnitude
-        cryst_basis = cryst_basis.magnitude
-        if not (in_units / basis_units).dimensionless:
-            raise TypeError(
-                "Input and basis units are not compatible for coordinate transformation"
-            )
-
-        if in_units.dimensionality == ureg.meter.dimensionality:
-            out_units = in_units / basis_units * (ureg.crystal)
-        elif in_units.dimensionality == 1 / ureg.meter.dimensionality:
-            out_units = in_units / basis_units * (ureg._2pi / ureg.crystal)
-        else:
-            raise TypeError(
-                "Input units must have dimensionality of [length] or [1/length]"
-            )
     else:
-        out_units = 1
+        inv=invQ(cryst_basis)
+        crystal_coord = cartesian_coord @ inv
+        if isinstance(cartesian_coord, ureg.Quantity) and isinstance(
+            cryst_basis, ureg.Quantity
+        ):
+            if not crystal_coord.dimensionless:
+                raise TypeError(
+                    "Input and basis units are not compatible for coordinate transformation"
+                )
+            if in_units.dimensionality == ureg.meter.dimensionality:
+                crystal_coord = crystal_coord * (ureg.crystal)
+            elif in_units.dimensionality == 1 / ureg.meter.dimensionality:
+                crystal_coord = crystal_coord * (ureg._2pi / ureg.crystal)
+            else:
+                raise TypeError(
+                    "Input units must have dimensionality of [length] or [1/length]"
+                )
 
-    inv = np.linalg.inv(cryst_basis)
-    crystal_coord = cartesian_coord @ inv
-
-    return crystal_coord * out_units
+    return crystal_coord
 
 
 def cryst2cartesian(
@@ -133,25 +117,19 @@ def cryst2cartesian(
         raise TypeError(
             "Input and basis units are not compatible. Provide both with or without units."
         )
-    elif isinstance(crystal_coord, ureg.Quantity) and isinstance(
-        cryst_basis, ureg.Quantity
-    ):
-        in_units = crystal_coord.units
-        basis_units = cryst_basis.units
-        crystal_coord = crystal_coord.magnitude
-        cryst_basis = cryst_basis.magnitude
-        if in_units.dimensionality == ureg.crystal.dimensionality:
-            out_units = basis_units * in_units * (1 / ureg.crystal)
-        elif in_units.dimensionality == 1 / ureg.crystal.dimensionality:
-            out_units = basis_units * in_units * (ureg.crystal / ureg._2pi)
-        else:
-            raise TypeError("Input units are not crystal units.")
     else:
-        out_units = 1
+        if isinstance(crystal_coord, ureg.Quantity) and isinstance(
+            cryst_basis, ureg.Quantity
+        ):
+            if crystal_coord.dimensionality == ureg.crystal.dimensionality:
+                crystal_coord = crystal_coord * (1/ureg.crystal)
+            elif crystal_coord.dimensionality == 1 / ureg.crystal.dimensionality:
+                crystal_coord = crystal_coord * (ureg.crystal / ureg._2pi)
+            else:
+                raise TypeError("Input units are not crystal units.")
+        cartesian_coord = crystal_coord @ cryst_basis
 
-    cartesian_coord = crystal_coord @ cryst_basis
-
-    return cartesian_coord * out_units
+    return cartesian_coord
 
 
 def cartesian2voigt(xyz: np.ndarray | ureg.Quantity) -> np.ndarray | ureg.Quantity:
@@ -259,3 +237,9 @@ def grid_generator(grid: list[int], periodic: bool = False) -> np.ndarray:
         for c in coords:
             c[c > 0.5] -= 1  # remove 1 to all values above 0.5
     return coords
+error: cannot format -: Cannot parse for target version Python 3.13: 35:12:     K_vec=()invQ(lattice)*ureg._2pi).transpose() # reciprocal vectors in rows
+error: cannot format -: Cannot parse for target version Python 3.13: 35:12:     K_vec=()invQ(lattice)*ureg._2pi).transpose() # reciprocal vectors in rows
+error: cannot format -: Cannot parse for target version Python 3.13: 35:12:     K_vec=()invQ(lattice)*ureg._2pi).transpose() # reciprocal vectors in rows
+error: cannot format -: Cannot parse for target version Python 3.13: 35:12:     K_vec=()invQ(lattice)*ureg._2pi).transpose() # reciprocal vectors in rows
+error: cannot format -: Cannot parse for target version Python 3.13: 35:12:     K_vec=()invQ(lattice)*ureg._2pi).transpose() # reciprocal vectors in rows
+error: cannot format -: Cannot parse for target version Python 3.13: 35:12:     K_vec=()invQ(lattice)*ureg._2pi).transpose() # reciprocal vectors in rows
