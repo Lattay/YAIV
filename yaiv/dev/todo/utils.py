@@ -161,59 +161,6 @@ def grep_gap(file, filetype=None):
     return DIR_GAP, IND_GAP
 
 
-def grep_DOS(
-    file, fermi=0, smearing=0.02, window=None, steps=500, precision=3, filetype=None
-):
-    """
-    Grep the density of states from a scf or nscf file.
-
-    => returns energies, DOS
-
-    file = File from which to extract the DOS
-    fermi = Fermi level to shift accordingly
-    smearing = Smearing of your normal distribution around each energy
-    window = energy window in which to compute the DOS
-    steps = Number of values for which to compute the DOS
-    precision = Truncation of your normal distrib (truncated from precision*smearing)
-    filetype = qe (quantum espresso bands.pwo, scf.pwo, nscf.pwo)
-               vaps (VASP OUTCAR file)
-               eigenval (VASP EIGENVAL file)
-    """
-    if filetype == None:
-        filetype = grep_filetype(file)
-    data, weights = grep_kpoints_energies(file, filetype=filetype)
-    data = data[:, 3:]  # Remove the Kpoint info
-    n_bands = len(data[0])
-    for w in weights:
-        try:
-            W = np.vstack((W, np.ones(n_bands) * w))
-        except NameError:
-            W = np.ones(n_bands) * w
-    s = np.shape(W)[0] * np.shape(W)[1]
-    # SORT Energies and Weights
-    D = data.reshape((s))
-    W = W.reshape((s))
-    sort = np.argsort(D)
-    D = D[sort] - fermi
-    W = W[sort]
-    # Compute DOS
-    if window == None:
-        energies = np.linspace(D[0], D[-1], steps)
-    elif type(window) is int or type(window) is float:
-        energies = np.linspace(-window, window, steps)
-    else:
-        energies = np.linspace(window[0], window[1], steps)
-    DOS = []
-    for E in energies:
-        dos = 0
-        m = np.argmax(D >= E - precision * smearing)
-        M = np.argmin(D <= E + precision * smearing)
-        for i, e in enumerate(D[m:M]):
-            dos = dos + normal_dist(e, E, smearing) * W[i + m]
-        DOS = DOS + [dos]
-    return energies, DOS
-
-
 def grep_DOS_projected(
     file,
     proj_file,
@@ -665,12 +612,6 @@ def transform_path(KPATH, lattice1, lattice2, decimals=5, save_as=None):
 # & Usefull functions----------------------------------------------------------------
 
 
-def normal_dist(x, mean, sd, A=1):
-    """Just a regular normal (gaussian) distribution generator. It integrates to one.
-    A = An amplitud term, if A=1 it integrates to unity
-    """
-    prob_density = A / (sd * np.sqrt(2 * np.pi)) * np.exp(-0.5 * ((x - mean) / sd) ** 2)
-    return prob_density
 
 
 def lorentzian_dist(x, center, hwhm, A=1):

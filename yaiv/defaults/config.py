@@ -19,12 +19,12 @@ from types import SimpleNamespace
 from importlib.resources import files
 
 import numpy as np
-from pint import UnitRegistry
+import pint
 import matplotlib
 import matplotlib.pyplot as plt
 
 # === Units ===
-ureg = UnitRegistry()
+ureg = pint.UnitRegistry()
 ureg.load_definitions(files("yaiv") / "defaults/extra_units.txt")
 
 
@@ -42,7 +42,7 @@ def inv_quantity(matrix: np.ndarray | ureg.Quantity) -> np.ndarray | ureg.Quanti
     inverse : np.ndarray | ureg.Quantity
         Square matrix, with (1/[input]) or without units (depending on the input).
     """
-    if isinstance(matrix, ureg.Quantityt):
+    if isinstance(matrix, pint.Quantity):
         return np.linalg.inv(matrix.magnitude) * (1 / matrix.units)
     else:
         return np.linalg.inv(matrix)

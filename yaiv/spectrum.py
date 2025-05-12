@@ -154,7 +154,7 @@ class spectrum(_has_lattice, _has_kpath):
             raise ValueError("kpoints are not defined.")
 
         # Strip units for math, retain them for reapplication later
-        if hasattr(self.kpoints, "units"):
+        if isinstance(self.kpoints, ureg.Quantity):
             kpoints = self.kpoints
             if "crystal" in kpoints.units._units and self.k_lattice is not None:
                 kpoints = ut.cryst2cartesian(self.kpoints, self.k_lattice)
