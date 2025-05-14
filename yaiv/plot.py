@@ -184,7 +184,7 @@ def _compare_spectra(
             colors[i] if colors is not None and i < len(colors) else next(cycle_iter)
         )
 
-        label = labels[i] if labels is not None and i < len(labels) else f"Band {i+1}"
+        label = labels[i] if labels is not None and i < len(labels) else f"Spectrum {i+1}"
         ax = S.plot(
             ax=ax,
             shift=getattr(S, "fermi", None),
@@ -626,7 +626,7 @@ def bandsDOS(
     )
 
 
-def phononDOS(
+def phononsDOS(
     phononBands: spec.phononBands | list[spec.phononBands],
     fig: Figure = None,
     axes: list[Axes] = None,
