@@ -18,7 +18,6 @@ These settings are also used to update matplotlib's global `rcParams`.
 from types import SimpleNamespace
 from importlib.resources import files
 
-import numpy as np
 import pint
 import matplotlib
 import matplotlib.pyplot as plt
@@ -28,32 +27,10 @@ ureg = pint.UnitRegistry()
 ureg.setup_matplotlib(True)
 ureg.load_definitions(files("yaiv") / "defaults/extra_units.txt")
 
-
-def inv_quantity(matrix: np.ndarray | ureg.Quantity) -> np.ndarray | ureg.Quantity:
-    """
-    Inverts a matrix with (or without) units of 1/[input_units].
-
-    Parameters
-    ----------
-    matrix : np.ndarray | ureg.Quantity
-        Square matrix, with or without units.
-
-    Returns
-    -------
-    inverse : np.ndarray | ureg.Quantity
-        Square matrix, with (1/[input]) or without units (depending on the input).
-    """
-    if isinstance(matrix, pint.Quantity):
-        return np.linalg.inv(matrix.magnitude) * (1 / matrix.units)
-    else:
-        return np.linalg.inv(matrix)
-
-
 # === Plotting defaults ===
 
 plot_defaults = SimpleNamespace(
     color_cycle=plt.get_cmap("tab10").colors,  # tuple of 10 RGB colors
-    #    linewidth=1.5,
     vline_w=0.4,
     vline_c="gray",
     vline_s="--",
@@ -62,7 +39,8 @@ plot_defaults = SimpleNamespace(
     valence_c="tab:blue",
     conduction_c="tab:red",
     alpha=0.5,
-    DOS_c='black',
+    DOS_c="black",
+    #    linewidth=1.5,
     #    linestyle='-',
     #    marker='o',
     #    markersize=4,

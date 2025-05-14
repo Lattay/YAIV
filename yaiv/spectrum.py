@@ -181,19 +181,14 @@ class spectrum(_has_lattice, _has_kpath):
         ------
         ValueError
             If eigenvalues shape is incorrect or weights do not match.
-        TypeError
-            If the input units are not correct (i.e., not consistent).
         """
         # Handle units
         eigenvalues = self.eigenvalues
         quantities = [eigenvalues, center, window, smearing]
-        has_units = [isinstance(x, ureg.Quantity) or x is None for x in quantities]
-        if len(set(has_units)) != 1:
-            print("Units: [eigenvalues, center, window, smearing]")
-            print(has_units)
-            raise TypeError("Either all or none of the variables must have units.")
+        names = ["eigenvalues", "center", "window", "smearing"]
+        ut._check_unit_consistency(quantities, names)
         # If unitful, convert all to common unit
-        if has_units[0]:  # all have units
+        if isinstance(eigenvalues, ureg.Quantity):
             units = eigenvalues.units
             eigenvalues, center, window, smearing = [
                 x.to(units).magnitude if isinstance(x, ureg.Quantity) else x
@@ -324,6 +319,11 @@ class spectrum(_has_lattice, _has_kpath):
         ax : matplotlib.axes._axes.Axes
             The axes with the spectrum plot.
         """
+        # Handle units
+        quantities = [self.eigenvalues, shift]
+        names = ["eigenvalues", "shift"]
+        ut._check_unit_consistency(quantities, names)
+
         if ax is None:
             fig, ax = plt.subplots()
 
@@ -347,7 +347,7 @@ class spectrum(_has_lattice, _has_kpath):
     def plot_DOS(
         self,
         ax: matplotlib.axes._axes.Axes = None,
-        shift: float = None,
+        shift: float | ureg.Quantity = None,
         switchXY: bool = False,
         fill: bool = True,
         alpha: float = pdef.alpha,
@@ -360,9 +360,9 @@ class spectrum(_has_lattice, _has_kpath):
         ----------
         ax : matplotlib.axes._axes.Axes, optional
             Axes to plot on. If None, a new figure and axes are created.
-        shift : float, optional
+        shift : float | ureg.Quantity, optional
             A constant shift applied to the DOS (e.g., Fermi level).
-            Fermi level shift is the default for electronic spectra.
+            Default is zero.
         switchXY : bool, optional
             Whether to plot the DOS along the x-axis (horizontal plot). Default is False.
         fill : bool, optional
@@ -377,19 +377,17 @@ class spectrum(_has_lattice, _has_kpath):
         ax : matplotlib.axes._axes.Axes
             The axes with the spectrum plot.
         """
+        # Handle units
+        quantities = [self.DOS.vgrid, shift]
+        names = ["DOS.xvalues", "shift"]
+        ut._check_unit_consistency(quantities, names)
+
         if ax is None:
             fig, ax = plt.subplots()
 
-        # Apply shift to eigenvalues
-        if shift is None:
-            if hasattr(self, "fermi"):
-                shift = self.fermi if self.fermi is not None else 0
-            else:
-                shift = 0
-
         if self.DOS is None:
             self.get_DOS()
-        x = self.DOS.vgrid - shift
+        x = self.DOS.vgrid if shift is None else self.DOS.vgrid - shift
         y = self.DOS.DOS
 
         z_line = kwargs.pop("zorder", 2)  # allow overriding via kwargs

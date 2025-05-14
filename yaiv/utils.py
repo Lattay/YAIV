@@ -13,11 +13,55 @@ yaiv.spectrum         : Core spectral class storing eigenvalues and k-points.
 """
 
 from types import SimpleNamespace
+from typing import Sequence, Any
 
 import numpy as np
 
 from yaiv.defaults.config import ureg
-from yaiv.defaults.config import inv_quantity as invQ
+
+def _check_unit_consistency(quantities: Sequence[Any], names: Sequence[str] = None):
+    """
+    Ensure that all (non-None) inputs are either unitful (pint.Quantity) or all unitless.
+
+    Parameters
+    ----------
+    quantities : list | tuple
+        List of values to check (e.g., eigenvalues, shift, etc.).
+    names : list[str], optional
+        Names of variables (for debugging messages).
+
+    Raises
+    ------
+    TypeError
+        If the list contains a mix of unitful and unitless variables.
+    """
+    has_units = [isinstance(x, ureg.Quantity) or x is None for x in quantities]
+
+    if len(set(has_units)) != 1:
+        if names is not None:
+            print("Units check failed for:", names)
+        print("Units status:", has_units)
+        raise TypeError("Either all or none of the variables must have units.")
+
+
+def invQ(matrix: np.ndarray | ureg.Quantity) -> np.ndarray | ureg.Quantity:
+    """
+    Inverts a matrix with (or without) units of 1/[input_units].
+
+    Parameters
+    ----------
+    matrix : np.ndarray | ureg.Quantity
+        Square matrix, with or without units.
+
+    Returns
+    -------
+    inverse : np.ndarray | ureg.Quantity
+        Square matrix, with (1/[input]) or without units (depending on the input).
+    """
+    if isinstance(matrix, pint.Quantity):
+        return np.linalg.inv(matrix.magnitude) * (1 / matrix.units)
+    else:
+        return np.linalg.inv(matrix)
 
 
 def reciprocal_basis(lattice: np.ndarray) -> np.ndarray:
