@@ -30,17 +30,17 @@ ureg.load_definitions(files("yaiv") / "defaults/extra_units.txt")
 # === Plotting defaults ===
 
 plot_defaults = SimpleNamespace(
-    color_cycle=plt.get_cmap("tab10").colors,  # tuple of 10 RGB colors
-    vline_w=0.4,
-    vline_c="gray",
-    vline_s="--",
-    fermi_c="black",
-    fermi_w=0.4,
-    valence_c="tab:blue",
-    conduction_c="tab:red",
-    alpha=0.2,
-    DOS_c="black",
-    bandsDOS_ratio=0.2,
+    color_cycle=plt.get_cmap("tab10").colors,  # Default color cycle for matplotlib plots
+    vline_w=0.4,  # Vertical high-symmetry lines width
+    vline_c="gray",  # Vertical high-symmetry lines color
+    vline_s="--",  # Vertical high-symmetry lines style
+    fermi_c="black",  # Fermi line color
+    fermi_w=0.4,  # Fermi line width
+    valence_c="tab:blue",  # Valence bands color
+    conduction_c="tab:red",  # Conduction bands color
+    alpha=0.2,  # Transparency
+    DOS_c="black",  # Default DOS color for band calculations
+    bandsDOS_ratio=0.2,  # Ratio between DOS and bands in spectraDOS plots
     #    linewidth=1.5,
     #    linestyle='-',
     #    marker='o',

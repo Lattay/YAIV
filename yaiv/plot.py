@@ -431,7 +431,7 @@ def DOS(
             switchXY=switchXY,
             fill=fill,
             alpha=alpha,
-            color=user_color or pdef.DOS_c,
+            color=user_color or (pdef.DOS_c if hasattr(S, "fermi") else None),
             label=user_label,
             **kwargs,
         )
