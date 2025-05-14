@@ -33,7 +33,8 @@ from types import SimpleNamespace
 
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.axes._axes
+from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 
 from yaiv.defaults.config import ureg
 from yaiv.defaults.config import plot_defaults as pdef
@@ -41,7 +42,7 @@ from yaiv import utils as ut
 from yaiv import spectrum as spec
 
 
-__all__ = ["get_HSP_ticks", "kpath", "bands", "phonons", "DOS"]
+__all__ = ["get_HSP_ticks", "kpath", "bands", "phonons", "DOS", "bandsDOS", "phononDOS"]
 
 
 def get_HSP_ticks(
@@ -112,7 +113,7 @@ def get_HSP_ticks(
 
 
 def kpath(
-    ax: matplotlib.axes._axes.Axes,
+    ax: Axes,
     kpath: SimpleNamespace | np.ndarray,
     k_lattice: np.ndarray = None,
 ):
@@ -121,7 +122,7 @@ def kpath(
 
     Parameters
     ----------
-    ax : matplotlib.axes._axes.Axes
+    ax : Axes
         Axes to plot on. If None, a new figure and axes are created.
     kpath : SimpleNamespace or np.ndarray
         A k-path object as given by yaiv.grep.kpath()
@@ -146,12 +147,12 @@ def kpath(
 
 def _compare_spectra(
     spectra: list[spec.spectrum],
-    ax: matplotlib.axes._axes.Axes,
+    ax: Axes,
     patched: bool = True,
     colors: list[str] = None,
     labels: list[str] = None,
     **kwargs,
-) -> matplotlib.axes._axes.Axes:
+) -> Axes:
     """
     Plot and compare multiple spectra on a shared axes object.
 
@@ -160,7 +161,7 @@ def _compare_spectra(
     spectra : list[spec.spectrum]
     A list of spectrum objects to be plotted. Each spectrum must implement
         a `.plot()` method compatible with the plotting interface.
-    ax : matplotlib.axes._axes.Axes
+    ax : Axes
         Axes to plot on.
     patched : bool, optional
         Whether to patch k-path discontinuities. Default is True.
@@ -173,21 +174,17 @@ def _compare_spectra(
 
     Returns
     -------
-    ax : matplotlib.axes._axes.Axes
+    ax : Axes
         Axes containing the plot.
     """
 
-    user_color = kwargs.pop("color", None)  # user-defined color overrides all
-    user_label = kwargs.pop("label", None)  # user-defined label
-
     cycle_iter = iter(pdef.color_cycle)
     for i, S in enumerate(spectra):
-        color = user_color or (
+        color = (
             colors[i] if colors is not None and i < len(colors) else next(cycle_iter)
         )
-        label = user_label or (
-            labels[i] if labels is not None and i < len(labels) else f"Band {i+1}"
-        )
+
+        label = labels[i] if labels is not None and i < len(labels) else f"Band {i+1}"
         ax = S.plot(
             ax=ax,
             shift=getattr(S, "fermi", None),
@@ -202,13 +199,13 @@ def _compare_spectra(
 
 def bands(
     electronBands: spec.electronBands | list[spec.electronBands],
-    ax: matplotlib.axes._axes.Axes = None,
+    ax: Axes = None,
     patched: bool = True,
     window: list[float] | float | ureg.Quantity = [-1, 1] * ureg("eV"),
     colors: list[str] = None,
     labels: list[str] = None,
     **kwargs,
-) -> matplotlib.axes._axes.Axes:
+) -> Axes:
     """
     Plot electronic band structures for one or multiple systems.
 
@@ -216,7 +213,7 @@ def bands(
     ----------
     electronBands : electronBands or list of electronBands
         Band structure objects to plot.
-    ax : matplotlib.axes._axes.Axes, optional
+    ax : Axes, optional
         Axes to plot on. If None, a new figure and axes are created.
     patched : bool, optional
         Whether to patch k-path discontinuities. Default is True.
@@ -231,13 +228,15 @@ def bands(
 
     Returns
     -------
-    ax : matplotlib.axes._axes.Axes
+    ax : Axes
         Axes containing the plot.
     """
 
+    # Pop user-level styling
+    user_color = kwargs.pop("color", None)  # user-defined color overrides all
+    user_label = kwargs.pop("label", None)  # user-defined label
+
     if type(electronBands) is not list:
-        user_color = kwargs.pop("color", None)  # user-defined color overrides all
-        user_label = kwargs.pop("label", None)  # user-defined label
         band = electronBands
         indices = list(range(band.eigenvalues.shape[1]))
         # plot valence bands
@@ -285,12 +284,13 @@ def bands(
 
 def phonons(
     phononBands: spec.phononBands | list[spec.phononBands],
-    ax: matplotlib.axes._axes.Axes = None,
+    ax: Axes = None,
     patched: bool = True,
+    window: list[float] | float | ureg.Quantity = None,
     colors: list[str] = None,
     labels: list[str] = None,
     **kwargs,
-) -> matplotlib.axes._axes.Axes:
+) -> Axes:
     """
     Plot electronic band structures for one or multiple systems.
 
@@ -298,10 +298,12 @@ def phonons(
     ----------
     phononBands : phononBands or list of phononBands
         Phonon band objects to plot.
-    ax : matplotlib.axes._axes.Axes, optional
+    ax : Axes, optional
         Axes to plot on. If None, a new figure and axes are created.
     patched : bool, optional
         Whether to patch k-path discontinuities. Default is True.
+    window : list[float] | float | ureg.Quantity, optional
+        Frequency window to be shown, default is the whole spectra.
     colors : list of str, optional
         Colors to use when plotting multiple bands.
     labels : list of str, optional
@@ -311,13 +313,15 @@ def phonons(
 
     Returns
     -------
-    ax : matplotlib.axes._axes.Axes
+    ax : Axes
         Axes containing the plot.
     """
 
+    # Pop user-level styling
+    user_color = kwargs.pop("color", None)  # user-defined color overrides all
+    user_label = kwargs.pop("label", None)  # user-defined label
+
     if type(phononBands) is not list:
-        user_color = kwargs.pop("color", None)  # user-defined color overrides all
-        user_label = kwargs.pop("label", None)  # user-defined label
         band = phononBands
         ax = band.plot(
             ax,
@@ -333,6 +337,17 @@ def phonons(
     if band.kpath is not None:
         kpath(ax, band.kpath, band.k_lattice)
 
+    # Handle units and setup window
+    if window is not None:
+        window = (
+            window.to(band.eigenvalues.units).magnitude
+            if isinstance(window, ureg.Quantity)
+            else window
+        )
+        if type(window) is int or type(window) is float:
+            window = [-window, window]
+        ax.set_ylim(window[0], window[1])
+
     ax.axhline(y=0, color=pdef.fermi_c, linewidth=pdef.fermi_w)
 
     plt.tight_layout()
@@ -341,7 +356,7 @@ def phonons(
 
 def DOS(
     spectra: spec.electronBands | spec.phononBands | spec.spectrum,
-    ax: matplotlib.axes._axes.Axes = None,
+    ax: Axes = None,
     window: float | list[float] | ureg.Quantity = None,
     smearing: float | ureg.Quantity = None,
     steps: int = None,
@@ -352,7 +367,7 @@ def DOS(
     colors: list[str] = None,
     labels: list[str] = None,
     **kwargs,
-) -> matplotlib.axes._axes.Axes:
+) -> Axes:
     """
     Plot the density of states (DOS) for a single or list of spectra.
 
@@ -360,7 +375,7 @@ def DOS(
     ----------
     spectra : spec.electronBands | spec.phononBands | spec.spectrum
         Spectra from which to plot the DOS.
-    ax : matplotlib.axes._axes.Axes, optional
+    ax : Axes, optional
         Axes to plot on. If None, a new figure and axes are created.
     window : float | list[float] | ureg.Quantity, optional
         Value window for the DOS. If float, interpreted as symmetric [-window, window].
@@ -387,7 +402,7 @@ def DOS(
 
     Returns
     -------
-    ax : matplotlib.axes._axes.Axes
+    ax : Axes
         Axes containing the plot.
     """
     # Extract first spectrum for defaults
@@ -425,12 +440,12 @@ def DOS(
         cycle_iter = iter(pdef.color_cycle)
         zorder = 2
         for i, S in enumerate(spectra):
-            color = user_color or (
+            color = (
                 colors[i]
                 if colors is not None and i < len(colors)
                 else next(cycle_iter)
             )
-            label = user_label or (
+            label = (
                 labels[i] if labels is not None and i < len(labels) else f"DOS {i+1}"
             )
             S.get_DOS(
@@ -461,3 +476,208 @@ def DOS(
             ax.axvline(x=0, color=pdef.fermi_c, linewidth=pdef.fermi_w)
     plt.tight_layout()
     return ax
+
+
+def _spectra_DOS(
+    spectra: spec.electronBands | spec.phononBands | list,
+    plot_func: callable,
+    fig: Figure = None,
+    axes: list[Axes] = None,
+    patched: bool = True,
+    window: float | list[float] | ureg.Quantity = None,
+    colors: list[str] = None,
+    labels: list[str] = None,
+    **kwargs,
+) -> tuple[Axes, Axes]:
+    """
+    Internal helper to plot a spectrum and its corresponding DOS.
+
+    Parameters
+    ----------
+    spectra : spec.electronBands | spec.phononBands | list,
+        List of spectrum objects (e.g., electronBands or phononBands).
+    plot_func : callable
+        Function to plot the band structure (e.g., `bands()` or `phonons()`).
+    fig : Figure, optional
+        Optional figure object to plot into. If not provided, a new one is created.
+    axes : list of Axes, optional
+        Optional list or tuple of two axes [ax_band, ax_DOS] to use instead of creating new ones.
+    patched : bool, optional
+        Whether to patch k-path discontinuities. Default is True.
+    window : float | list[float] | Quantity, optional
+        Energy/frequency window to show. Interpreted symmetrically if float.
+    colors : list of str, optional
+        Colors to use when plotting multiple bands.
+    labels : list of str, optional
+        Labels to assign to each band in multi-plot case.
+    **kwargs
+        Additional keyword arguments passed to `plot_func()` and `DOS()`.
+
+    Returns
+    -------
+    ax : Axes
+        Axis with the band or phonon structure.
+    ax_DOS : Axes
+        Axis with the horizontal DOS plot.
+    """
+    if axes is not None:
+        ax, ax_DOS = axes
+        fig = ax.figure
+    else:
+        fig = fig or plt.figure()
+        gs = fig.add_gridspec(
+            1,
+            2,
+            hspace=0,
+            wspace=0,
+            width_ratios=[1 - pdef.bandsDOS_ratio, pdef.bandsDOS_ratio],
+        )
+        ax, ax_DOS = gs.subplots(sharex="col", sharey="row")
+
+    user_color = kwargs.pop("color", None)
+    user_label = kwargs.pop("label", None)
+
+    plot_func(
+        spectra,
+        ax=ax,
+        patched=patched,
+        window=window,
+        colors=colors,
+        labels=labels,
+        color=user_color,
+        label=user_label,
+        **kwargs,
+    )
+    DOS(
+        spectra,
+        ax=ax_DOS,
+        switchXY=True,
+        window=window,
+        colors=colors,
+        labels=labels,
+        color=user_color,
+        label=user_label,
+        **kwargs,
+    )
+
+    # Clean up DOS axis
+    ax_DOS.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
+    legend = ax_DOS.get_legend()
+    if legend is not None:
+        legend.remove()
+    for name, spine in ax_DOS.spines.items():
+        if name not in ["bottom", "left"]:
+            spine.set_visible(False)
+
+    plt.tight_layout()
+    return ax, ax_DOS
+
+
+def bandsDOS(
+    electronBands: spec.electronBands | list[spec.electronBands],
+    fig: Figure = None,
+    axes: list[Axes] = None,
+    patched: bool = True,
+    window: list[float] | float | ureg.Quantity = [-1, 1] * ureg("eV"),
+    colors: list[str] = None,
+    labels: list[str] = None,
+    **kwargs,
+) -> tuple[Axes, Axes]:
+    """
+    Plot a band structure and its corresponding density of states (DOS) side-by-side.
+
+    Parameters
+    ----------
+    electronBands : spec.electronBands | list[spec.electronBands]
+        A spectrum or list of spectra representing electronic band structures.
+    fig : Figure, optional
+        Optional figure object to plot into. If not provided, a new figure is created.
+    axes : list[Axes], optional
+        Optional list or tuple of two axes [ax_band, ax_DOS] to use instead of creating new ones.
+    patched : bool, optional
+        Whether to patch k-path discontinuities. Default is True.
+    window : float | list[float] | Quantity, optional
+        Energy window to be shown, default is [-1,1] eV.
+    colors : list of str, optional
+        Colors to use when plotting multiple bands.
+    labels : list of str, optional
+        Labels to assign to each band in multi-plot case.
+    **kwargs
+        Additional keyword arguments passed to `plot()`.
+
+    Returns
+    -------
+    ax : Axes
+        The axis containing the band structure plot.
+    ax_DOS : Axes
+        The axis containing the DOS plot.
+    """
+
+    return _spectra_DOS(
+        spectra=electronBands,
+        plot_func=bands,
+        fig=fig,
+        axes=axes,
+        patched=patched,
+        window=window,
+        colors=colors,
+        labels=labels,
+        **kwargs,
+    )
+
+
+def phononDOS(
+    phononBands: spec.phononBands | list[spec.phononBands],
+    fig: Figure = None,
+    axes: list[Axes] = None,
+    patched: bool = True,
+    window: list[float] | float | ureg.Quantity = None,
+    colors: list[str] = None,
+    labels: list[str] = None,
+    **kwargs,
+) -> tuple[Axes, Axes]:
+    """
+    Plot a phonon band structure and its corresponding density of states (DOS) side-by-side.
+
+    Parameters
+    ----------
+    phononBands : spec.phononBands | list[spec.phononBands]
+        A spectrum or list of spectra representing phonon band structures.
+    fig : Figure, optional
+        Optional figure object to plot into. If not provided, a new figure is created.
+    axes : list[Axes], optional
+        Optional list or tuple of two axes [ax_band, ax_DOS] to use instead of creating new ones.
+    patched : bool, optional
+        Whether to patch k-path discontinuities. Default is True.
+    window : float | list[float] | Quantity, optional
+        Energy window to be shown, default is [-1,1] eV.
+    colors : list of str, optional
+        Colors to use when plotting multiple bands.
+    labels : list of str, optional
+        Labels to assign to each band in multi-plot case.
+    **kwargs
+        Additional keyword arguments passed to `plot()`.
+
+    Returns
+    -------
+    ax : Axes
+        The axis containing the band structure plot.
+    ax_DOS : Axes
+        The axis containing the DOS plot.
+    """
+
+    ax, ax_DOS = _spectra_DOS(
+        spectra=phononBands,
+        plot_func=phonons,
+        fig=fig,
+        axes=axes,
+        patched=patched,
+        window=window,
+        colors=colors,
+        labels=labels,
+        **kwargs,
+    )
+    ax.autoscale(), ax.set_xlim([0, 1])
+
+    plt.tight_layout()
+    return ax, ax_DOS

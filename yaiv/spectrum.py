@@ -30,8 +30,8 @@ import warnings
 from types import SimpleNamespace
 
 import numpy as np
-import matplotlib.axes._axes
 import matplotlib.pyplot as plt
+from matplotlib.axes import Axes
 
 from yaiv.defaults.config import ureg
 from yaiv.defaults.config import plot_defaults as pdef
@@ -292,18 +292,18 @@ class spectrum(_has_lattice, _has_kpath):
 
     def plot(
         self,
-        ax: matplotlib.axes._axes.Axes = None,
+        ax: Axes = None,
         shift: float | ureg.Quantity = None,
         patched: bool = True,
         bands: list[int] = None,
         **kwargs,
-    ) -> matplotlib.axes._axes.Axes:
+    ) -> Axes:
         """
         Plot the spectrum over a cumulative k-path.
 
         Parameters
         ----------
-        ax : matplotlib.axes._axes.Axes, optional
+        ax : Axes, optional
             Axes to plot on. If None, a new figure and axes are created.
         shift : float | ureg.Quantity, optional
             A constant shift applied to the eigenvalues (e.g., Fermi level).
@@ -319,7 +319,7 @@ class spectrum(_has_lattice, _has_kpath):
 
         Returns
         ----------
-        ax : matplotlib.axes._axes.Axes
+        ax : Axes
             The axes with the spectrum plot.
         """
         # Handle units
@@ -349,19 +349,19 @@ class spectrum(_has_lattice, _has_kpath):
 
     def plot_DOS(
         self,
-        ax: matplotlib.axes._axes.Axes = None,
+        ax: Axes = None,
         shift: float | ureg.Quantity = None,
         switchXY: bool = False,
         fill: bool = True,
         alpha: float = pdef.alpha,
         **kwargs,
-    ) -> matplotlib.axes._axes.Axes:
+    ) -> Axes:
         """
         Plot the DOS over an eigenvalue-window.
 
         Parameters
         ----------
-        ax : matplotlib.axes._axes.Axes, optional
+        ax : Axes, optional
             Axes to plot on. If None, a new figure and axes are created.
         shift : float | ureg.Quantity, optional
             A constant shift applied to the DOS (e.g., Fermi level).
@@ -377,7 +377,7 @@ class spectrum(_has_lattice, _has_kpath):
 
         Returns
         ----------
-        ax : matplotlib.axes._axes.Axes
+        ax : Axes
             The axes with the spectrum plot.
         """
         # Handle units
