@@ -25,6 +25,7 @@ import matplotlib.pyplot as plt
 
 # === Units ===
 ureg = pint.UnitRegistry()
+ureg.setup_matplotlib(True)
 ureg.load_definitions(files("yaiv") / "defaults/extra_units.txt")
 
 
@@ -60,6 +61,8 @@ plot_defaults = SimpleNamespace(
     fermi_w=0.4,
     valence_c="tab:blue",
     conduction_c="tab:red",
+    alpha=0.5,
+    DOS_c='black',
     #    linestyle='-',
     #    marker='o',
     #    markersize=4,

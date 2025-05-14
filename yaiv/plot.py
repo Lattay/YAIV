@@ -161,10 +161,9 @@ def _compare_spectra(
         label = user_label or (
             labels[i] if labels is not None and i < len(labels) else f"Band {i+1}"
         )
-        S.plot(
-            ax,
-            S.fermi,
-            patched,
+        ax = S.plot(
+            ax=ax,
+            patched=patched,
             color=color,
             label=label,
             **kwargs,
@@ -177,10 +176,9 @@ def bands(
     electronBands: spec.electronBands | list[spec.electronBands],
     ax: matplotlib.axes._axes.Axes = None,
     patched: bool = True,
-    window: list[float] | float = [-1, 1],
+    window: list[float] | float | ureg.Quantity = [-1, 1] * ureg("eV"),
     colors: list[str] = None,
     labels: list[str] = None,
-    deg: bool = False,
     **kwargs,
 ) -> matplotlib.axes._axes.Axes:
     """
@@ -209,16 +207,13 @@ def bands(
         Axes containing the plot, if one was provided as input.
     """
 
-    if ax is None:
-        fig, ax = plt.subplots()
-
     if type(electronBands) is not list:
         user_color = kwargs.pop("color", None)  # user-defined color overrides all
         user_label = kwargs.pop("label", None)  # user-defined label
         band = electronBands
         indices = list(range(band.eigenvalues.shape[1]))
         # plot valence bands
-        band.plot(
+        ax = band.plot(
             ax,
             band.fermi,
             patched,
@@ -228,7 +223,7 @@ def bands(
             **kwargs,
         )
         # plot conduction bands
-        band.plot(
+        ax = band.plot(
             ax,
             band.fermi,
             patched,
@@ -237,7 +232,7 @@ def bands(
             **kwargs,
         )
     else:
-        _compare_spectra(electronBands, ax, patched, colors, labels, **kwargs)
+        ax = _compare_spectra(electronBands, ax, patched, colors, labels, **kwargs)
         band = electronBands[0]
 
     if band.kpath is not None:
@@ -246,6 +241,12 @@ def bands(
     if band.fermi is not None:
         ax.axhline(y=0, color=pdef.fermi_c, linewidth=pdef.fermi_w)
 
+    # Handle units and setup window
+    window = (
+        window.to(band.eigenvalues.units).magnitude
+        if isinstance(window, ureg.Quantity)
+        else window
+    )
     if type(window) is int or type(window) is float:
         window = [-window, window]
     ax.set_ylim(window[0], window[1])
@@ -258,7 +259,6 @@ def phonons(
     phononBands: spec.phononBands | list[spec.phononBands],
     ax: matplotlib.axes._axes.Axes = None,
     patched: bool = True,
-    window: list[float] | float = [-1, 1],
     colors: list[str] = None,
     labels: list[str] = None,
     **kwargs,
@@ -274,8 +274,6 @@ def phonons(
         Axes to plot on. If None, a new figure and axes are created.
     patched : bool, optional
         Whether to patch k-path discontinuities. Default is True.
-    window : list[float] or float, optional
-        Energy window to be shown.
     colors : list of str, optional
         Colors to use when plotting multiple bands.
     labels : list of str, optional
@@ -289,14 +287,11 @@ def phonons(
         Axes containing the plot, if one was provided as input.
     """
 
-    if ax is None:
-        fig, ax = plt.subplots()
-
     if type(phononBands) is not list:
         user_color = kwargs.pop("color", None)  # user-defined color overrides all
         user_label = kwargs.pop("label", None)  # user-defined label
         band = phononBands
-        band.plot(
+        ax = band.plot(
             ax,
             patched=patched,
             color=user_color or pdef.valence_c,
@@ -304,7 +299,7 @@ def phonons(
             **kwargs,
         )
     else:
-        _compare_spectra(phononBands, ax, patched, colors, labels, **kwargs)
+        ax = _compare_spectra(phononBands, ax, patched, colors, labels, **kwargs)
         band = phononBands[0]
 
     if band.kpath is not None:
@@ -312,5 +307,112 @@ def phonons(
 
     ax.axhline(y=0, color=pdef.fermi_c, linewidth=pdef.fermi_w)
 
+    plt.tight_layout()
+    return ax
+
+
+def DOS(
+    spectra: spec.electronBands | spec.phononBands | spec.spectrum,
+    ax: matplotlib.axes._axes.Axes = None,
+    window: float | list[float] = None,
+    smearing: float | ureg.Quantity = None,
+    steps: int = None,
+    precision: float = 3.0,
+    fill: bool = True,
+    switchXY: bool = False,
+    alpha: float = pdef.alpha,
+    colors: list[str] = None,
+    labels: list[str] = None,
+    **kwargs,
+) -> matplotlib.axes._axes.Axes:
+    """
+    [TODO:summary]
+
+    [TODO:description]
+
+    Parameters
+    ----------
+    spectra : spec.electronBands | spec.phononBands | spec.spectrum
+        Spectra from which to plot the DOS.
+    ax : matplotlib.axes._axes.Axes, optional
+        Axes to plot on. If None, a new figure and axes are created.
+    window : float | list[float] | ureg.Quantity, optional
+        Value window for the DOS. If float, interpreted as symmetric [-window, window].
+        If list, used as [Vmin, Vmax]. If None, the eigenvalue range is used.
+    smearing : float | ureg.Quantity, optional
+        Gaussian smearing width in the same units as eigenvalues. Default is (window_size/200).
+    steps : int
+        [TODO:description]
+    precision : float
+        [TODO:description]
+    fill : bool
+        [TODO:description]
+    switchXY : bool
+        [TODO:description]
+    alpha : float
+        [TODO:description]
+    colors : list[str]
+        [TODO:description]
+    labels : list[str]
+        [TODO:description]
+
+    Returns
+    -------
+    matplotlib.axes._axes.Axes
+        [TODO:description]
+    """
+
+    user_color = kwargs.pop("color", None)  # user-defined color overrides all
+    user_label = kwargs.pop("label", None)  # user-defined label
+
+    if ax is None:
+        fig, ax = plt.subplots()
+
+    if type(spectra) is not list:
+        spectra.get_DOS(
+            window=window, smearing=smearing, steps=steps, precision=precision
+        )
+        ax = spectra.plot_DOS(
+            ax,
+            switchXY=switchXY,
+            fill=fill,
+            alpha=alpha,
+            color=user_color or pdef.DOS_c,
+            label=user_label,
+            **kwargs,
+        )
+    else:
+        cycle_iter = iter(pdef.color_cycle)
+        zorder = 2
+        for i, S in enumerate(spectra):
+            color = user_color or (
+                colors[i]
+                if colors is not None and i < len(colors)
+                else next(cycle_iter)
+            )
+            label = user_label or (
+                labels[i] if labels is not None and i < len(labels) else f"DOS {i+1}"
+            )
+            S.get_DOS(
+                window=window, smearing=smearing, steps=steps, precision=precision
+            )
+            ax = S.plot_DOS(
+                ax,
+                switchXY=switchXY,
+                fill=fill,
+                alpha=alpha,
+                color=color,
+                label=label,
+                zorder=zorder,
+                **kwargs,
+            )
+            zorder = zorder + 2
+        ax.legend()
+        spectra = spectra[0]
+    if hasattr(spectra, "fermi"):
+        if switchXY == True:
+            ax.axhline(y=0, color=pdef.fermi_c, linewidth=pdef.fermi_w)
+        else:
+            ax.axvline(x=0, color=pdef.fermi_c, linewidth=pdef.fermi_w)
     plt.tight_layout()
     return ax

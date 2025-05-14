@@ -12,6 +12,8 @@ yaiv.grep             : File parsing functions that uses these utilities.
 yaiv.spectrum         : Core spectral class storing eigenvalues and k-points.
 """
 
+from types import SimpleNamespace
+
 import numpy as np
 
 from yaiv.defaults.config import ureg
@@ -239,99 +241,6 @@ def grid_generator(grid: list[int], periodic: bool = False) -> np.ndarray:
     return coords
 
 
-def density_of_states(
-    eigenvalues: np.ndarray | ureg.Quantity,
-    weights: np.ndarray = None,
-    shift: float = 0.0,
-    smearing: float = 0.02,
-    window: float | list[float] = None,
-    steps: int = 500,
-    precision: float = 3.0,
-) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Compute a density of states (DOS) using Gaussian smearing.
-
-    This implementation uses a normal distribution to smear each eigenvalue
-    and returns the total DOS over an eigenvalue grid.
-
-    Parameters
-    ----------
-    eigenvalues : np.ndarray | ureg.Quantity
-        2D array of shape (n_kpoints, n_bands) with eigenvalues. Can include Pint units.
-    weights : np.ndarray, optional
-        1D array of k-point weights (length n_kpoints). If None, uniform weights are used.
-    shift : float, optional
-        Shift to apply to the eigenvalues (e.g., Fermi energy). Default is 0.
-    smearing : float, optional
-        Gaussian smearing width in the same units as eigenvalues. Default is 0.02.
-    window : float or list[float], optional
-        Value window for the DOS. If float, interpreted as symmetric [-window, window].
-        If list, used as [Vmin, Vmax]. If None, the eigenvalue range is used.
-    steps : int, optional
-        Number of grid points for DOS sampling. Default is 500.
-    precision : float, optional
-        Number of smearing widths to use for truncation (e.g., 3 means ±3σ).
-
-    Returns
-    -------
-    V_grid : np.ndarray | ureg.Quantity
-        Array of shape (steps,) with the eigenvalue units.
-    DOS : np.ndarray
-        Array of shape (steps,) with the computed DOS values.
-
-    Raises
-    ------
-    ValueError
-        If eigenvalues shape is incorrect or weights do not match.
-    """
-
-    # Handle units
-    if isinstance(eigenvalues, ureg.Quantity):
-        units = eigenvalues.units
-        eigenvalues = eigenvalues.magnitude
-    else:
-        units = 1
-
-    # eigenvalues = np.asarray(eigenvalues)
-    if eigenvalues.ndim != 2:
-        raise ValueError("Eigenvalues must be a 2D array of shape (n_kpts, n_bands)")
-    n_kpts, n_bands = eigenvalues.shape
-
-    if weights is None:
-        weights = np.ones(n_kpts) / n_kpts  # Weights that sum 1.
-    weights = np.asarray(weights)
-    if weights.shape[0] != n_kpts:
-        raise ValueError("Weights must match the number of k-points")
-
-    # Determine computing window
-    if window is None:
-        V_min, V_max = eigenvalues.min(), eigenvalues.max()
-    elif isinstance(window, (float, int)):
-        V_min, V_max = -window, window
-    else:
-        V_min, V_max = window
-
-    # Flatten eigenvalues and weights
-    flattened_eigs = eigenvalues.flatten() - shift
-    flattened_weights = np.repeat(weights, n_bands)
-    # Order energies and weights
-    sort = np.argsort(flattened_eigs)
-    flattened_eigs = flattened_eigs[sort]
-    flattened_weights = flattened_weights[sort]
-
-    V_grid = np.linspace(V_min, V_max, steps)
-    DOS = np.zeros_like(V_grid)
-
-    # DOS calculation (using the fact that eigenvalues are sorted)
-    for i, V in enumerate(V_grid):
-        for j, e in enumerate(flattened_eigs):
-            if e >= (V - precision * smearing):
-                DOS[i] = DOS[i] + _normal_dist(e, V, smearing) * flattened_weights[j]
-            elif e >= (V + precision * smearing):
-                break
-    return V_grid * units, DOS
-
-
 def _normal_dist(x, mean, sd, A=1):
     """
     Evaluate a normalized Gaussian (normal) distribution.
@@ -349,7 +258,7 @@ def _normal_dist(x, mean, sd, A=1):
 
     Returns
     -------
-    prob_density : float or np.ndarray
+    y : float or np.ndarray
         Value(s) of the normalized Gaussian distribution at `x`.
 
     Notes
@@ -358,5 +267,5 @@ def _normal_dist(x, mean, sd, A=1):
         A / (σ√(2π)) * exp(-0.5 * ((x - μ) / σ)^2)
     where μ is the mean and σ is the standard deviation.
     """
-    prob_density = A / (sd * np.sqrt(2 * np.pi)) * np.exp(-0.5 * ((x - mean) / sd) ** 2)
-    return prob_density
+    y = A / (sd * np.sqrt(2 * np.pi)) * np.exp(-0.5 * ((x - mean) / sd) ** 2)
+    return y

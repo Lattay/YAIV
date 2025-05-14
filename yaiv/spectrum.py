@@ -34,6 +34,7 @@ import matplotlib.axes._axes
 import matplotlib.pyplot as plt
 
 from yaiv.defaults.config import ureg
+from yaiv.defaults.config import plot_defaults as pdef
 from yaiv import utils as ut
 from yaiv import grep as grep
 
@@ -113,11 +114,16 @@ class spectrum(_has_lattice, _has_kpath):
         Optional weights for each k-point.
     lattice : np.ndarray, optional
         3x3 matrix of direct lattice vectors in [length] units.
-    k_lattice : np.ndarray
+    k_lattice : np.ndarray, optional
         3x3 matrix of reciprocal lattice vectors in 2π[length]⁻¹ units.
-    kpath : SimpleNamespace | np.ndarray
+    kpath : SimpleNamespace | np.ndarray, optional
         A namespace with attributes `path`(ndarray) and `labels`(list)
         or just a ndarray.
+    DOS : SimpleNamespace, optional
+        - vgrid : np.ndarray | ureg.Quantity
+            Array of shape (steps,) with the eigenvalue units.
+        - DOS : np.ndarray
+            Array of shape (steps,) with the corresponding DOS values.
     """
 
     def __init__(
@@ -133,6 +139,118 @@ class spectrum(_has_lattice, _has_kpath):
         self.weights = weights
         _has_lattice.__init__(self, lattice)
         _has_kpath.__init__(self, kpath)
+        self.DOS = None
+
+    def get_DOS(
+        self,
+        center: float | ureg.Quantity = None,
+        window: float | list[float] | ureg.Quantity = None,
+        smearing: float | ureg.Quantity = None,
+        steps: int = None,
+        precision: float = 3.0,
+    ):
+        """
+        Compute a density of states (DOS) using Gaussian smearing.
+
+        This implementation uses a normal distribution to smear each eigenvalue
+        and returns the total DOS over an eigenvalue grid.
+
+        Parameters
+        ----------
+        center : float | ureg.Quantity, optional
+            Center for the energy window (e.g., Fermi energy). Default is zero.
+        window : float | list[float] | ureg.Quantity, optional
+            Value window for the DOS. If float, interpreted as symmetric [-window, window].
+            If list, used as [Vmin, Vmax]. If None, the eigenvalue range is used.
+        smearing : float | ureg.Quantity, optional
+            Gaussian smearing width in the same units as eigenvalues. Default is (window_size/200).
+        steps : int, optional
+            Number of grid points for DOS sampling. Default is 4 * (window_size/smearing).
+        precision : float, optional
+            Number of smearing widths to use for truncation (e.g., 3 means ±3σ).
+
+        Returns
+        -------
+        self.DOS : SimpleNamespace
+            - vgrid : np.ndarray | ureg.Quantity
+                Array of shape (steps,) with the eigenvalue units.
+            - DOS : np.ndarray
+                Array of shape (steps,) with the computed DOS values.
+
+        Raises
+        ------
+        ValueError
+            If eigenvalues shape is incorrect or weights do not match.
+        TypeError
+            If the input units are not correct (i.e., not consistent).
+        """
+        # Handle units
+        eigenvalues = self.eigenvalues
+        quantities = [eigenvalues, center, window, smearing]
+        has_units = [isinstance(x, ureg.Quantity) or x is None for x in quantities]
+        if len(set(has_units)) != 1:
+            print("Units: [eigenvalues, center, window, smearing]")
+            print(has_units)
+            raise TypeError("Either all or none of the variables must have units.")
+        # If unitful, convert all to common unit
+        if has_units[0]:  # all have units
+            units = eigenvalues.units
+            eigenvalues, center, window, smearing = [
+                x.to(units).magnitude if isinstance(x, ureg.Quantity) else x
+                for x in quantities
+            ]
+        else:
+            units = 1
+
+        if eigenvalues.ndim != 2:
+            raise ValueError(
+                "Eigenvalues must be a 2D array of shape (n_kpts, n_bands)"
+            )
+        n_kpts, n_bands = eigenvalues.shape
+        if self.weights is None:
+            self.weights = (
+                np.ones(n_kpts) / n_kpts
+            )  # Weights that sum one (one state per band).
+        else:
+            self.weights = np.asarray(self.weights)
+        if weights.shape[0] != n_kpts:
+            raise ValueError("Weights must match the number of k-points")
+
+        # Determine computing center, window, smearing and steps
+        center = 0 if center is None else center
+        if window is None:
+            V_min, V_max = eigenvalues.min(), eigenvalues.max()
+        elif isinstance(window, (float, int)):
+            V_min, V_max = np.array([-window, window]) + center
+        else:
+            V_min, V_max = np.asarray(window) + center
+        window_size = V_max - V_min
+        if smearing is None:
+            smearing = window_size / 200
+        if steps is None:
+            steps = int(4 * (window_size / smearing))
+        V_grid = np.linspace(V_min, V_max, steps)
+
+        # Flatten eigenvalues and weights
+        flattened_eigs = eigenvalues.flatten()
+        flattened_weights = np.repeat(weights, n_bands)
+        # Order energies and weights
+        sort = np.argsort(flattened_eigs)
+        flattened_eigs = flattened_eigs[sort]
+        flattened_weights = flattened_weights[sort]
+
+        DOS = np.zeros_like(V_grid)
+
+        # DOS calculation (using the fact that eigenvalues are sorted)
+        for i, V in enumerate(V_grid):
+            for j, e in enumerate(flattened_eigs):
+                if e >= (V - precision * smearing):
+                    DOS[i] = (
+                        DOS[i] + ut._normal_dist(e, V, smearing) * flattened_weights[j]
+                    )
+                elif e >= (V + precision * smearing):
+                    break
+        self.DOS = SimpleNamespace(vgrid=V_grid * units, DOS=DOS)
 
     def get_1Dkpath(self, patched=True) -> np.ndarray:
         """
@@ -161,7 +279,7 @@ class spectrum(_has_lattice, _has_kpath):
             units = kpoints.units
             kpts_val = kpoints.magnitude
         else:
-            units = None
+            units = 1
             kpts_val = self.kpoints
 
         # Compute segment lengths
@@ -172,14 +290,12 @@ class spectrum(_has_lattice, _has_kpath):
             threshold = np.min(segment_lengths[segment_lengths >= 1e-5]) * 10
             segment_lengths = np.where(segment_lengths > threshold, 0, segment_lengths)
         kpath = np.concatenate([[0], np.cumsum(segment_lengths)])
-        if units is not None:
-            kpath = kpath * units  # reattach units
-        return kpath
+        return kpath * units
 
     def plot(
         self,
         ax: matplotlib.axes._axes.Axes = None,
-        shift: float = None,
+        shift: float | ureg.Quantity = None,
         patched: bool = True,
         bands: list[int] = None,
         **kwargs,
@@ -191,9 +307,9 @@ class spectrum(_has_lattice, _has_kpath):
         ----------
         ax : matplotlib.axes._axes.Axes, optional
             Axes to plot on. If None, a new figure and axes are created.
-        shift : float, optional
+        shift : float | ureg.Quantity, optional
             A constant shift applied to the eigenvalues (e.g., Fermi level).
-            Fermi level shift is the default for electronic spectra.
+            Default is zero.
         patched : bool, optional
             If True, attempts to patch discontinuities in the k-path.
             This prevents artificially connected lines in band structure
@@ -212,19 +328,9 @@ class spectrum(_has_lattice, _has_kpath):
             fig, ax = plt.subplots()
 
         # Apply shift to eigenvalues
-        if shift is None:
-            if hasattr(self, "fermi"):
-                shift = self.fermi if self.fermi is not None else 0
-            else:
-                shift = 0
-
-        eigen = self.eigenvalues - shift
+        eigen = self.eigenvalues - shift if shift is not None else self.eigenvalues
         kpath = self.get_1Dkpath(patched)
-        x = kpath / kpath[-1]
-        if isinstance(eigen, ureg.Quantity):
-            eigen = eigen.magnitude
-        if isinstance(x, ureg.Quantity):
-            x = x.magnitude
+        x = kpath / kpath[-1].magnitude
 
         band_indices = bands if bands is not None else range(eigen.shape[1])
 
@@ -236,8 +342,79 @@ class spectrum(_has_lattice, _has_kpath):
                 ax.plot(x, eigen[:, i], **kwargs)
 
         ax.set_xlim(0, 1)
-        ax.set_xlabel(f"k-path ({kpath.units})")
-        ax.set_ylabel(f"Eigenvalues ({self.eigenvalues.units})")
+        return ax
+
+    def plot_DOS(
+        self,
+        ax: matplotlib.axes._axes.Axes = None,
+        shift: float = None,
+        switchXY: bool = False,
+        fill: bool = True,
+        alpha: float = pdef.alpha,
+        **kwargs,
+    ) -> matplotlib.axes._axes.Axes:
+        """
+        Plot the DOS over an eigenvalue-window.
+
+        Parameters
+        ----------
+        ax : matplotlib.axes._axes.Axes, optional
+            Axes to plot on. If None, a new figure and axes are created.
+        shift : float, optional
+            A constant shift applied to the DOS (e.g., Fermi level).
+            Fermi level shift is the default for electronic spectra.
+        switchXY : bool, optional
+            Whether to plot the DOS along the x-axis (horizontal plot). Default is False.
+        fill : bool, optional
+            Whether to fill the area under the curve. Default is True.
+        alpha : float, optional
+            Opacity of the fill (0 = transparent, 1 = solid).
+        **kwargs : dict
+            Additional matplotlib arguments passed to `plot()`.
+
+        Returns
+        ----------
+        ax : matplotlib.axes._axes.Axes
+            The axes with the spectrum plot.
+        """
+        if ax is None:
+            fig, ax = plt.subplots()
+
+        # Apply shift to eigenvalues
+        if shift is None:
+            if hasattr(self, "fermi"):
+                shift = self.fermi if self.fermi is not None else 0
+            else:
+                shift = 0
+
+        if self.DOS is None:
+            self.get_DOS()
+        x = self.DOS.vgrid - shift
+        y = self.DOS.DOS
+
+        z_line = kwargs.pop("zorder", 2)  # allow overriding via kwargs
+        z_fill = z_line - 1  # ensure fill is below the line
+
+        if switchXY:
+            # DOS on x-axis, energy on y-axis
+            (line,) = ax.plot(y, x, zorder=z_line, **kwargs)
+            if fill:
+                ax.fill_betweenx(
+                    x, 0, y, alpha=alpha, color=line.get_color(), zorder=z_fill
+                )
+            ax.set_xlabel("DOS")
+            ax.set_xlim(left=0)
+            ax.set_ylim(np.min(x), np.max(x))
+        else:
+            # Energy on x-axis, DOS on y-axis
+            (line,) = ax.plot(x, y, zorder=z_line, **kwargs)
+            if fill:
+                ax.fill_between(
+                    x, y, alpha=alpha, color=line.get_color(), zorder=z_fill
+                )
+            ax.set_ylabel("DOS")
+            ax.set_xlim(np.min(x), np.max(x))
+            ax.set_ylim(bottom=0)
 
         return ax
 
