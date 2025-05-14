@@ -437,12 +437,11 @@ def kpath(file: str, labels: bool = True) -> SimpleNamespace | np.ndarray:
     NotImplementedError:
         The function is not currently implemeted for the provided filetype.
     """
-    filetype = _filetype(file)
-    READ = False
 
     def read_qe_path(line_iter):
+        kpath = k_names = N = None
         for line in line_iter:
-            if "N" not in locals():
+            if N is None:
                 N = int(line.split()[0])
             else:
                 if labels:
@@ -454,18 +453,21 @@ def kpath(file: str, labels: bool = True) -> SimpleNamespace | np.ndarray:
                     kpoint = line
                 # Grep K point
                 kpoint = [float(x) for x in kpoint.split()]
-                kpath = np.vstack([kpath, kpoint]) if "kpath" in locals() else [kpoint]
+                kpath = np.vstack([kpath, kpoint]) if kpath is not None else [kpoint]
                 # Grep K point label
                 if labels:
+                    new_name = label.split()[0]
                     k_names = (
-                        k_names + [label.split()[0]]
-                        if "k_names" in locals()
-                        else [label.split()[0]]
+                        k_names + [new_name] if k_names is not None else [new_name]
                     )
                 # Check if path is complete
                 if len(kpath) == N:
                     break
         return kpath, k_names
+
+    filetype = _filetype(file)
+    READ = EVEN = False
+    kpath = k_names = N = None
 
     with open(file, "r") as lines:
         # QE input format
@@ -481,7 +483,7 @@ def kpath(file: str, labels: bool = True) -> SimpleNamespace | np.ndarray:
         elif filetype == "kpath":
             for line in lines:
                 # Grep number of points for each subpath
-                if "N" not in locals():
+                if N is None:
                     try:
                         N = int(line.split()[0])
                     except ValueError:
@@ -498,22 +500,25 @@ def kpath(file: str, labels: bool = True) -> SimpleNamespace | np.ndarray:
                     else:
                         kpoint = line
                     kpoint = [float(x) for x in kpoint.split()]
-                    if "kpath" not in locals():
+                    if kpath is None:
                         kpath = np.array([kpoint + [N]])
                         if labels:
                             k_names = [label.split()[0]]
+                    # If points is different from previous in the KPATH file
                     elif (kpoint[:3] != kpath[-1][:3]).any():
-                        if len(kpath) % 2 == 0:
+                        if EVEN:
                             kpath = np.vstack([kpath, kpoint + [1]])
                         else:
                             kpath = np.vstack([kpath, kpoint + [N]])
                         if labels:
                             k_names = k_names + [label.split()[0]]
-                    else:
+                    # If point is repeated and odd
+                    elif not EVEN:
                         kpath[-1, -1] = N
+                    EVEN = EVEN is False
         else:
             raise NotImplementedError("Unsupported filetype")
-    if "kpath" not in locals():
+    if "kpath" is None:
         raise NameError("Kpath not found.")
     kpath = kpath * ureg._2pi / ureg.crystal
     if labels:
