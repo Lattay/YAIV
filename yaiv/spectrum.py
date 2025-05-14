@@ -39,6 +39,9 @@ from yaiv import utils as ut
 from yaiv import grep as grep
 
 
+__all__ = ["spectrum" "electronBands", "phononBands"]
+
+
 class _has_lattice:
     """
     Mixin that provides lattice-related functionality:
@@ -203,11 +206,11 @@ class spectrum(_has_lattice, _has_kpath):
             )
         n_kpts, n_bands = eigenvalues.shape
         if self.weights is None:
-            self.weights = (
+            self.weights = weights = (
                 np.ones(n_kpts) / n_kpts
             )  # Weights that sum one (one state per band).
         else:
-            self.weights = np.asarray(self.weights)
+            weights = np.asarray(self.weights)
         if weights.shape[0] != n_kpts:
             raise ValueError("Weights must match the number of k-points")
 
@@ -378,8 +381,12 @@ class spectrum(_has_lattice, _has_kpath):
             The axes with the spectrum plot.
         """
         # Handle units
-        quantities = [self.DOS.vgrid, shift]
-        names = ["DOS.xvalues", "shift"]
+        if self.DOS is None:
+            quantities = [self.eigenvalues, shift]
+            names = ["self.eigenvalues", "shift"]
+        else:
+            quantities = [self.DOS.vgrid, shift]
+            names = ["self.DOS.vgrid", "shift"]
         ut._check_unit_consistency(quantities, names)
 
         if ax is None:

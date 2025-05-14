@@ -19,6 +19,17 @@ import numpy as np
 
 from yaiv.defaults.config import ureg
 
+__all__ = [
+    "invQ",
+    "reciprocal_basis",
+    "cartesian2cryst",
+    "cryst2cartesian",
+    "cartesian2voigt",
+    "voigt2cartesian",
+    "grid_generator",
+]
+
+
 def _check_unit_consistency(quantities: Sequence[Any], names: Sequence[str] = None):
     """
     Ensure that all (non-None) inputs are either unitful (pint.Quantity) or all unitless.
@@ -58,20 +69,20 @@ def invQ(matrix: np.ndarray | ureg.Quantity) -> np.ndarray | ureg.Quantity:
     inverse : np.ndarray | ureg.Quantity
         Square matrix, with (1/[input]) or without units (depending on the input).
     """
-    if isinstance(matrix, pint.Quantity):
+    if isinstance(matrix, ureg.Quantity):
         return np.linalg.inv(matrix.magnitude) * (1 / matrix.units)
     else:
         return np.linalg.inv(matrix)
 
 
-def reciprocal_basis(lattice: np.ndarray) -> np.ndarray:
+def reciprocal_basis(lattice: np.ndarray | ureg.Quantity) -> np.ndarray:
     """
     Compute reciprocal lattice vectors (rows) from a direct lattice basis.
 
     Parameters
     ----------
     lattice : np.ndarray
-        Direct lattice vectors in rows, optionally with units as pint.Quantity.
+        Direct lattice vectors in rows, optionally with units as ureg.Quantity.
 
     Returns
     -------
