@@ -11,8 +11,8 @@ grepping functions.
 
 Examples
 --------
->>> from yaiv.spectrum import electronBands
->>> bands = electronBands("data/qe/Si.bands.pwo")
+>>> from yaiv.spectrum import ElectronBands
+>>> bands = ElectronBands("data/qe/Si.bands.pwo")
 >>> bands.eigenvalues.shape
 (100, 32)
 >>> bands.plot()
@@ -20,11 +20,10 @@ Examples
 
 See Also
 --------
-yaiv.grep     : File parsing functions that uses these utilities.
-yaiv.utils    : Basis universal utilities
+yaiv.grep     : Low-level data extractors used to populate spectrum objects
+yaiv.utils    : Basis universal utilities and vector transformations
+yaiv.defaults : Configuration and default plotting values
 """
-
-# PYTHON module with the electron classes for electronic spectrum
 
 import warnings
 from types import SimpleNamespace
@@ -34,12 +33,12 @@ import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
 
 from yaiv.defaults.config import ureg
-from yaiv.defaults.config import plot_defaults as pdef
+from yaiv.defaults.config import plot_defaults as pdft
 from yaiv import utils as ut
 from yaiv import grep as grep
 
 
-__all__ = ["spectrum" "electronBands", "phononBands"]
+__all__ = ["Spectrum" "ElectronBands", "PhononBands"]
 
 
 class _has_lattice:
@@ -353,7 +352,7 @@ class Spectrum(_has_lattice, _has_kpath):
         shift: float | ureg.Quantity = None,
         switchXY: bool = False,
         fill: bool = True,
-        alpha: float = pdef.alpha,
+        alpha: float = pdft.alpha,
         **kwargs,
     ) -> Axes:
         """

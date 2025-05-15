@@ -20,13 +20,14 @@ Examples
 --------
 >>> from yaiv.spectrum import ElectronBands
 >>> from yaiv import plot
->>> bands = kpointsEnergies("OUTCAR")
+>>> bands = ElectronBands("OUTCAR")
 >>> plot.bands(bands)
 
 See Also
 --------
 yaiv.spectrum : Base class for storing and plotting eigenvalue spectra
 yaiv.grep     : Low-level data extractors used to populate spectrum objects
+yaiv.defaults : Configuration and default plotting values
 """
 
 from types import SimpleNamespace
@@ -37,7 +38,7 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
 from yaiv.defaults.config import ureg
-from yaiv.defaults.config import plot_defaults as pdef
+from yaiv.defaults.config import plot_defaults as pdft
 from yaiv import utils as ut
 from yaiv import spectrum as spec
 
@@ -134,9 +135,9 @@ def kpath(
     for tick in ticks.ticks:
         ax.axvline(
             tick,
-            color=pdef.vline_c,
-            linewidth=pdef.vline_w,
-            linestyle=pdef.vline_s,
+            color=pdft.vline_c,
+            linewidth=pdft.vline_w,
+            linestyle=pdft.vline_s,
         )
     if ticks.labels is not None:
         ax.set_xticks(ticks.ticks, ticks.labels)
@@ -178,7 +179,7 @@ def _compare_spectra(
         Axes containing the plot.
     """
 
-    cycle_iter = iter(pdef.color_cycle)
+    cycle_iter = iter(pdft.color_cycle)
     for i, S in enumerate(spectra):
         color = (
             colors[i] if colors is not None and i < len(colors) else next(cycle_iter)
@@ -245,7 +246,7 @@ def bands(
             shift=band.fermi,
             patched=patched,
             bands=indices[: band.electron_num],
-            color=user_color or pdef.valence_c,
+            color=user_color or pdft.valence_c,
             label=user_label,
             **kwargs,
         )
@@ -255,7 +256,7 @@ def bands(
             shift=band.fermi,
             patched=patched,
             bands=indices[band.electron_num :],
-            color=user_color or pdef.conduction_c,
+            color=user_color or pdft.conduction_c,
             **kwargs,
         )
     else:
@@ -266,7 +267,7 @@ def bands(
         kpath(ax, band.kpath, band.k_lattice)
 
     if band.fermi is not None:
-        ax.axhline(y=0, color=pdef.fermi_c, linewidth=pdef.fermi_w)
+        ax.axhline(y=0, color=pdft.fermi_c, linewidth=pdft.fermi_w)
 
     # Handle units and setup window
     window = (
@@ -326,7 +327,7 @@ def phonons(
         ax = band.plot(
             ax,
             patched=patched,
-            color=user_color or pdef.valence_c,
+            color=user_color or pdft.valence_c,
             label=user_label,
             **kwargs,
         )
@@ -348,7 +349,7 @@ def phonons(
             window = [-window, window]
         ax.set_ylim(window[0], window[1])
 
-    ax.axhline(y=0, color=pdef.fermi_c, linewidth=pdef.fermi_w)
+    ax.axhline(y=0, color=pdft.fermi_c, linewidth=pdft.fermi_w)
 
     plt.tight_layout()
     return ax
@@ -363,7 +364,7 @@ def DOS(
     precision: float = 3.0,
     switchXY: bool = False,
     fill: bool = True,
-    alpha: float = pdef.alpha,
+    alpha: float = pdft.alpha,
     colors: list[str] = None,
     labels: list[str] = None,
     **kwargs,
@@ -431,13 +432,13 @@ def DOS(
             switchXY=switchXY,
             fill=fill,
             alpha=alpha,
-            color=user_color or (pdef.DOS_c if hasattr(S, "fermi") else None),
+            color=user_color or (pdft.DOS_c if hasattr(S, "fermi") else None),
             label=user_label,
             **kwargs,
         )
     else:
         # Multi plot
-        cycle_iter = iter(pdef.color_cycle)
+        cycle_iter = iter(pdft.color_cycle)
         zorder = 2
         for i, S in enumerate(spectra):
             color = (
@@ -471,9 +472,9 @@ def DOS(
 
     if hasattr(S, "fermi"):
         if switchXY == True:
-            ax.axhline(y=0, color=pdef.fermi_c, linewidth=pdef.fermi_w)
+            ax.axhline(y=0, color=pdft.fermi_c, linewidth=pdft.fermi_w)
         else:
-            ax.axvline(x=0, color=pdef.fermi_c, linewidth=pdef.fermi_w)
+            ax.axvline(x=0, color=pdft.fermi_c, linewidth=pdft.fermi_w)
     plt.tight_layout()
     return ax
 
@@ -530,7 +531,7 @@ def _spectra_DOS(
             2,
             hspace=0,
             wspace=0,
-            width_ratios=[1 - pdef.bandsDOS_ratio, pdef.bandsDOS_ratio],
+            width_ratios=[1 - pdft.bandsDOS_ratio, pdft.bandsDOS_ratio],
         )
         ax, ax_DOS = gs.subplots(sharex="col", sharey="row")
 

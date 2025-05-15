@@ -27,10 +27,15 @@ ureg = pint.UnitRegistry()
 ureg.setup_matplotlib(True)
 ureg.load_definitions(files("yaiv") / "defaults/extra_units.txt")
 
+# === Misc defaults ===
+defaults = SimpleNamespace(symprec=1e-5)  # Default symmetry precision
+
 # === Plotting defaults ===
 
 plot_defaults = SimpleNamespace(
-    color_cycle=plt.get_cmap("tab10").colors,  # Default color cycle for matplotlib plots
+    color_cycle=plt.get_cmap(
+        "tab10"
+    ).colors,  # Default color cycle for matplotlib plots
     vline_w=0.4,  # Vertical high-symmetry lines width
     vline_c="gray",  # Vertical high-symmetry lines color
     vline_s="--",  # Vertical high-symmetry lines style
