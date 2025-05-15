@@ -39,7 +39,6 @@ yaiv.spectrum : Data container and plotter for eigenvalue spectra
 yaiv.utils    : Basis universal utilities
 """
 
-# from __future__ import annotations
 import re
 import warnings
 from types import SimpleNamespace
@@ -81,7 +80,6 @@ def _filetype(file: str) -> str:
     with open(file, "r") as lines:
         for line in lines:
             line = line.strip().lower()
-
             if re.search(r"calculation.*scf|calculation.*nscf", line):
                 filetype = "qe_scf_in"
                 break
@@ -96,6 +94,9 @@ def _filetype(file: str) -> str:
                 break
             elif "flfrc" in line:
                 filetype = "matdyn_in"
+                break
+            elif "dynamical matrix" in line:
+                filetype = "qe_dyn"
                 break
             elif "&plot nbnd=" in line:
                 filetype = "qe_freq_out"
@@ -193,9 +194,9 @@ def lattice(file: str, alat: bool = False) -> np.ndarray:
         The function is not currently implemeted for the provided filetype.
     """
     filetype = _filetype(file)
+    READ = False
 
     if filetype == "qe_ph_out":
-        READ = False
         with open(file, "r") as lines:
             for line in lines:
                 if "lattice parameter" in line:
@@ -213,16 +214,35 @@ def lattice(file: str, alat: bool = False) -> np.ndarray:
                     if len(lattice) == 3:
                         break
         if alat:
-            return lattice * ureg("alat")  # lattice in lattice units
+            return lattice * ureg.alat  # lattice in lattice units
         else:
             # Convert alat to Å
             lattice = np.array(lattice) * ALAT.to("angstrom")
             return lattice
 
+    elif filetype == "qe_dyn":
+        with open(file, "r") as lines:
+            for line in lines:
+                if not READ and len(line.split()) == 9:
+                    ALAT = float(line.split()[3]) * ureg("bohr/alat")
+                elif "Basis vectors" in line:
+                    READ = True
+                    lattice = []
+                elif READ:
+                    vec = [float(x) for x in line.split()]
+                    lattice.append(vec)
+                    if len(lattice) == 3:
+                        lattice = np.array(lattice) * ureg.alat
+                        break
+        if alat:
+            return lattice
+        else:
+            return (lattice * ALAT).to("angstrom")
+
     else:
         # Fallback to ASE
         try:
-            lattice = io.read(file).cell.T  # (3, 3) in Å
+            lattice = io.read(file).cell  # (3, 3) in Å
         except io.formats.UnknownFileTypeError:
             raise NotImplementedError(
                 "Unsupported filetype: ASE is not handling it correctly"
