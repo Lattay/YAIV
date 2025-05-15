@@ -210,7 +210,7 @@ def lattice(file: str, alat: bool = False) -> np.ndarray:
     else:
         # Fallback to ASE
         try:
-            lattice = io.read(file).cell.T  # (3, 3) in Å
+            lattice = io.read(file).cell  # (3, 3) in Å
         except io.formats.UnknownFileTypeError:
             raise NotImplementedError(
                 "Unsupported filetype: ASE is not handling it correctly"
