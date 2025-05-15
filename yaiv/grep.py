@@ -48,7 +48,7 @@ import numpy as np
 from ase import io
 
 from yaiv.defaults.config import ureg
-from yaiv.spectrum import spectrum
+from yaiv.spectrum import Spectrum
 from yaiv import utils as ut
 
 __all__ = [
@@ -541,7 +541,7 @@ def kpath(file: str, labels: bool = True) -> SimpleNamespace | np.ndarray:
         return kpath
 
 
-def kpointsEnergies(file: str) -> spectrum:
+def kpointsEnergies(file: str) -> Spectrum:
     """
     Grep the kpoints, energies and kpoint-weights for different file kinds.
 
@@ -557,7 +557,7 @@ def kpointsEnergies(file: str) -> spectrum:
 
     Returns
     -------
-    spectrum : spectrum
+    spectrum : Spectrum
         Spectrum class with the following attributes:
         - eigenvalues : np.ndarray
             List of energies, each row corresponds to a particular k-point.
@@ -693,12 +693,12 @@ def kpointsEnergies(file: str) -> spectrum:
                             E = None
         else:
             raise NotImplementedError("Unsupported filetype")
-    return spectrum(
+    return Spectrum(
         ENERGIES * ureg("eV"), KPOINTS * (ureg._2pi / ureg.crystal), WEIGHTS
     )
 
 
-def kpointsFrequencies(file: str) -> spectrum:
+def kpointsFrequencies(file: str) -> Spectrum:
     """
     Grep the kpoints and frequencies from phonon ouputs.
 
@@ -713,7 +713,7 @@ def kpointsFrequencies(file: str) -> spectrum:
 
     Returns
     -------
-    spectrum : spectrum
+    spectrum : Spectrum
         Spectrum class with the following attributes:
         - eigenvalues : np.ndarray
             List of frequencies, each row corresponds to a particular k-point.
@@ -756,4 +756,4 @@ def kpointsFrequencies(file: str) -> spectrum:
     # Give proper units
     FREQS = FREQS * ureg("c") / ureg("cm")
     KPOINTS = KPOINTS * (ureg("_2pi") / ureg("alat"))
-    return spectrum(FREQS, KPOINTS, None)
+    return Spectrum(FREQS, KPOINTS, None)

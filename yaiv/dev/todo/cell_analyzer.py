@@ -9,22 +9,6 @@ from ase.io import read, write
 from ase.visualize import view
 from ase import Atoms
 
-def ase2spglib(crystal_ase): #not really needed since spglib reads the ase atoms type
-    """From ASE crystal to spglib format"""
-    lattice=np.array(crystal_ase.get_cell())
-    positions=crystal_ase.get_scaled_positions()
-    numbers=crystal_ase.get_atomic_numbers()
-    spg_crystal=(lattice,positions,numbers)
-    return spg_crystal
-
-def spglib2ase(spglib_crystal):
-    """From spglib crystal to ASE format"""
-    lattice=spglib_crystal[0]
-    positions=spglib_crystal[1]
-    numbers=spglib_crystal[2]
-    ase_crystal=Atoms(scaled_positions=positions,numbers=numbers,cell=lattice)
-    return ase_crystal
-
 def get_spacegroup(crystal,symprec=1e-5,silent=False):
     """Get the spacegroup of almost any file using spglib
     symprec = Symmetry thushold as defined by spglib
@@ -43,12 +27,6 @@ def get_spacegroup(crystal,symprec=1e-5,silent=False):
     if silent==False:
         print('SpaceGroup =',SG)
     return SG
-
-def read_spg(file):
-    """Reads crystal file directly to spglib format"""
-    cryst=read(file)
-    spgcryst=ase2spglib(cryst)
-    return spgcryst
 
 def get_sym_info(crystal,symprec=1e-5):
     """A simple report of main symmetry asepects

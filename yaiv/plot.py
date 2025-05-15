@@ -7,7 +7,7 @@ systems. It supports electronic and vibrational spectra obtained from common ab 
 codes such as Quantum ESPRESSO and VASP.
 
 Functions in this module are designed to work seamlessly with spectrum-like objects
-(e.g., `spectrum`, `electronBands`, `phononBands`) and accept units-aware data.
+(e.g., `Spectrum`, `ElectronBands`, `PhononBands`) and accept units-aware data.
 
 The visualizations are based on `matplotlib`, and include options for:
 
@@ -18,7 +18,7 @@ The visualizations are based on `matplotlib`, and include options for:
 
 Examples
 --------
->>> from yaiv.spectrum import electronBands
+>>> from yaiv.spectrum import ElectronBands
 >>> from yaiv import plot
 >>> bands = kpointsEnergies("OUTCAR")
 >>> plot.bands(bands)
@@ -146,7 +146,7 @@ def kpath(
 
 
 def _compare_spectra(
-    spectra: list[spec.spectrum],
+    spectra: list[spec.Spectrum],
     ax: Axes,
     patched: bool = True,
     colors: list[str] = None,
@@ -158,7 +158,7 @@ def _compare_spectra(
 
     Parameters
     ----------
-    spectra : list[spec.spectrum]
+    spectra : list[spec.Spectrum]
     A list of spectrum objects to be plotted. Each spectrum must implement
         a `.plot()` method compatible with the plotting interface.
     ax : Axes
@@ -198,7 +198,7 @@ def _compare_spectra(
 
 
 def bands(
-    electronBands: spec.electronBands | list[spec.electronBands],
+    electronBands: spec.ElectronBands | list[spec.ElectronBands],
     ax: Axes = None,
     patched: bool = True,
     window: list[float] | float | ureg.Quantity = [-1, 1] * ureg("eV"),
@@ -211,7 +211,7 @@ def bands(
 
     Parameters
     ----------
-    electronBands : electronBands or list of electronBands
+    electronBands : ElectronBands or list of ElectronBands
         Band structure objects to plot.
     ax : Axes, optional
         Axes to plot on. If None, a new figure and axes are created.
@@ -283,7 +283,7 @@ def bands(
 
 
 def phonons(
-    phononBands: spec.phononBands | list[spec.phononBands],
+    phononBands: spec.PhononBands | list[spec.PhononBands],
     ax: Axes = None,
     patched: bool = True,
     window: list[float] | float | ureg.Quantity = None,
@@ -296,7 +296,7 @@ def phonons(
 
     Parameters
     ----------
-    phononBands : phononBands or list of phononBands
+    phononBands : spec.PhononBands | list[spec.PhononBands]
         Phonon band objects to plot.
     ax : Axes, optional
         Axes to plot on. If None, a new figure and axes are created.
@@ -355,7 +355,7 @@ def phonons(
 
 
 def DOS(
-    spectra: spec.electronBands | spec.phononBands | spec.spectrum,
+    spectra: spec.ElectronBands | spec.PhononBands | spec.Spectrum,
     ax: Axes = None,
     window: float | list[float] | ureg.Quantity = None,
     smearing: float | ureg.Quantity = None,
@@ -373,7 +373,7 @@ def DOS(
 
     Parameters
     ----------
-    spectra : spec.electronBands | spec.phononBands | spec.spectrum
+    spectra : spec.ElectronBands | spec.PhononBands | spec.Spectrum
         Spectra from which to plot the DOS.
     ax : Axes, optional
         Axes to plot on. If None, a new figure and axes are created.
@@ -479,7 +479,7 @@ def DOS(
 
 
 def _spectra_DOS(
-    spectra: spec.electronBands | spec.phononBands | list,
+    spectra: spec.ElectronBands | spec.PhononBands | list,
     plot_func: callable,
     fig: Figure = None,
     axes: list[Axes] = None,
@@ -494,8 +494,8 @@ def _spectra_DOS(
 
     Parameters
     ----------
-    spectra : spec.electronBands | spec.phononBands | list,
-        List of spectrum objects (e.g., electronBands or phononBands).
+    spectra : spec.ElectronBands | spec.PhononBands | list,
+        List of spectrum objects (e.g., ElectronBands or PhononBands).
     plot_func : callable
         Function to plot the band structure (e.g., `bands()` or `phonons()`).
     fig : Figure, optional
@@ -574,7 +574,7 @@ def _spectra_DOS(
 
 
 def bandsDOS(
-    electronBands: spec.electronBands | list[spec.electronBands],
+    electronBands: spec.ElectronBands | list[spec.ElectronBands],
     fig: Figure = None,
     axes: list[Axes] = None,
     patched: bool = True,
@@ -588,7 +588,7 @@ def bandsDOS(
 
     Parameters
     ----------
-    electronBands : spec.electronBands | list[spec.electronBands]
+    electronBands : spec.ElectronBands | list[spec.ElectronBands]
         A spectrum or list of spectra representing electronic band structures.
     fig : Figure, optional
         Optional figure object to plot into. If not provided, a new figure is created.
@@ -614,7 +614,7 @@ def bandsDOS(
     """
 
     return _spectra_DOS(
-        spectra=electronBands,
+        spectra=ElectronBands,
         plot_func=bands,
         fig=fig,
         axes=axes,
@@ -627,7 +627,7 @@ def bandsDOS(
 
 
 def phononsDOS(
-    phononBands: spec.phononBands | list[spec.phononBands],
+    phononBands: spec.PhononBands | list[spec.PhononBands],
     fig: Figure = None,
     axes: list[Axes] = None,
     patched: bool = True,
@@ -641,7 +641,7 @@ def phononsDOS(
 
     Parameters
     ----------
-    phononBands : spec.phononBands | list[spec.phononBands]
+    phononBands : spec.PhononBands | list[spec.PhononBands]
         A spectrum or list of spectra representing phonon band structures.
     fig : Figure, optional
         Optional figure object to plot into. If not provided, a new figure is created.

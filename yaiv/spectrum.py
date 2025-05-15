@@ -100,7 +100,7 @@ class _has_kpath:
         self.kpath = kpath
 
 
-class spectrum(_has_lattice, _has_kpath):
+class Spectrum(_has_lattice, _has_kpath):
     """
     General class for storing the eigenvalues of a periodic operator over k-points.
 
@@ -424,7 +424,7 @@ class spectrum(_has_lattice, _has_kpath):
         return ax
 
 
-class electronBands(spectrum):
+class ElectronBands(Spectrum):
     """
     Class for handling electronic bandstructures and spectrums.
 
@@ -466,7 +466,7 @@ class electronBands(spectrum):
             except NotImplementedError:
                 lattice = None
             spec = grep.kpointsEnergies(self.filepath)
-            spectrum.__init__(
+            Spectrum.__init__(
                 self,
                 eigenvalues=spec.eigenvalues,
                 kpoints=spec.kpoints,
@@ -475,10 +475,10 @@ class electronBands(spectrum):
             )
         else:
             self.electron_num = self.fermi = None
-            spectrum.__init__(self)
+            Spectrum.__init__(self)
 
 
-class phononBands(spectrum):
+class PhononBands(Spectrum):
     """
     Class for handling phonon bandstructures and spectrums.
 
@@ -511,7 +511,7 @@ class phononBands(spectrum):
             except NotImplementedError:
                 lattice = None
             spec = grep.kpointsFrequencies(self.filepath)
-            spectrum.__init__(
+            Spectrum.__init__(
                 self,
                 eigenvalues=spec.eigenvalues,
                 kpoints=spec.kpoints,
@@ -519,4 +519,4 @@ class phononBands(spectrum):
                 lattice=lattice,
             )
         else:
-            spectrum.__init__(self)
+            Spectrum.__init__(self)
