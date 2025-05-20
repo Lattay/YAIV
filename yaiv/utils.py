@@ -133,6 +133,7 @@ def cartesian2cryst(
                 raise TypeError(
                     "Input and basis units are not compatible for coordinate transformation"
                 )
+            in_units = cartesian_coord.units
             if in_units.dimensionality == ureg.meter.dimensionality:
                 crystal_coord = crystal_coord * (ureg.crystal)
             elif in_units.dimensionality == 1 / ureg.meter.dimensionality:
@@ -324,3 +325,61 @@ def _normal_dist(x, mean, sd, A=1):
     """
     y = A / (sd * np.sqrt(2 * np.pi)) * np.exp(-0.5 * ((x - mean) / sd) ** 2)
     return y
+
+
+def _expand_zone_border(
+    q_point: ureg.Quantity | np.ndarray,
+) -> ureg.Quantity | np.ndarray:
+    """
+    Expand a q-point by adding periodic equivalents related by reciprocal lattice translations.
+
+    This function generates a set of symmetry-related points lying at the borders of the Brillouin zone,
+    by adding and subtracting ±1 in each reciprocal direction. This is useful in phonon or electron band
+    structure calculations when points like (0.5, 0, 0) and (-0.5, 0, 0) are physically equivalent
+    but not explicitly included in the star of q-points.
+
+    Parameters
+    ----------
+    q_point : pint.Quantity | np.ndarray
+        A 3-element q-point in fractional (crystal) coordinates.
+
+    Returns
+    -------
+    q_points : np.ndarray | pint.Quantity
+        A (3N+1, 3)-shaped array containing the original q-point and its ±1-shifted images
+        along the three reciprocal directions. Units are preserved if input had units.
+
+    Raises
+    ------
+    TypeError
+        If `q_point` is a Quantity but not in crystal units (i.e., dimensionless reciprocal).
+    """
+    # Validate units if pint.Quantity
+    if isinstance(q_point, ureg.Quantity):
+        if (
+            q_point.dimensionality != ureg.crystal.dimensionality
+            and q_point.dimensionality != (1 / ureg.crystal).dimensionality
+        ):
+            raise TypeError(
+                "If q_point has units, they must have crystal or 1/crystal dimensionality."
+            )
+        units = q_point.units
+        q_point = q_point.magnitude
+    else:
+        q_point = np.array(q_point)
+        units = 1
+
+    output = [q_point]
+    for i in range(3):
+        new_points = []
+        for point in output:
+            point = np.array(point)
+            for delta in [-1, 1]:
+                shifted = point.copy()
+                shifted[i] += delta
+                new_points.append(shifted)
+        output.extend(new_points)
+
+    output = np.array(output)
+
+    return output * units

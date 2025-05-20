@@ -206,52 +206,6 @@ class Cell:
 
     def get_wyckoff_positions(self, symprec: float = dft.symprec):
         """
-        [TODO:summary]
-
-        [TODO:description]
-
-        Parameters
-        ----------
-        symprec : float
-            [TODO:description]
-        """
-        """Reads a QE/VASP, ASE or spglib structures and returns the independent Wyckoff positions
-
-        indep_symb = A list with the symbols of the independent WP elements
-        indep_WP = A list with the independent WP
-        positions = A list with the positions of each of the indep WP
-        indices = A list with the indices of the atoms corresponding to each of the WP
-
-        return indep_symb,indep_WP,positions,indices
-        """
-        spglib = self.spglib
-        ASE = spglib2ase(spglib)
-        sym_dataset = spg.get_symmetry_dataset(spglib, symprec=symprec)
-        equiv = sym_dataset.equivalent_atoms
-        WP = sym_dataset.wyckoffs
-        symb = ASE.get_chemical_symbols()
-
-        positions = []
-        indep_WP = []
-        indep_symb = []
-        indices = []
-
-        repeated = []
-        for i, n in enumerate(equiv):
-            if n not in repeated:
-                positions = positions + [spglib[1][i, :]]
-                indep_WP = indep_WP + [WP[i]]
-                indep_symb = indep_symb + [symb[i]]
-                indices = indices + [[i]]
-                repeated = repeated + [equiv[i]]
-            else:
-                index = repeated.index(equiv[i])
-                positions[index] = np.vstack((positions[index], spglib[1][i, :]))
-                indices[index] = indices[index] + [i]
-        return indep_symb, indep_WP, positions, indices
-
-    def get_wyckoff_positions(self, symprec: float = 1e-5):
-        """
         Analyze the structure and store information about independent Wyckoff positions.
 
         This method identifies groups of symmetry-equivalent atoms using spglib
