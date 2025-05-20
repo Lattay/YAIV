@@ -7,6 +7,9 @@ from yaiv.defaults.config import ureg
 from yaiv import grep
 
 
+__all__ = ["read_dyn_file", "distort_crystal"]
+
+
 def read_dyn_file(file: str) -> SimpleNamespace:
     """
     Parse a dynamical matrix file and extract phonon mode information.
@@ -119,7 +122,7 @@ def read_dyn_file(file: str) -> SimpleNamespace:
 
 
 def distort_crystal(q_points, results_ph, order_parameter, modes, amplitude):
-    # TODO
+    print("TODO")
     # 1. Read crystal structure
     # 2. Get dynamical matrices
     # 3. Diagonalize matrices
