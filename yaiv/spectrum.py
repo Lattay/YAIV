@@ -241,12 +241,17 @@ class Spectrum(_has_lattice, _has_kpath):
         # DOS calculation (using the fact that eigenvalues are sorted)
         for i, V in enumerate(V_grid):
             for j, e in enumerate(flattened_eigs):
-                if e >= (V - precision * smearing):
+                if e >= (V + precision * smearing):
+                    flattened_eigs = truncated_eigs
+                    flattened_weights = truncated_weights
+                    break
+                elif e >= (V - precision * smearing):
+                    if DOS[i] == 0:
+                        truncated_eigs = flattened_eigs[j:]
+                        truncated_weights = flattened_weights[j:]
                     DOS[i] = (
                         DOS[i] + ut._normal_dist(e, V, smearing) * flattened_weights[j]
                     )
-                elif e >= (V + precision * smearing):
-                    break
         self.DOS = SimpleNamespace(vgrid=V_grid * units, DOS=DOS)
 
     def get_1Dkpath(self, patched=True) -> np.ndarray:
