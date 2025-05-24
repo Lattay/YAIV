@@ -615,7 +615,7 @@ def bandsDOS(
     """
 
     return _spectra_DOS(
-        spectra=ElectronBands,
+        spectra=electronBands,
         plot_func=bands,
         fig=fig,
         axes=axes,
