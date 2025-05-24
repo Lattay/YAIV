@@ -134,9 +134,16 @@ def cartesian2cryst(
                     "Input and basis units are not compatible for coordinate transformation"
                 )
             in_units = cartesian_coord.units
-            if in_units.dimensionality == ureg.meter.dimensionality:
+            if in_units.dimensionality in [
+                ureg.meter.dimensionality,
+                ureg.alat.dimensionality,
+            ]:
                 crystal_coord = crystal_coord * (ureg.crystal)
-            elif in_units.dimensionality == 1 / ureg.meter.dimensionality:
+
+            elif in_units.dimensionality in [
+                1 / ureg.meter.dimensionality,
+                1 / ureg.alat.dimensionality,
+            ]:
                 crystal_coord = crystal_coord * (ureg._2pi / ureg.crystal)
             else:
                 raise TypeError(
