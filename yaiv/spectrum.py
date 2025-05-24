@@ -337,11 +337,8 @@ class Spectrum(_has_lattice, _has_kpath):
         band_indices = bands if bands is not None else range(eigen.shape[1])
 
         label = kwargs.pop("label", None)  # remove label from kwargs
-        for j, i in enumerate(band_indices):
-            if j == 0:
-                ax.plot(x, eigen[:, i], label=label, **kwargs)
-            else:
-                ax.plot(x, eigen[:, i], **kwargs)
+        ax.plot(x, eigen[:, band_indices[0]], label=label, **kwargs)
+        ax.plot(x, eigen[:, band_indices[1:]], **kwargs)
 
         ax.set_xlim(0, 1)
         return ax
