@@ -49,6 +49,7 @@ from ase import io
 from yaiv.defaults.config import ureg
 from yaiv.spectrum import Spectrum
 from yaiv import utils as ut
+from yaiv import grep
 
 __all__ = [
     "electron_num",
@@ -603,7 +604,7 @@ def kpointsEnergies(file: str) -> Spectrum:
                     num_bands = int(line.split("=")[1])
                 elif "number of k points" in line:
                     num_points = int(line.split()[4])
-                elif " cryst. coord." in line:
+                elif " cart. coord." in line:
                     READ_kpoints = True
                 elif "force convergence" in line:
                     RELAX_calc = True
@@ -643,6 +644,12 @@ def kpointsEnergies(file: str) -> Spectrum:
                             )
                             E = None
                             OCCUPATIONS = True
+            #Recover crystal units
+            lat=grep.lattice(file)
+            lat=lat/np.linalg.norm(lat[0])
+            Klat=ut.reciprocal_basis(lat).magnitude
+            KPOINTS=ut.cartesian2cryst(KPOINTS,Klat)
+
         elif filetype == "eigenval":
             for i, line in enumerate(lines):
                 l = line.split()
