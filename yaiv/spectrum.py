@@ -176,7 +176,7 @@ class Spectrum(_has_lattice, _has_kpath):
         self.DOS : SimpleNamespace
             - vgrid : np.ndarray | ureg.Quantity
                 Array of shape (steps,) with the eigenvalue units.
-            - DOS : np.ndarray
+            - DOS : np.ndarray | ureg.Quantity
                 Array of shape (steps,) with the computed DOS values.
 
         Raises
@@ -226,6 +226,9 @@ class Spectrum(_has_lattice, _has_kpath):
             smearing = window_size / 200
         if steps is None:
             steps = int(4 * (window_size / smearing))
+        if window is None:
+            V_min = V_min - smearing * precision
+            V_max = V_max + smearing * precision
         V_grid = np.linspace(V_min, V_max, steps)
 
         # Flatten eigenvalues and weights
@@ -252,7 +255,7 @@ class Spectrum(_has_lattice, _has_kpath):
                     flattened_eigs = truncated_eigs
                     flattened_weights = truncated_weights
                     break
-        self.DOS = SimpleNamespace(vgrid=V_grid * units, DOS=DOS)
+        self.DOS = SimpleNamespace(vgrid=V_grid * units, DOS=DOS * 1 / units)
 
     def get_1Dkpath(self, patched=True) -> np.ndarray:
         """
@@ -408,7 +411,7 @@ class Spectrum(_has_lattice, _has_kpath):
                 ax.fill_betweenx(
                     x, 0, y, alpha=alpha, color=line.get_color(), zorder=z_fill
                 )
-            ax.set_xlabel("DOS")
+            ax.set_xlabel(f"DOS({y.units})")
             ax.set_xlim(left=0)
             ax.set_ylim(np.min(x), np.max(x))
         else:
@@ -418,7 +421,7 @@ class Spectrum(_has_lattice, _has_kpath):
                 ax.fill_between(
                     x, y, alpha=alpha, color=line.get_color(), zorder=z_fill
                 )
-            ax.set_ylabel("DOS")
+            ax.set_ylabel(f"DOS({y.units})")
             ax.set_xlim(np.min(x), np.max(x))
             ax.set_ylim(bottom=0)
 
