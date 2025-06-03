@@ -569,7 +569,7 @@ def _spectra_DOS(
     for name, spine in ax_DOS.spines.items():
         if name not in ["bottom", "left"]:
             spine.set_visible(False)
-
+    ax_DOS.set_xlabel('DOS')
     plt.tight_layout()
     return ax, ax_DOS
 
