@@ -98,6 +98,46 @@ class _has_kpath:
     def __init__(self, kpath: SimpleNamespace | np.ndarray = None):
         self.kpath = kpath
 
+    def get_1Dkpath(self, patched=True) -> np.ndarray:
+        """
+        Computes the 1D cumulative k-path from the k-point coordinates.
+
+        Parameters
+        ----------
+        patched : bool, optional
+            If True, attempts to patch discontinuities in the k-path.
+            This prevents artificially connected lines in band structure
+            plots (e.g., flat bands across high-symmetry points).
+
+        Returns
+        ----------
+        kpath : np.ndarray
+            The 1D cumulative k-path from the k-point coordinates.
+        """
+        if self.kpoints is None:
+            raise ValueError("kpoints are not defined.")
+
+        # Strip units for math, retain them for reapplication later
+        if isinstance(self.kpoints, ureg.Quantity):
+            kpoints = self.kpoints
+            if "crystal" in kpoints.units._units and self.k_lattice is not None:
+                kpoints = ut.cryst2cartesian(self.kpoints, self.k_lattice)
+            units = kpoints.units
+            kpts_val = kpoints.magnitude
+        else:
+            units = 1
+            kpts_val = self.kpoints
+
+        # Compute segment lengths
+        delta_k = np.diff(kpts_val, axis=0)
+        segment_lengths = np.linalg.norm(delta_k, axis=1)
+        if patched:
+            # Define discontinuities as large jumps relative to minimum segment
+            threshold = np.min(segment_lengths[segment_lengths >= 1e-5]) * 10
+            segment_lengths = np.where(segment_lengths > threshold, 0, segment_lengths)
+        kpath = np.concatenate([[0], np.cumsum(segment_lengths)])
+        return kpath * units
+
 
 class Spectrum(_has_lattice, _has_kpath):
     """
@@ -256,46 +296,6 @@ class Spectrum(_has_lattice, _has_kpath):
                     flattened_weights = truncated_weights
                     break
         self.DOS = SimpleNamespace(vgrid=V_grid * units, DOS=DOS * 1 / units)
-
-    def get_1Dkpath(self, patched=True) -> np.ndarray:
-        """
-        Computes the 1D cumulative k-path from the k-point coordinates.
-
-        Parameters
-        ----------
-        patched : bool, optional
-            If True, attempts to patch discontinuities in the k-path.
-            This prevents artificially connected lines in band structure
-            plots (e.g., flat bands across high-symmetry points).
-
-        Returns
-        ----------
-        kpath : np.ndarray
-            The 1D cumulative k-path from the k-point coordinates.
-        """
-        if self.kpoints is None:
-            raise ValueError("kpoints are not defined.")
-
-        # Strip units for math, retain them for reapplication later
-        if isinstance(self.kpoints, ureg.Quantity):
-            kpoints = self.kpoints
-            if "crystal" in kpoints.units._units and self.k_lattice is not None:
-                kpoints = ut.cryst2cartesian(self.kpoints, self.k_lattice)
-            units = kpoints.units
-            kpts_val = kpoints.magnitude
-        else:
-            units = 1
-            kpts_val = self.kpoints
-
-        # Compute segment lengths
-        delta_k = np.diff(kpts_val, axis=0)
-        segment_lengths = np.linalg.norm(delta_k, axis=1)
-        if patched:
-            # Define discontinuities as large jumps relative to minimum segment
-            threshold = np.min(segment_lengths[segment_lengths >= 1e-5]) * 10
-            segment_lengths = np.where(segment_lengths > threshold, 0, segment_lengths)
-        kpath = np.concatenate([[0], np.cumsum(segment_lengths)])
-        return kpath * units
 
     def plot(
         self,
