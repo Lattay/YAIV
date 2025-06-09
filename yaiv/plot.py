@@ -43,7 +43,15 @@ from yaiv import utils as ut
 from yaiv import spectrum as spec
 
 
-__all__ = ["get_HSP_ticks", "kpath", "bands", "phonons", "DOS", "bandsDOS", "phononDOS"]
+__all__ = [
+    "get_HSP_ticks",
+    "kpath",
+    "bands",
+    "phonons",
+    "DOS",
+    "bandsDOS",
+    "phononDOS",
+]
 
 
 def get_HSP_ticks(
@@ -185,7 +193,9 @@ def _compare_spectra(
             colors[i] if colors is not None and i < len(colors) else next(cycle_iter)
         )
 
-        label = labels[i] if labels is not None and i < len(labels) else f"Spectrum {i+1}"
+        label = (
+            labels[i] if labels is not None and i < len(labels) else f"Spectrum {i+1}"
+        )
         ax = S.plot(
             ax=ax,
             shift=getattr(S, "fermi", None),
@@ -569,7 +579,7 @@ def _spectra_DOS(
     for name, spine in ax_DOS.spines.items():
         if name not in ["bottom", "left"]:
             spine.set_visible(False)
-    ax_DOS.set_xlabel('DOS')
+    ax_DOS.set_xlabel("DOS")
     plt.tight_layout()
     return ax, ax_DOS
 

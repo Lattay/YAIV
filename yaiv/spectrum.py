@@ -428,6 +428,111 @@ class Spectrum(_has_lattice, _has_kpath):
         return ax
 
 
+class _has_projections:
+    def __init__(self, parent):
+        self._parent = parent
+
+    def plot(
+        self,
+        projections: np.ndarray,
+        window=None,
+        ax: Axes = None,
+        shift: float | ureg.Quantity = None,
+        patched: bool = True,
+        bands: list[int] = None,
+        **kwargs,
+    ) -> Axes:
+        """
+        Plot the spectrum over a cumulative k-path.
+
+        Parameters
+        ----------
+        ax : Axes, optional
+            Axes to plot on. If None, a new figure and axes are created.
+        projections : np.ndarray, ureg.Quantity
+            Array of shape (nkpts, neigs).
+        window : list[float,float], optional
+            Minimal and maximum values for the colormap of the projections.
+            Default is minimal of maximal values for the set of projections.
+        shift : float | ureg.Quantity, optional
+            A constant shift applied to the eigenvalues (e.g., Fermi level).
+            Default is zero.
+        patched : bool, optional
+            If True, attempts to patch discontinuities in the k-path.
+            This prevents artificially connected lines in band structure
+            plots (e.g., flat bands across high-symmetry points).
+        bands : list of int, optional
+            Indices of the bands to plot. If None, all bands are plotted.
+        **kwargs : dict
+            Additional matplotlib arguments passed to `plot()`.
+
+        Returns
+        ----------
+        ax : Axes
+            The axes with the spectrum plot.
+        scatter : matplotlib.collections.PathCollection
+            The axes with the spectrum plot.
+        """
+        # Handle units
+        quantities = [self._parent.eigenvalues, shift]
+        names = ["eigenvalues", "shift"]
+        ut._check_unit_consistency(quantities, names)
+        proj = (
+            projections.magnitude
+            if isinstance(projections, ureg.Quantity)
+            else projections
+        )
+        window = (
+            window.to(projections.units).magnitude
+            if isinstance(window, ureg.Quantity)
+            else window
+        )
+
+        if ax is None:
+            fig, ax = plt.subplots()
+
+        # Apply shift to eigenvalues
+        eigen = (
+            self._parent.eigenvalues - shift
+            if shift is not None
+            else self._parent.eigenvalues
+        )
+        kpath = self._parent.get_1Dkpath(patched)
+        x = kpath / kpath[-1].magnitude
+
+        band_indices = bands if bands is not None else range(eigen.shape[1])
+        if window is None:
+            vmin = np.min(proj[:, band_indices])
+            vmax = np.max(proj[:, band_indices])
+        else:
+            vmin, vmax = window
+
+        label = kwargs.pop("label", None)  # remove label from kwargs
+        scatter = ax.scatter(
+            x,
+            eigen[:, band_indices[0]],
+            c=proj[:, band_indices[0]],
+            vmin=vmin,
+            vmax=vmax,
+            label=label,
+            edgecolors="none",
+            **kwargs,
+        )
+        for i in band_indices[1:]:
+            ax.scatter(
+                x,
+                eigen[:, i],
+                c=proj[:, i],
+                vmin=vmin,
+                vmax=vmax,
+                edgecolors="none",
+                **kwargs,
+            )
+
+        ax.set_xlim(0, 1)
+        return ax, scatter
+
+
 class ElectronBands(Spectrum):
     """
     Class for handling electronic bandstructures and spectrums.

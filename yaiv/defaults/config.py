@@ -60,6 +60,7 @@ plot_defaults = SimpleNamespace(
 
 # Optional: override matplotlib rcParams directly if desired
 matplotlib.rcParams["axes.prop_cycle"] = plt.cycler(color=plot_defaults.color_cycle)
+matplotlib.rcParams['image.cmap'] = 'plasma'
 # matplotlib.rcParams["lines.linewidth"] = plot_defaults.linewidth
 # matplotlib.rcParams["font.size"] = plot_defaults.font_size
 # matplotlib.rcParams["axes.labelsize"] = plot_defaults.label_size
