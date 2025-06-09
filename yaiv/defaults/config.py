@@ -46,6 +46,7 @@ plot_defaults = SimpleNamespace(
     alpha=0.2,  # Transparency
     DOS_c="black",  # Default DOS color for band calculations
     bandsDOS_ratio=0.2,  # Ratio between DOS and bands in spectraDOS plots
+    weights_s=40,  # Default size for weight scatter plots
     #    linewidth=1.5,
     #    linestyle='-',
     #    marker='o',

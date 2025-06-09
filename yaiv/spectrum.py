@@ -31,6 +31,7 @@ from types import SimpleNamespace
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
+from matplotlib.collections import PathCollection
 
 from yaiv.defaults.config import ureg
 from yaiv.defaults.config import plot_defaults as pdft
@@ -330,9 +331,10 @@ class Spectrum(_has_lattice, _has_kpath):
             The axes with the spectrum plot.
         """
         # Handle units
-        quantities = [self.eigenvalues, shift]
-        names = ["eigenvalues", "shift"]
-        ut._check_unit_consistency(quantities, names)
+        if shift is not None:
+            quantities = [self.eigenvalues, shift]
+            names = ["eigenvalues", "shift"]
+            ut._check_unit_consistency(quantities, names)
 
         if ax is None:
             fig, ax = plt.subplots()
@@ -340,7 +342,8 @@ class Spectrum(_has_lattice, _has_kpath):
         # Apply shift to eigenvalues
         eigen = self.eigenvalues - shift if shift is not None else self.eigenvalues
         kpath = self.get_1Dkpath(patched)
-        x = kpath / kpath[-1].magnitude
+        lenght = kpath[-1].magnitude if isinstance(kpath, ureg.Quantity) else kpath[-1]
+        x = kpath / lenght
 
         band_indices = bands if bands is not None else range(eigen.shape[1])
 
@@ -428,32 +431,38 @@ class Spectrum(_has_lattice, _has_kpath):
         return ax
 
 
-class _has_projections:
+class _has_weights:
+    """
+    General class for storing the eigenvalues of a periodic operator over k-points.
+    """
+
     def __init__(self, parent):
         self._parent = parent
 
     def plot(
         self,
-        projections: np.ndarray,
-        window=None,
+        weights: np.ndarray,
+        window: list[float, float] | ureg.Quantity = None,
         ax: Axes = None,
+        size_change: bool = False,
+        alpha_change: bool = False,
         shift: float | ureg.Quantity = None,
         patched: bool = True,
         bands: list[int] = None,
         **kwargs,
-    ) -> Axes:
+    ):
         """
-        Plot the spectrum over a cumulative k-path.
+        Plot the weights over a cumulative k-path.
 
         Parameters
         ----------
         ax : Axes, optional
             Axes to plot on. If None, a new figure and axes are created.
-        projections : np.ndarray, ureg.Quantity
+        weights : np.ndarray, ureg.Quantity
             Array of shape (nkpts, neigs).
         window : list[float,float], optional
-            Minimal and maximum values for the colormap of the projections.
-            Default is minimal of maximal values for the set of projections.
+            Minimal and maximum values for the colormap of the weights.
+            Default is minimal of maximal values for the set of weights.
         shift : float | ureg.Quantity, optional
             A constant shift applied to the eigenvalues (e.g., Fermi level).
             Default is zero.
@@ -477,13 +486,9 @@ class _has_projections:
         quantities = [self._parent.eigenvalues, shift]
         names = ["eigenvalues", "shift"]
         ut._check_unit_consistency(quantities, names)
-        proj = (
-            projections.magnitude
-            if isinstance(projections, ureg.Quantity)
-            else projections
-        )
+        W = weights.magnitude if isinstance(weights, ureg.Quantity) else weights
         window = (
-            window.to(projections.units).magnitude
+            window.to(weights.units).magnitude
             if isinstance(window, ureg.Quantity)
             else window
         )
@@ -502,16 +507,30 @@ class _has_projections:
 
         band_indices = bands if bands is not None else range(eigen.shape[1])
         if window is None:
-            vmin = np.min(proj[:, band_indices])
-            vmax = np.max(proj[:, band_indices])
+            vmin = np.min(W[:, band_indices])
+            vmax = np.max(W[:, band_indices])
         else:
             vmin, vmax = window
 
-        label = kwargs.pop("label", None)  # remove label from kwargs
+        # remove some labels from kwargs
+        label = kwargs.pop("label", None)
+        s = kwargs.pop("s", pdft.weights_s)
+        alpha = kwargs.pop("alpha", 1)
+        if alpha_change:
+            alpha = np.clip((W - vmin) / (vmax - vmin), 0, 1)
+        else:
+            alpha = np.ones(W.shape)
+        if size_change:
+            s = np.clip((W - vmin) / (vmax - vmin), 0, 1) * s
+        else:
+            s = np.ones(W.shape) * s
+
         scatter = ax.scatter(
             x,
             eigen[:, band_indices[0]],
-            c=proj[:, band_indices[0]],
+            c=W[:, band_indices[0]],
+            s=s[:, band_indices[0]],
+            alpha=alpha[:, band_indices[0]],
             vmin=vmin,
             vmax=vmax,
             label=label,
@@ -522,7 +541,9 @@ class _has_projections:
             ax.scatter(
                 x,
                 eigen[:, i],
-                c=proj[:, i],
+                c=W[:, i],
+                s=s[:, i],
+                alpha=alpha[:, i],
                 vmin=vmin,
                 vmax=vmax,
                 edgecolors="none",
