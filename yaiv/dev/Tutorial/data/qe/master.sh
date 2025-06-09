@@ -10,6 +10,7 @@ source SYSTEM.INFO
 # Electronic spectrum
 bash scf.sh
 bash bands.sh
+bash project_bands.sh
 
 # Phonon spectrum
 bash ph.sh
