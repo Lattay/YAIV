@@ -62,7 +62,7 @@ read -p "Do you want to proceed with updating the dev branch? (yes/no): " procee
 if [[ "$proceed" == "yes" ]]; then
     git switch dev
     git add -A
-    git commit -m "NEW version $VERSION"
+    git commit -m "NEW UPDATE v$VERSION"
     git push private dev
 else
     echo "Skipping dev branch update."
