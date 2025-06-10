@@ -62,7 +62,7 @@ read -p "Do you want to proceed with updating the dev branch? (yes/no): " procee
 if [[ "$proceed" == "yes" ]]; then
     git switch dev
     git add -A
-    git commit -m "Version $VERSION"
+    git commit -m "NEW version $VERSION"
     git push private dev
 else
     echo "Skipping dev branch update."
@@ -76,25 +76,29 @@ if [[ "$proceed" == "yes" ]]; then
     git switch pip
     # Merge changes from dev into pip, excluding yaiv/dev
     git checkout dev -- . ':!yaiv/dev'
-    # Reset to clean staging area
-    git reset HEAD -- .
     git status
-    # Create a commit with the version number
-    git commit -m "Merge dev into pip (excluding yaiv/dev) — Version $VERSION"
-    # Create a fake merge commit for bookkeeping
-    git merge -s ours dev
+
     # Verify the differences (should only be yaiv/dev)
     echo "Differences between pip and dev branches:"
     git diff --name-only dev
 
     # Confirm differences before pushing
-    read -p "Are the differences as expected? (yes/no): " confirm_diff
+    read -p "Are the differences as expected (only dev/ files)? (yes/no): " confirm_diff
     if [[ "$confirm_diff" != "yes" ]]; then
         echo "Differences not as expected, exiting."
         exit 1
     fi
 
+    # Create a commit with the version number
+    git commit -m "Merge dev into pip (excluding yaiv/dev) — Version $VERSION"
+    # Create a fake merge commit for bookkeeping
+    git merge -s ours dev -m "Merge dev into pip (excluding yaiv/dev) — Version $VERSION"
     # Push Changes
+    git push private pip
+    echo "Merge and push to pip branch completed with version $VERSION."
+
+    # Push Changes to pip branch
+    git tag -a "v$VERSION" -m "Release version $VERSION"
     git push private pip
     echo "Merge and push to pip branch completed with version $VERSION."
 else
@@ -109,7 +113,7 @@ if [[ "$proceed" == "yes" ]]; then
     git switch main
     git checkout pip -- . ':!new_test_env.sh' ':!push_pypi.sh' ':!pyproject.toml'
     git commit -m "Merge pip into main — Version $VERSION"
-    git merge -s ours pip
+    git merge -s ours pip -m "Merge pip into main — Version $VERSION"
     git push private main
     git push public main
     echo "Merge and push to main branch completed with version $VERSION."
