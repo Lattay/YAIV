@@ -70,6 +70,7 @@ fi
 echo "======================================================================="
 echo
 
+# Merge dev into pip
 read -p "Do you want to proceed with merging dev into pip? (yes/no): " proceed
 if [[ "$proceed" == "yes" ]]; then
     # Switch to pip branch
@@ -103,6 +104,7 @@ fi
 echo "======================================================================="
 echo
 
+# Merge pip into main (public)
 read -p "Do you want to proceed with updating the main branch from pip? (yes/no): " proceed
 if [[ "$proceed" == "yes" ]]; then
     # Update main branch from pip and push
@@ -119,6 +121,7 @@ fi
 echo "======================================================================="
 echo
 
+# Build  PyPi package
 read -p "Do you want to build the package? (yes/no): " proceed
 if [[ "$proceed" == "yes" ]]; then
     # Build the package
@@ -132,6 +135,7 @@ fi
 echo "======================================================================="
 echo
 
+# Publisy PyPi package
 read -p "Do you want to upload the package to PyPI? (yes/no): " proceed
 if [[ "$proceed" == "yes" ]]; then
     # Upload it to PyPI
