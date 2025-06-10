@@ -138,6 +138,7 @@ if [[ "$proceed" == "yes" ]]; then
     python3 -m pip install --upgrade twine
     python3 -m twine upload dist/*
     echo "Package uploaded."
+    git switch dev
 else
     echo "Skipping upload to PyPI."
 fi
