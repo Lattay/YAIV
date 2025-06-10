@@ -60,11 +60,14 @@ class _has_lattice:
         3x3 matrix of reciprocal lattice vectors in 2π[length]⁻¹ units.
     """
 
-    def __init__(self, lattice: np.ndarray = None):
+    def __init__(self, lattice: np.ndarray = None, k_lattice: np.ndarray = None):
         self._lattice = self._k_lattice = None
         if lattice is not None:
             self._lattice = lattice
             self._k_lattice = ut.reciprocal_basis(self._lattice)
+        elif k_lattice is not None:
+            self._k_lattice = k_lattice
+            self._lattice = ut.reciprocal_basis(self._k_lattice)
 
     @property
     def lattice(self):
@@ -159,6 +162,7 @@ class Spectrum(_has_lattice, _has_kpath):
         3x3 matrix of direct lattice vectors in [length] units.
     k_lattice : np.ndarray, optional
         3x3 matrix of reciprocal lattice vectors in 2π[length]⁻¹ units.
+        Will be ignored when defining the spectrum if lattice is given.
     kpath : SimpleNamespace | np.ndarray, optional
         A namespace with attributes `path`(ndarray) and `labels`(list)
         or just a ndarray.
@@ -175,12 +179,13 @@ class Spectrum(_has_lattice, _has_kpath):
         kpoints: np.ndarray = None,
         weights: list | np.ndarray = None,
         lattice: np.ndarray = None,
+        k_lattice: np.ndarray = None,
         kpath: SimpleNamespace | np.ndarray = None,
     ):
         self.eigenvalues = eigenvalues
         self.kpoints = kpoints
         self.weights = weights
-        _has_lattice.__init__(self, lattice)
+        _has_lattice.__init__(self, lattice, k_lattice)
         _has_kpath.__init__(self, kpath)
         self.DOS = None
 
@@ -298,6 +303,66 @@ class Spectrum(_has_lattice, _has_kpath):
                     break
         self.DOS = SimpleNamespace(vgrid=V_grid * units, DOS=DOS * 1 / units)
 
+    def _pre_plot(
+        self=None,
+        ax=None,
+        shift=None,
+        bands=None,
+        patched=True,
+        weights=None,
+        window=None,
+    ):
+        """
+        Pre plotting tool to avoid code duplication.
+        """
+        # Handle units
+        if shift is not None:
+            quantities = [self.eigenvalues, shift]
+            names = ["eigenvalues", "shift"]
+            ut._check_unit_consistency(quantities, names)
+
+        # Create fig if necessary
+        if ax is None:
+            fig, ax = plt.subplots()
+
+        # Apply shift to eigenvalues
+        eigen = self.eigenvalues - shift if shift is not None else self.eigenvalues
+        kpath = self.get_1Dkpath(patched)
+        lenght = kpath[-1].magnitude if isinstance(kpath, ureg.Quantity) else kpath[-1]
+        x = kpath / lenght
+
+        band_indices = bands if bands is not None else range(eigen.shape[1])
+
+        # Handle weights if present
+        if weights is not None:
+            W = weights.magnitude if isinstance(weights, ureg.Quantity) else weights
+            window = (
+                window.to(weights.units).magnitude
+                if isinstance(window, ureg.Quantity)
+                else window
+            )
+            if window is None:
+                vmin = np.min(W[:, band_indices])
+                vmax = np.max(W[:, band_indices])
+            else:
+                vmin, vmax = window
+            return SimpleNamespace(
+                ax=ax,
+                x=x,
+                eigen=eigen,
+                band_indices=band_indices,
+                weights=W,
+                vmin=vmin,
+                vmax=vmax,
+            )
+        else:
+            return SimpleNamespace(
+                ax=ax,
+                x=x,
+                eigen=eigen,
+                band_indices=band_indices,
+            )
+
     def plot(
         self,
         ax: Axes = None,
@@ -330,29 +395,185 @@ class Spectrum(_has_lattice, _has_kpath):
         ax : Axes
             The axes with the spectrum plot.
         """
-        # Handle units
-        if shift is not None:
-            quantities = [self.eigenvalues, shift]
-            names = ["eigenvalues", "shift"]
-            ut._check_unit_consistency(quantities, names)
-
-        if ax is None:
-            fig, ax = plt.subplots()
-
-        # Apply shift to eigenvalues
-        eigen = self.eigenvalues - shift if shift is not None else self.eigenvalues
-        kpath = self.get_1Dkpath(patched)
-        lenght = kpath[-1].magnitude if isinstance(kpath, ureg.Quantity) else kpath[-1]
-        x = kpath / lenght
-
-        band_indices = bands if bands is not None else range(eigen.shape[1])
-
+        P = self._pre_plot(ax, shift, bands, patched)
         label = kwargs.pop("label", None)  # remove label from kwargs
-        ax.plot(x, eigen[:, band_indices[0]], label=label, **kwargs)
-        ax.plot(x, eigen[:, band_indices[1:]], **kwargs)
+        P.ax.plot(P.x, P.eigen[:, P.band_indices[0]], label=label, **kwargs)
+        P.ax.plot(P.x, P.eigen[:, P.band_indices[1:]], **kwargs)
 
-        ax.set_xlim(0, 1)
-        return ax
+        P.ax.set_xlim(0, 1)
+        return P.ax
+
+    def plot_fat(
+        self,
+        weights: np.ndarray,
+        window: list[float, float] | ureg.Quantity = None,
+        ax: Axes = None,
+        size_change: bool = False,
+        alpha_change: bool = False,
+        shift: float | ureg.Quantity = None,
+        patched: bool = True,
+        bands: list[int] = None,
+        **kwargs,
+    ) -> (Axes, PathCollection):
+        """
+        Fat-band style plotting for weights over a cumulative k-path.
+
+        These weights can represent projections over orbitals or other similar attributes.
+        A point will be scattered at coordinates (k,E) with color, size, transparency related to the weights input.
+
+        Parameters
+        ----------
+        weights : np.ndarray, ureg.Quantity
+            Array of shape (nkpts, neigs).
+        window : list[float,float], optional
+            Minimal and maximum values for the colormap of the weights.
+            Default is minimal of maximal values for the set of weights.
+        ax : Axes, optional
+            Axes to plot on. If None, a new figure and axes are created.
+        size_change : bool, optional
+            Whether the size of the dots should also change (linked to the window).
+        alpha_change : bool, optional
+            Whether the transparency (alpha) of the dots should also change (linked to the window).
+        shift : float | ureg.Quantity, optional
+            A constant shift applied to the eigenvalues (e.g., Fermi level).
+            Default is zero.
+        patched : bool, optional
+            If True, attempts to patch discontinuities in the k-path.
+            This prevents artificially connected lines in band structure
+            plots (e.g., flat bands across high-symmetry points).
+        bands : list of int, optional
+            Indices of the bands to plot. If None, all bands are plotted.
+        **kwargs : dict
+            Additional matplotlib arguments passed to `scatter()`.
+
+        Returns
+        ----------
+        ax : Axes
+            The axes with the spectrum plot.
+        scatter : matplotlib.collections.PathCollection
+            The PathCollection for generating the colorbar.
+        """
+        P = self._pre_plot(ax, shift, bands, patched, weights, window)
+
+        # Remove some labels from kwargs
+        label = kwargs.pop("label", None)
+        s = kwargs.pop("s", pdft.weights_s)
+        alpha = kwargs.pop("alpha", 1)
+        if alpha_change:
+            alpha = np.clip((P.weights - P.vmin) / (P.vmax - P.vmin), 0, 1)
+        else:
+            alpha = np.ones(P.weights.shape)
+        if size_change:
+            s = np.clip((P.weights - P.vmin) / (P.vmax - P.vmin), 0, 1) * s
+        else:
+            s = np.ones(P.weights.shape) * s
+
+        scatter = P.ax.scatter(
+            P.x,
+            P.eigen[:, P.band_indices[0]],
+            c=P.weights[:, P.band_indices[0]],
+            s=s[:, P.band_indices[0]],
+            alpha=alpha[:, P.band_indices[0]],
+            vmin=P.vmin,
+            vmax=P.vmax,
+            label=label,
+            edgecolors="none",
+            **kwargs,
+        )
+        for i in P.band_indices[1:]:
+            P.ax.scatter(
+                P.x,
+                P.eigen[:, i],
+                c=P.weights[:, i],
+                s=s[:, i],
+                alpha=alpha[:, i],
+                vmin=P.vmin,
+                vmax=P.vmax,
+                edgecolors="none",
+                **kwargs,
+            )
+
+        P.ax.set_xlim(0, 1)
+        return P.ax, scatter
+
+    def plot_color(
+        self,
+        weights: np.ndarray,
+        window: list[float, float] | ureg.Quantity = None,
+        ax: Axes = None,
+        shift: float | ureg.Quantity = None,
+        patched: bool = True,
+        bands: list[int] = None,
+        **kwargs,
+    ) -> (Axes, LineCollection):
+        """
+        Color gradient line-style for weights over a cumulative k-path.
+
+        These weights can represent projections over orbitals or other similar attributes.
+        A LineCollection will be plotted with color related to the weights input.
+
+        Parameters
+        ----------
+        weights : np.ndarray, ureg.Quantity
+            Array of shape (nkpts, neigs).
+        window : list[float,float], optional
+            Minimal and maximum values for the colormap of the weights.
+            Default is minimal of maximal values for the set of weights.
+        ax : Axes, optional
+            Axes to plot on. If None, a new figure and axes are created.
+        shift : float | ureg.Quantity, optional
+            A constant shift applied to the eigenvalues (e.g., Fermi level).
+            Default is zero.
+        patched : bool, optional
+            If True, attempts to patch discontinuities in the k-path.
+            This prevents artificially connected lines in band structure
+            plots (e.g., flat bands across high-symmetry points).
+        bands : list of int, optional
+            Indices of the bands to plot. If None, all bands are plotted.
+        **kwargs : dict
+            Additional matplotlib arguments passed to `LineCollection()`.
+
+        Returns
+        ----------
+        ax : Axes
+            The axes with the spectrum plot.
+        line : matplotlib.collections.LineCollection
+            The LineCollection for generating the colorbar.
+        """
+        P = self._pre_plot(ax, shift, bands, patched, weights, window)
+
+        # Remove some labels from kwargs
+        label = kwargs.pop("label", None)
+        linewidth = kwargs.pop("linewidth", pdft.gradcolor_w)
+
+        norm = plt.Normalize(P.vmin, P.vmax)
+        # Plotting band by band
+        points = np.array([P.x, P.eigen[:, P.band_indices[0]]]).T.reshape(-1, 1, 2)
+        segments = np.concatenate([points[:-1], points[1:]], axis=1)
+        lc = LineCollection(
+            segments,
+            norm=norm,
+            label=label,
+            **kwargs,
+        )
+        lc.set_array(P.weights[:, P.band_indices[0]])
+        lc.set_linewidth(linewidth)
+        line = P.ax.add_collection(lc)
+        for i in P.band_indices[1:]:
+            points = np.array([P.x, P.eigen[:, P.band_indices[i]]]).T.reshape(-1, 1, 2)
+            segments = np.concatenate([points[:-1], points[1:]], axis=1)
+            lc = LineCollection(
+                segments,
+                norm=norm,
+                **kwargs,
+            )
+            lc.set_array(P.weights[:, P.band_indices[i]])
+            lc.set_linewidth(linewidth)
+            P.ax.add_collection(lc)
+
+        P.ax.autoscale_view()
+        P.ax.set_xlim(0, 1)
+        return P.ax, line
 
     def plot_DOS(
         self,
@@ -429,226 +650,6 @@ class Spectrum(_has_lattice, _has_kpath):
             ax.set_ylim(bottom=0)
 
         return ax
-
-    def plot_fat(
-        self,
-        weights: np.ndarray,
-        window: list[float, float] | ureg.Quantity = None,
-        ax: Axes = None,
-        size_change: bool = False,
-        alpha_change: bool = False,
-        shift: float | ureg.Quantity = None,
-        patched: bool = True,
-        bands: list[int] = None,
-        **kwargs,
-    ) -> (Axes, PathCollection):
-        """
-        Fat-band style plotting for weights over a cumulative k-path.
-
-        These weights can represent projections over orbitals or other similar attributes.
-        A point will be scattered at coordinates (k,E) with color, size, transparency related to the weights input.
-
-        Parameters
-        ----------
-        weights : np.ndarray, ureg.Quantity
-            Array of shape (nkpts, neigs).
-        window : list[float,float], optional
-            Minimal and maximum values for the colormap of the weights.
-            Default is minimal of maximal values for the set of weights.
-        ax : Axes, optional
-            Axes to plot on. If None, a new figure and axes are created.
-        size_change : bool, optional
-            Whether the size of the dots should also change (linked to the window).
-        alpha_change : bool, optional
-            Whether the transparency (alpha) of the dots should also change (linked to the window).
-        shift : float | ureg.Quantity, optional
-            A constant shift applied to the eigenvalues (e.g., Fermi level).
-            Default is zero.
-        patched : bool, optional
-            If True, attempts to patch discontinuities in the k-path.
-            This prevents artificially connected lines in band structure
-            plots (e.g., flat bands across high-symmetry points).
-        bands : list of int, optional
-            Indices of the bands to plot. If None, all bands are plotted.
-        **kwargs : dict
-            Additional matplotlib arguments passed to `scatter()`.
-
-        Returns
-        ----------
-        ax : Axes
-            The axes with the spectrum plot.
-        scatter : matplotlib.collections.PathCollection
-            The PathCollection for generating the colorbar.
-        """
-        # Handle units
-        quantities = [self.eigenvalues, shift]
-        names = ["eigenvalues", "shift"]
-        ut._check_unit_consistency(quantities, names)
-        W = weights.magnitude if isinstance(weights, ureg.Quantity) else weights
-        window = (
-            window.to(weights.units).magnitude
-            if isinstance(window, ureg.Quantity)
-            else window
-        )
-
-        if ax is None:
-            fig, ax = plt.subplots()
-
-        # Apply shift to eigenvalues
-        eigen = self.eigenvalues - shift if shift is not None else self.eigenvalues
-        kpath = self.get_1Dkpath(patched)
-        x = kpath / kpath[-1].magnitude
-
-        band_indices = bands if bands is not None else range(eigen.shape[1])
-        if window is None:
-            vmin = np.min(W[:, band_indices])
-            vmax = np.max(W[:, band_indices])
-        else:
-            vmin, vmax = window
-
-        # Remove some labels from kwargs
-        label = kwargs.pop("label", None)
-        s = kwargs.pop("s", pdft.weights_s)
-        alpha = kwargs.pop("alpha", 1)
-        if alpha_change:
-            alpha = np.clip((W - vmin) / (vmax - vmin), 0, 1)
-        else:
-            alpha = np.ones(W.shape)
-        if size_change:
-            s = np.clip((W - vmin) / (vmax - vmin), 0, 1) * s
-        else:
-            s = np.ones(W.shape) * s
-
-        scatter = ax.scatter(
-            x,
-            eigen[:, band_indices[0]],
-            c=W[:, band_indices[0]],
-            s=s[:, band_indices[0]],
-            alpha=alpha[:, band_indices[0]],
-            vmin=vmin,
-            vmax=vmax,
-            label=label,
-            edgecolors="none",
-            **kwargs,
-        )
-        for i in band_indices[1:]:
-            ax.scatter(
-                x,
-                eigen[:, i],
-                c=W[:, i],
-                s=s[:, i],
-                alpha=alpha[:, i],
-                vmin=vmin,
-                vmax=vmax,
-                edgecolors="none",
-                **kwargs,
-            )
-
-        ax.set_xlim(0, 1)
-        return ax, scatter
-
-    def plot_color(
-        self,
-        weights: np.ndarray,
-        window: list[float, float] | ureg.Quantity = None,
-        ax: Axes = None,
-        shift: float | ureg.Quantity = None,
-        patched: bool = True,
-        bands: list[int] = None,
-        **kwargs,
-    ) -> (Axes, LineCollection):
-        """
-        Color gradient line-style for weights over a cumulative k-path.
-
-        These weights can represent projections over orbitals or other similar attributes.
-        A LineCollection will be plotted with color related to the weights input.
-
-        Parameters
-        ----------
-        weights : np.ndarray, ureg.Quantity
-            Array of shape (nkpts, neigs).
-        window : list[float,float], optional
-            Minimal and maximum values for the colormap of the weights.
-            Default is minimal of maximal values for the set of weights.
-        ax : Axes, optional
-            Axes to plot on. If None, a new figure and axes are created.
-        shift : float | ureg.Quantity, optional
-            A constant shift applied to the eigenvalues (e.g., Fermi level).
-            Default is zero.
-        patched : bool, optional
-            If True, attempts to patch discontinuities in the k-path.
-            This prevents artificially connected lines in band structure
-            plots (e.g., flat bands across high-symmetry points).
-        bands : list of int, optional
-            Indices of the bands to plot. If None, all bands are plotted.
-        **kwargs : dict
-            Additional matplotlib arguments passed to `LineCollection()`.
-
-        Returns
-        ----------
-        ax : Axes
-            The axes with the spectrum plot.
-        line : matplotlib.collections.LineCollection
-            The LineCollection for generating the colorbar.
-        """
-        # Handle units
-        quantities = [self.eigenvalues, shift]
-        names = ["eigenvalues", "shift"]
-        ut._check_unit_consistency(quantities, names)
-        W = weights.magnitude if isinstance(weights, ureg.Quantity) else weights
-        window = (
-            window.to(weights.units).magnitude
-            if isinstance(window, ureg.Quantity)
-            else window
-        )
-
-        if ax is None:
-            fig, ax = plt.subplots()
-
-        # Apply shift to eigenvalues
-        eigen = self.eigenvalues - shift if shift is not None else self.eigenvalues
-        kpath = self.get_1Dkpath(patched)
-        x = kpath / kpath[-1].magnitude
-
-        band_indices = bands if bands is not None else range(eigen.shape[1])
-        if window is None:
-            vmin = np.min(W[:, band_indices])
-            vmax = np.max(W[:, band_indices])
-        else:
-            vmin, vmax = window
-        norm = plt.Normalize(vmin, vmax)
-
-        # Remove some labels from kwargs
-        label = kwargs.pop("label", None)
-        linewidth = kwargs.pop("linewidth", pdft.gradcolor_w)
-
-        # Plotting band by band
-        points = np.array([x, eigen[:, band_indices[0]]]).T.reshape(-1, 1, 2)
-        segments = np.concatenate([points[:-1], points[1:]], axis=1)
-        lc = LineCollection(
-            segments,
-            norm=norm,
-            label=label,
-            **kwargs,
-        )
-        lc.set_array(W[:, band_indices[0]])
-        lc.set_linewidth(linewidth)
-        line = ax.add_collection(lc)
-        for i in band_indices[1:]:
-            points = np.array([x, eigen[:, band_indices[i]]]).T.reshape(-1, 1, 2)
-            segments = np.concatenate([points[:-1], points[1:]], axis=1)
-            lc = LineCollection(
-                segments,
-                norm=norm,
-                **kwargs,
-            )
-            lc.set_array(W[:, band_indices[i]])
-            lc.set_linewidth(linewidth)
-            ax.add_collection(lc)
-
-        ax.autoscale_view()
-        ax.set_xlim(0, 1)
-        return ax, line
 
 
 class ElectronBands(Spectrum):
