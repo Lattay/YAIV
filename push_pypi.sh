@@ -83,7 +83,7 @@ if [[ "$proceed" == "yes" ]]; then
     git diff --name-only dev
 
     # Confirm differences before pushing
-    read -p "Are the differences as expected (only dev/ files)? (yes/no): " confirm_diff
+    read -p "Are the differences as expected (only dev/ files) and you want to merge? (yes/no): " confirm_diff
     if [[ "$confirm_diff" != "yes" ]]; then
         echo "Differences not as expected, exiting."
         exit 1
@@ -93,10 +93,6 @@ if [[ "$proceed" == "yes" ]]; then
     git commit -m "Merge dev into pip (excluding yaiv/dev) — Version $VERSION"
     # Create a fake merge commit for bookkeeping
     git merge -s ours dev -m "Merge dev into pip (excluding yaiv/dev) — Version $VERSION"
-    # Push Changes
-    git push private pip
-    echo "Merge and push to pip branch completed with version $VERSION."
-
     # Push Changes to pip branch
     git tag -a "v$VERSION" -m "Release version $VERSION"
     git push private pip
