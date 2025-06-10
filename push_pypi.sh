@@ -1,49 +1,146 @@
 #!/bin/bash
 
-# Extract version number from __init__.py
+#=======================================================================
+#                               push_pypi.sh
+#=======================================================================
+#
+# Description:
+#   This script automates the process of merging branches, updating
+#   version numbers, building a Python package, and uploading to PyPI.
+#
+# Usage:
+#   $ ./push_pypi.sh [options]
+#
+# Options:
+#   -h, --help       Display this help message.
+#
+# Example:
+#   ./push_pypi.sh
+#
+#=======================================================================
+# Author: Martin Gutierrez-Amigo
+# Created: 2025-06-10
+#=======================================================================
 
-# Extract version number
+# Function: print_help
+print_help() {
+    echo "push_pypi.sh - Automates merging branches and uploading packages to PyPI."
+    echo "Usage: $ ./push_pypi.sh [options]"
+    echo ""
+    echo "Options:"
+    echo "  -h, --help     Display this help message."
+    echo ""
+    echo "Example:"
+    echo "  ./push_pypi.sh"
+}
+
+# Parse command-line arguments
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+    print_help
+    exit 0
+fi
+
+# Main script logic
+
+# Extract version number from __init__.py
 VERSION=$(awk -F"'" '/^__version__/ {print $2}' yaiv/__init__.py)
-echo $VERSION
+echo "Extracted Version: $VERSION"
+
+# Confirm version
+read -p "Is the version number correct? (yes/no): " confirm_version
+if [[ "$confirm_version" != "yes" ]]; then
+    echo "Version not confirmed, exiting."
+    exit 1
+fi
 
 # Ensure we're up to date
+echo Fetching...
 git fetch
 
-# Switch to dev branch and reset changes
-git switch dev
-git add -A
-git commit -m "Version $VERSION"
-git push private dev
+# Switch to dev branch and push changes
+read -p "Do you want to proceed with updating the dev branch? (yes/no): " proceed
+if [[ "$proceed" == "yes" ]]; then
+    git switch dev
+    git add -A
+    git commit -m "Version $VERSION"
+    git push private dev
+else
+    echo "Skipping dev branch update."
+fi
+echo "======================================================================="
+echo
 
-# Switch to pip branch
-git switch pip
+read -p "Do you want to proceed with merging dev into pip? (yes/no): " proceed
+if [[ "$proceed" == "yes" ]]; then
+    # Switch to pip branch
+    git switch pip
+    # Merge changes from dev into pip, excluding yaiv/dev
+    git checkout dev -- . ':!yaiv/dev'
+    # Reset to clean staging area
+    git reset HEAD -- .
+    git status
+    # Create a commit with the version number
+    git commit -m "Merge dev into pip (excluding yaiv/dev) — Version $VERSION"
+    # Create a fake merge commit for bookkeeping
+    git merge -s ours dev
+    # Verify the differences (should only be yaiv/dev)
+    echo "Differences between pip and dev branches:"
+    git diff --name-only dev
 
-# Merge changes from dev into pip, excluding yaiv/dev
-git checkout dev -- . ':!yaiv/dev'
+    # Confirm differences before pushing
+    read -p "Are the differences as expected? (yes/no): " confirm_diff
+    if [[ "$confirm_diff" != "yes" ]]; then
+        echo "Differences not as expected, exiting."
+        exit 1
+    fi
 
-# Reset to clean staging area
-git reset HEAD -- .
-git status
+    # Push Changes
+    git push private pip
+    echo "Merge and push to pip branch completed with version $VERSION."
+else
+    echo "Skipping merge from dev into pip."
+fi
+echo "======================================================================="
+echo
 
-# Create a commit with the version number
-git commit -m "Merge dev into pip (excluding yaiv/dev) — Version $VERSION"
+read -p "Do you want to proceed with updating the main branch from pip? (yes/no): " proceed
+if [[ "$proceed" == "yes" ]]; then
+    # Update main branch from pip and push
+    git switch main
+    git checkout pip -- . ':!new_test_env.sh' ':!push_pypi.sh' ':!pyproject.toml'
+    git commit -m "Merge pip into main — Version $VERSION"
+    git merge -s ours pip
+    git push private main
+    git push public main
+    echo "Merge and push to main branch completed with version $VERSION."
+else
+    echo "Skipping update of main branch from pip."
+fi
+echo "======================================================================="
+echo
 
-# Create a fake merge commit for bookkeeping to avoid confusion later
-git merge -s ours dev
+read -p "Do you want to build the package? (yes/no): " proceed
+if [[ "$proceed" == "yes" ]]; then
+    # Build the package
+    git switch pip
+    python3 -m pip install --upgrade build
+    python3 -m build
+    echo "Package build completed."
+else
+    echo "Skipping package build."
+fi
+echo "======================================================================="
+echo
 
-# Verify the differences (should only be yaiv/dev)
-echo "Differences between pip and dev branches:"
-git diff --name-only dev
-
-# Push Changes
-git push private pip
-
-echo "Merge and push to pip branch completed with version $VERSION."
-
-#BUILD THE PACKAGE
-python3 -m pip install --upgrade build
-python3 -m build
-
-##UPLOADE IT TO PYPI
-python3 -m pip install --upgrade twine
-python3 -m twine upload dist/*
+read -p "Do you want to upload the package to PyPI? (yes/no): " proceed
+if [[ "$proceed" == "yes" ]]; then
+    # Upload it to PyPI
+    python3 -m pip install --upgrade twine
+    python3 -m twine upload dist/*
+    echo "Package uploaded."
+else
+    echo "Skipping upload to PyPI."
+fi
+echo "======================================================================="
+echo
+echo "DONE 🎉"
