@@ -62,7 +62,7 @@ read -p "Do you want to proceed with updating the dev branch? (yes/no): " procee
 if [[ "$proceed" == "yes" ]]; then
     git switch dev
     git add -A
-    git commit -m "NEW version $VERSION"
+    git commit -m "NEW UPDATE v$VERSION"
     git push private dev
 else
     echo "Skipping dev branch update."
@@ -70,6 +70,7 @@ fi
 echo "======================================================================="
 echo
 
+# Merge dev into pip
 read -p "Do you want to proceed with merging dev into pip? (yes/no): " proceed
 if [[ "$proceed" == "yes" ]]; then
     # Switch to pip branch
@@ -83,7 +84,7 @@ if [[ "$proceed" == "yes" ]]; then
     git diff --name-only dev
 
     # Confirm differences before pushing
-    read -p "Are the differences as expected (only dev/ files)? (yes/no): " confirm_diff
+    read -p "Are the differences as expected (only dev/ files) and you want to merge? (yes/no): " confirm_diff
     if [[ "$confirm_diff" != "yes" ]]; then
         echo "Differences not as expected, exiting."
         exit 1
@@ -93,10 +94,6 @@ if [[ "$proceed" == "yes" ]]; then
     git commit -m "Merge dev into pip (excluding yaiv/dev) — Version $VERSION"
     # Create a fake merge commit for bookkeeping
     git merge -s ours dev -m "Merge dev into pip (excluding yaiv/dev) — Version $VERSION"
-    # Push Changes
-    git push private pip
-    echo "Merge and push to pip branch completed with version $VERSION."
-
     # Push Changes to pip branch
     git tag -a "v$VERSION" -m "Release version $VERSION"
     git push private pip
@@ -107,6 +104,7 @@ fi
 echo "======================================================================="
 echo
 
+# Merge pip into main (public)
 read -p "Do you want to proceed with updating the main branch from pip? (yes/no): " proceed
 if [[ "$proceed" == "yes" ]]; then
     # Update main branch from pip and push
@@ -123,6 +121,7 @@ fi
 echo "======================================================================="
 echo
 
+# Build  PyPi package
 read -p "Do you want to build the package? (yes/no): " proceed
 if [[ "$proceed" == "yes" ]]; then
     # Build the package
@@ -136,12 +135,14 @@ fi
 echo "======================================================================="
 echo
 
+# Publisy PyPi package
 read -p "Do you want to upload the package to PyPI? (yes/no): " proceed
 if [[ "$proceed" == "yes" ]]; then
     # Upload it to PyPI
     python3 -m pip install --upgrade twine
     python3 -m twine upload dist/*
     echo "Package uploaded."
+    git switch dev
 else
     echo "Skipping upload to PyPI."
 fi

@@ -696,7 +696,7 @@ class ElectronBands(Spectrum):
             spec = grep.kpointsEnergies(self.filepath)
             Spectrum.__init__(
                 self,
-                eigenvalues=spec.eigenvalues,
+                eigenvalues=spec.energies,
                 kpoints=spec.kpoints,
                 weights=spec.weights,
                 lattice=lattice,
@@ -741,9 +741,8 @@ class PhononBands(Spectrum):
             spec = grep.kpointsFrequencies(self.filepath)
             Spectrum.__init__(
                 self,
-                eigenvalues=spec.eigenvalues,
+                eigenvalues=spec.frequencies,
                 kpoints=spec.kpoints,
-                weights=spec.weights,
                 lattice=lattice,
             )
         else:
