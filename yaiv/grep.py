@@ -47,7 +47,6 @@ import numpy as np
 from ase import io
 
 from yaiv.defaults.config import ureg
-from yaiv.spectrum import Spectrum
 from yaiv import utils as ut
 from yaiv import grep
 
@@ -562,7 +561,7 @@ def kpath(file: str, labels: bool = True) -> SimpleNamespace | np.ndarray:
         return kpath
 
 
-def kpointsEnergies(file: str) -> Spectrum:
+def kpointsEnergies(file: str) -> SimpleNamespace:
     """
     Grep the kpoints, energies and kpoint-weights for different file kinds.
 
@@ -578,12 +577,12 @@ def kpointsEnergies(file: str) -> Spectrum:
 
     Returns
     -------
-    spectrum : Spectrum
-        Spectrum class with the following attributes:
-        - eigenvalues : np.ndarray
+    SimpleNamespace : SimpleNamespace
+        SimpleNamespace class with the following attributes:
+        - energies : np.ndarray
             List of energies, each row corresponds to a particular k-point.
         - kpoints : np.ndarray
-            List of k-points.  - weights : np.ndarray
+            List of k-points.
         - weights : np.ndarray
             List of kpoint-weights.
 
@@ -720,12 +719,14 @@ def kpointsEnergies(file: str) -> Spectrum:
                             E = None
         else:
             raise NotImplementedError("Unsupported filetype")
-    return Spectrum(
-        ENERGIES * ureg("eV"), KPOINTS * (ureg._2pi / ureg.crystal), WEIGHTS
+    return SimpleNamespace(
+        energies=ENERGIES * ureg("eV"),
+        kpoints=KPOINTS * (ureg._2pi / ureg.crystal),
+        weights=WEIGHTS,
     )
 
 
-def kpointsFrequencies(file: str) -> Spectrum:
+def kpointsFrequencies(file: str) -> SimpleNamespace:
     """
     Grep the kpoints and frequencies from phonon ouputs.
 
@@ -740,14 +741,12 @@ def kpointsFrequencies(file: str) -> Spectrum:
 
     Returns
     -------
-    spectrum : Spectrum
-        Spectrum class with the following attributes:
-        - eigenvalues : np.ndarray
+    SimpleNamespace : SimpleNamespace
+        SimpleNamespace class with the following attributes:
+        - frequencies : np.ndarray
             List of frequencies, each row corresponds to a particular k-point.
         - kpoints : np.ndarray
             List of k-points.
-        - weights : np.ndarray
-            List of kpoint-weights.
 
     Raises
     ------
@@ -783,4 +782,4 @@ def kpointsFrequencies(file: str) -> Spectrum:
     # Give proper units
     FREQS = FREQS * ureg("c") / ureg("cm")
     KPOINTS = KPOINTS * (ureg("_2pi") / ureg("alat"))
-    return Spectrum(FREQS, KPOINTS, None)
+    return SimpleNamespace(frequencies=FREQS, kpoints=KPOINTS)
