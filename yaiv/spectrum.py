@@ -148,9 +148,9 @@ class DOS:
     """
     General class for storing density of states (DOS) values.
 
-    DOS : np.ndarray | ureg.Quantity
+    DOS : np.ndarray | pint.Quantity
         Array of shape (N,) with the corresponding DOS values (1/eigenvalue) units.
-    vgrid : np.ndarray | ureg.Quantity
+    vgrid : np.ndarray | pint.Quantity
         Array of shape (N,) with the eigenvalue units.
     parent : Spectrum | ElectronBands | PhononBands
         Parent class so that DOS can access parent attributes.
@@ -161,60 +161,93 @@ class DOS:
         self.vgrid = vgrid
         self._parent = parent
 
-    def integrate(self, limit=None, fill_states=None):
-        """Integrates the density of states for different purposes
-        data = file from which to read the DOS or DOS itself as given by grep_DOS.
-        fermi = Energy up to which the integration is done.
-
-        This method serves a couple of porpuses and depending on the input gives different output. The integration is done with the trapezoidal method.
-        JUST INTEGRATION
-            returns the integrated DOS -> number of bands
-        Looking to achieve certain doping?
-            fill_states = Number of desired filled number of states
-            returns the energy at which that number of states is filled.
+    def integrate(
+        self, limit: float | ureg.Quantity = None, occ_states: float = None
+    ) -> (float, float):
         """
+        Integrate the density of states (DOS) up to a given energy or to determine
+        the energy at which a certain number of states are filled.
+
+        This method supports two use cases:
+        1. **Plain integration**: returns the total number of states up to `limit`.
+        2. **Inverse filling**: finds the energy at which the number of filled states equals `occ_states`.
+
+        Parameters
+        ----------
+        limit : float or pint.Quantity, optional
+            Upper energy bound for the integration. If None, integrates up to the
+            maximum of `self.vgrid`.
+
+        occ_states : float, optional
+            Target number of filled states. If provided, the method finds the energy
+            at which this number of states is reached by integration of the DOS.
+
+        Returns
+        -------
+        tuple(float, float) : value, error
+            - If `occ_states` is None: value is the integrated number of states (and estimated error).
+            - If `occ_states` is set: value is the energy at which that number of states is filled (and error).
+
+        Notes
+        -----
+        The method uses cubic interpolation and `scipy.integrate.quad` for accurate integration.
+        A binary search strategy is used when `occ_states` is specified.
+
+        Raises
+        ------
+        RuntimeError:
+           When convergence for the energy to get the filled states is not achieved in 100 iterations.
+        """
+        # Determine integration limit
         if limit is None:
             limit = self.vgrid[-1]
 
-        # Handle units
+        # Unit consistency check
         quantities = [self.DOS, self.vgrid, limit]
         names = ["DOS", "vgrid", "limit"]
         ut._check_unit_consistency(quantities, names)
+
+        # Handle Pint quantities
         if isinstance(self.DOS, ureg.Quantity):
             units = self.vgrid.units
             X = self.vgrid.magnitude
             Y = self.DOS.to(1 / units).magnitude
             X_max = limit.to(units).magnitude
+        else:
+            units = 1
+            X = self.vgrid
+            Y = self.DOS
+            X_max = limit
 
-        if fill_states is not None:
-            return "TEXT"
+        # Create interpolation function
+        f_interp = interpolate.interp1d(
+            X, Y, kind="cubic", fill_value=0.0, bounds_error=False
+        )
 
-        # Interpolate the function and integrate
-        f_interp = interpolate.interp1d(X, Y, kind="cubic")
-        integral, error = integrate.quad(f_interp, X[0], X_max)
-        return integral, error
+        if occ_states is None:
+            # Case 1: Plain integration
+            integral, error = integrate.quad(f_interp, X[0], X_max, limit=100)
+            return integral, error
+        else:
+            # Case 2: Inverse problem — find X_occ such that integral = occ_states
+            X_low = X[0]
+            X_high = X[-1]
+            max_iter = 100
 
-    #        # If you are looking for doping in order to achieve certain shift in the Fermi level
-    #        if shift != None:
-    #            for i, num in enumerate(data[:, 0]):
-    #                if num > fermi + shift:
-    #                    limit = i
-    #                    break
-    #            fill_states = num_elec - np.trapz(data[:limit, 1], data[:limit, 0])
-    #            return fill_states
-    #        # If you want to predict the chemical potential shift from certain doping
-    #        if fill_states != None:
-    #            tota_elec = num_elec - fill_states
-    #            low = 0
-    #            for limit, dum in enumerate(data[:, 0]):
-    #                elec = np.trapz(data[:limit, 1], data[:limit, 0])
-    #                high = data[limit, 0]
-    #                if elec >= tota_elec:
-    #                    break
-    #                else:
-    #                    low = high
-    #            return low + (high - low) / 2
-    #        return num_elec
+            for _ in range(max_iter):
+                X_occ = 0.5 * (X_low + X_high)
+                integral, error = integrate.quad(f_interp, X[0], X_occ, limit=100)
+                if abs(integral - occ_states) < error:
+                    break
+                if integral > occ_states:
+                    X_high = X_occ
+                else:
+                    X_low = X_occ
+            else:
+                raise RuntimeError(
+                    "Did not converge to target occ_states within error tolerance."
+                )
+            return X_occ * units, error * units
 
     def plot(
         self,
@@ -232,7 +265,7 @@ class DOS:
         ----------
         ax : Axes, optional
             Axes to plot on. If None, a new figure and axes are created.
-        shift : float | ureg.Quantity, optional
+        shift : float | pint.Quantity, optional
             A constant shift applied to the DOS (e.g., Fermi level).
             Default is zero.
         switchXY : bool, optional
@@ -317,7 +350,7 @@ class Spectrum(_has_lattice, _has_kpath):
         A namespace with attributes `path`(ndarray) and `labels`(list)
         or just a ndarray.
     DOS : DOS, optional
-        - vgrid : np.ndarray | ureg.Quantity
+        - vgrid : np.ndarray | pint.Quantity
             Array of shape (steps,) with the eigenvalue units.
         - DOS : np.ndarray
             Array of shape (steps,) with the corresponding DOS values.
@@ -355,12 +388,12 @@ class Spectrum(_has_lattice, _has_kpath):
 
         Parameters
         ----------
-        center : float | ureg.Quantity, optional
+        center : float | pint.Quantity, optional
             Center for the energy window (e.g., Fermi energy). Default is zero.
-        window : float | list[float] | ureg.Quantity, optional
+        window : float | list[float] | pint.Quantity, optional
             Value window for the DOS. If float, interpreted as symmetric [-window, window].
             If list, used as [Vmin, Vmax]. If None, the eigenvalue range (± smearing * precision) is used.
-        smearing : float | ureg.Quantity, optional
+        smearing : float | pint.Quantity, optional
             Gaussian smearing width in the same units as eigenvalues. Default is (window_size/200).
         steps : int, optional
             Number of grid points for DOS sampling. Default is 4 * (window_size/smearing).
@@ -370,9 +403,9 @@ class Spectrum(_has_lattice, _has_kpath):
         Returns
         -------
         self.DOS : DOS
-            - vgrid : np.ndarray | ureg.Quantity
+            - vgrid : np.ndarray | pint.Quantity
                 Array of shape (steps,) with the eigenvalue units.
-            - DOS : np.ndarray | ureg.Quantity
+            - DOS : np.ndarray | pint.Quantity
                 Array of shape (steps,) with the computed DOS values.
 
         Raises
@@ -528,7 +561,7 @@ class Spectrum(_has_lattice, _has_kpath):
         ----------
         ax : Axes, optional
             Axes to plot on. If None, a new figure and axes are created.
-        shift : float | ureg.Quantity, optional
+        shift : float | pint.Quantity, optional
             A constant shift applied to the eigenvalues (e.g., Fermi level).
             Default is zero.
         patched : bool, optional
@@ -573,7 +606,7 @@ class Spectrum(_has_lattice, _has_kpath):
 
         Parameters
         ----------
-        weights : np.ndarray, ureg.Quantity
+        weights : np.ndarray, pint.Quantity
             Array of shape (nkpts, neigs).
         window : list[float,float], optional
             Minimal and maximum values for the colormap of the weights.
@@ -584,7 +617,7 @@ class Spectrum(_has_lattice, _has_kpath):
             Whether the size of the dots should also change (linked to the window).
         alpha_change : bool, optional
             Whether the transparency (alpha) of the dots should also change (linked to the window).
-        shift : float | ureg.Quantity, optional
+        shift : float | pint.Quantity, optional
             A constant shift applied to the eigenvalues (e.g., Fermi level).
             Default is zero.
         patched : bool, optional
@@ -664,14 +697,14 @@ class Spectrum(_has_lattice, _has_kpath):
 
         Parameters
         ----------
-        weights : np.ndarray, ureg.Quantity
+        weights : np.ndarray, pint.Quantity
             Array of shape (nkpts, neigs).
         window : list[float,float], optional
             Minimal and maximum values for the colormap of the weights.
             Default is minimal of maximal values for the set of weights.
         ax : Axes, optional
             Axes to plot on. If None, a new figure and axes are created.
-        shift : float | ureg.Quantity, optional
+        shift : float | pint.Quantity, optional
             A constant shift applied to the eigenvalues (e.g., Fermi level).
             Default is zero.
         patched : bool, optional
