@@ -32,6 +32,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.collections import PathCollection, LineCollection
+from scipy import interpolate, integrate
 
 from yaiv.defaults.config import ureg
 from yaiv.defaults.config import plot_defaults as pdft
@@ -167,48 +168,129 @@ class DOS:
 
         This method serves a couple of porpuses and depending on the input gives different output. The integration is done with the trapezoidal method.
         JUST INTEGRATION
-            returns the integrated DOS (up to fermi level if present (number of electrons), number of bands otherwise)
-
+            returns the integrated DOS -> number of bands
         Looking to achieve certain doping?
             fill_states = Number of desired filled number of states
             returns the energy at which that number of states is filled.
         """
-        #    if type(data)==str:
-        data = np.loadtxt(data)
-        # Force possitive DOS
-        if force_positive == True:
-            for i, num in enumerate(data[:, 1]):
-                if num < 0:
-                    data[i, 1] = 0
+        if limit is None:
+            limit = self.vgrid[-1]
 
-        # Compute number of electrons up to charge neutrality
-        for i, num in enumerate(data[:, 0]):
-            if num > fermi:
-                limit = i
-                break
-        num_elec = np.trapz(data[:limit, 1], data[:limit, 0])
+        # Handle units
+        quantities = [self.DOS, self.vgrid, limit]
+        names = ["DOS", "vgrid", "limit"]
+        ut._check_unit_consistency(quantities, names)
+        if isinstance(self.DOS, ureg.Quantity):
+            units = self.vgrid.units
+            X = self.vgrid.magnitude
+            Y = self.DOS.to(1 / units).magnitude
+            X_max = limit.to(units).magnitude
 
-        # If you are looking for doping in order to achieve certain shift in the Fermi level
-        if shift != None:
-            for i, num in enumerate(data[:, 0]):
-                if num > fermi + shift:
-                    limit = i
-                    break
-            fill_states = num_elec - np.trapz(data[:limit, 1], data[:limit, 0])
-            return fill_states
-        # If you want to predict the chemical potential shift from certain doping
-        if fill_states != None:
-            tota_elec = num_elec - fill_states
-            low = 0
-            for limit, dum in enumerate(data[:, 0]):
-                elec = np.trapz(data[:limit, 1], data[:limit, 0])
-                high = data[limit, 0]
-                if elec >= tota_elec:
-                    break
-                else:
-                    low = high
-            return low + (high - low) / 2
-        return num_elec
+        if fill_states is not None:
+            return "TEXT"
+
+        # Interpolate the function and integrate
+        f_interp = interpolate.interp1d(X, Y, kind="cubic")
+        integral, error = integrate.quad(f_interp, X[0], X_max)
+        return integral, error
+
+    #        # If you are looking for doping in order to achieve certain shift in the Fermi level
+    #        if shift != None:
+    #            for i, num in enumerate(data[:, 0]):
+    #                if num > fermi + shift:
+    #                    limit = i
+    #                    break
+    #            fill_states = num_elec - np.trapz(data[:limit, 1], data[:limit, 0])
+    #            return fill_states
+    #        # If you want to predict the chemical potential shift from certain doping
+    #        if fill_states != None:
+    #            tota_elec = num_elec - fill_states
+    #            low = 0
+    #            for limit, dum in enumerate(data[:, 0]):
+    #                elec = np.trapz(data[:limit, 1], data[:limit, 0])
+    #                high = data[limit, 0]
+    #                if elec >= tota_elec:
+    #                    break
+    #                else:
+    #                    low = high
+    #            return low + (high - low) / 2
+    #        return num_elec
+
+    def plot(
+        self,
+        ax: Axes = None,
+        shift: float | ureg.Quantity = None,
+        switchXY: bool = False,
+        fill: bool = True,
+        alpha: float = pdft.alpha,
+        **kwargs,
+    ) -> Axes:
+        """
+        Plot the DOS over an eigenvalue-window.
+
+        Parameters
+        ----------
+        ax : Axes, optional
+            Axes to plot on. If None, a new figure and axes are created.
+        shift : float | ureg.Quantity, optional
+            A constant shift applied to the DOS (e.g., Fermi level).
+            Default is zero.
+        switchXY : bool, optional
+            Whether to plot the DOS along the x-axis (horizontal plot). Default is False.
+        fill : bool, optional
+            Whether to fill the area under the curve. Default is True.
+        alpha : float, optional
+            Opacity of the fill (0 = transparent, 1 = solid).
+        **kwargs : dict
+            Additional matplotlib arguments passed to `plot()`.
+
+        Returns
+        ----------
+        ax : Axes
+            The axes with the spectrum plot.
+        """
+        # Handle units
+        if self.DOS is None:
+            quantities = [self._parent.eigenvalues, shift]
+            names = ["self.eigenvalues", "shift"]
+        else:
+            quantities = [self.DOS, self.vgrid, shift]
+            names = ["self.DOS", "self.vgrid", "shift"]
+        ut._check_unit_consistency(quantities, names)
+
+        if ax is None:
+            fig, ax = plt.subplots()
+
+        if self.DOS is None:
+            self._parent.get_DOS()
+        x = self.vgrid if shift is None else self.vgrid - shift
+        y = self.DOS
+
+        z_line = kwargs.pop("zorder", 2)  # allow overriding via kwargs
+        z_fill = z_line - 1  # ensure fill is below the line
+
+        if switchXY:
+            # DOS on x-axis, energy on y-axis
+            (line,) = ax.plot(y, x, zorder=z_line, **kwargs)
+            if fill:
+                ax.fill_betweenx(
+                    x, 0, y, alpha=alpha, color=line.get_color(), zorder=z_fill
+                )
+            ax.set_xlabel(f"DOS({y.units})")
+            ax.set_xlim(left=0)
+            ax.set_ylim(np.min(x), np.max(x))
+        else:
+            # Energy on x-axis, DOS on y-axis
+            (line,) = ax.plot(x, y, zorder=z_line, **kwargs)
+            if fill:
+                ax.fill_between(
+                    x, y, alpha=alpha, color=line.get_color(), zorder=z_fill
+                )
+            ax.set_ylabel(f"DOS({y.units})")
+            ax.set_xlim(np.min(x), np.max(x))
+            ax.set_ylim(bottom=0)
+
+        return ax
 
 
 class Spectrum(_has_lattice, _has_kpath):
@@ -341,8 +423,8 @@ class Spectrum(_has_lattice, _has_kpath):
         if steps is None:
             steps = int(4 * (window_size / smearing))
         if window is None:
-            V_min = V_min - smearing * precision
-            V_max = V_max + smearing * precision
+            V_min = V_min - smearing * (precision + 1)
+            V_max = V_max + smearing * (precision + 1)
         V_grid = np.linspace(V_min, V_max, steps)
 
         # Flatten eigenvalues and weights
@@ -642,82 +724,6 @@ class Spectrum(_has_lattice, _has_kpath):
         P.ax.autoscale_view()
         P.ax.set_xlim(0, 1)
         return P.ax, line
-
-    def plot_DOS(
-        self,
-        ax: Axes = None,
-        shift: float | ureg.Quantity = None,
-        switchXY: bool = False,
-        fill: bool = True,
-        alpha: float = pdft.alpha,
-        **kwargs,
-    ) -> Axes:
-        """
-        Plot the DOS over an eigenvalue-window.
-
-        Parameters
-        ----------
-        ax : Axes, optional
-            Axes to plot on. If None, a new figure and axes are created.
-        shift : float | ureg.Quantity, optional
-            A constant shift applied to the DOS (e.g., Fermi level).
-            Default is zero.
-        switchXY : bool, optional
-            Whether to plot the DOS along the x-axis (horizontal plot). Default is False.
-        fill : bool, optional
-            Whether to fill the area under the curve. Default is True.
-        alpha : float, optional
-            Opacity of the fill (0 = transparent, 1 = solid).
-        **kwargs : dict
-            Additional matplotlib arguments passed to `plot()`.
-
-        Returns
-        ----------
-        ax : Axes
-            The axes with the spectrum plot.
-        """
-        # Handle units
-        if self.DOS is None:
-            quantities = [self.eigenvalues, shift]
-            names = ["self.eigenvalues", "shift"]
-        else:
-            quantities = [self.DOS.vgrid, shift]
-            names = ["self.DOS.vgrid", "shift"]
-        ut._check_unit_consistency(quantities, names)
-
-        if ax is None:
-            fig, ax = plt.subplots()
-
-        if self.DOS is None:
-            self.get_DOS()
-        x = self.DOS.vgrid if shift is None else self.DOS.vgrid - shift
-        y = self.DOS.DOS
-
-        z_line = kwargs.pop("zorder", 2)  # allow overriding via kwargs
-        z_fill = z_line - 1  # ensure fill is below the line
-
-        if switchXY:
-            # DOS on x-axis, energy on y-axis
-            (line,) = ax.plot(y, x, zorder=z_line, **kwargs)
-            if fill:
-                ax.fill_betweenx(
-                    x, 0, y, alpha=alpha, color=line.get_color(), zorder=z_fill
-                )
-            ax.set_xlabel(f"DOS({y.units})")
-            ax.set_xlim(left=0)
-            ax.set_ylim(np.min(x), np.max(x))
-        else:
-            # Energy on x-axis, DOS on y-axis
-            (line,) = ax.plot(x, y, zorder=z_line, **kwargs)
-            if fill:
-                ax.fill_between(
-                    x, y, alpha=alpha, color=line.get_color(), zorder=z_fill
-                )
-            ax.set_ylabel(f"DOS({y.units})")
-            ax.set_xlim(np.min(x), np.max(x))
-            ax.set_ylim(bottom=0)
-
-        return ax
 
 
 class ElectronBands(Spectrum):

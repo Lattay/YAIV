@@ -436,7 +436,7 @@ def DOS(
             steps=steps,
             precision=precision,
         )
-        ax = S.plot_DOS(
+        ax = S.DOS.plot(
             ax,
             shift=getattr(S, "fermi", None),
             switchXY=switchXY,
@@ -466,7 +466,7 @@ def DOS(
                 steps=steps,
                 precision=precision,
             )
-            ax = S.plot_DOS(
+            ax = S.DOS.plot(
                 ax,
                 shift=getattr(S, "fermi", None),
                 switchXY=switchXY,
