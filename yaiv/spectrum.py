@@ -143,6 +143,74 @@ class _has_kpath:
         return kpath * units
 
 
+class DOS:
+    """
+    General class for storing density of states (DOS) values.
+
+    DOS : np.ndarray | ureg.Quantity
+        Array of shape (N,) with the corresponding DOS values (1/eigenvalue) units.
+    vgrid : np.ndarray | ureg.Quantity
+        Array of shape (N,) with the eigenvalue units.
+    parent : Spectrum | ElectronBands | PhononBands
+        Parent class so that DOS can access parent attributes.
+    """
+
+    def __init__(self, DOS=None, vgrid=None, parent=None):
+        self.DOS = DOS
+        self.vgrid = vgrid
+        self._parent = parent
+
+    def integrate(self, limit=None, fill_states=None):
+        """Integrates the density of states for different purposes
+        data = file from which to read the DOS or DOS itself as given by grep_DOS.
+        fermi = Energy up to which the integration is done.
+
+        This method serves a couple of porpuses and depending on the input gives different output. The integration is done with the trapezoidal method.
+        JUST INTEGRATION
+            returns the integrated DOS (up to fermi level if present (number of electrons), number of bands otherwise)
+
+        Looking to achieve certain doping?
+            fill_states = Number of desired filled number of states
+            returns the energy at which that number of states is filled.
+        """
+        #    if type(data)==str:
+        data = np.loadtxt(data)
+        # Force possitive DOS
+        if force_positive == True:
+            for i, num in enumerate(data[:, 1]):
+                if num < 0:
+                    data[i, 1] = 0
+
+        # Compute number of electrons up to charge neutrality
+        for i, num in enumerate(data[:, 0]):
+            if num > fermi:
+                limit = i
+                break
+        num_elec = np.trapz(data[:limit, 1], data[:limit, 0])
+
+        # If you are looking for doping in order to achieve certain shift in the Fermi level
+        if shift != None:
+            for i, num in enumerate(data[:, 0]):
+                if num > fermi + shift:
+                    limit = i
+                    break
+            fill_states = num_elec - np.trapz(data[:limit, 1], data[:limit, 0])
+            return fill_states
+        # If you want to predict the chemical potential shift from certain doping
+        if fill_states != None:
+            tota_elec = num_elec - fill_states
+            low = 0
+            for limit, dum in enumerate(data[:, 0]):
+                elec = np.trapz(data[:limit, 1], data[:limit, 0])
+                high = data[limit, 0]
+                if elec >= tota_elec:
+                    break
+                else:
+                    low = high
+            return low + (high - low) / 2
+        return num_elec
+
+
 class Spectrum(_has_lattice, _has_kpath):
     """
     General class for storing the eigenvalues of a periodic operator over k-points.
@@ -166,7 +234,7 @@ class Spectrum(_has_lattice, _has_kpath):
     kpath : SimpleNamespace | np.ndarray, optional
         A namespace with attributes `path`(ndarray) and `labels`(list)
         or just a ndarray.
-    DOS : SimpleNamespace, optional
+    DOS : DOS, optional
         - vgrid : np.ndarray | ureg.Quantity
             Array of shape (steps,) with the eigenvalue units.
         - DOS : np.ndarray
@@ -187,7 +255,7 @@ class Spectrum(_has_lattice, _has_kpath):
         self.weights = weights
         _has_lattice.__init__(self, lattice, k_lattice)
         _has_kpath.__init__(self, kpath)
-        self.DOS = None
+        self.DOS = DOS(parent=self)
 
     def get_DOS(
         self,
@@ -219,7 +287,7 @@ class Spectrum(_has_lattice, _has_kpath):
 
         Returns
         -------
-        self.DOS : SimpleNamespace
+        self.DOS : DOS
             - vgrid : np.ndarray | ureg.Quantity
                 Array of shape (steps,) with the eigenvalue units.
             - DOS : np.ndarray | ureg.Quantity
@@ -285,23 +353,23 @@ class Spectrum(_has_lattice, _has_kpath):
         flattened_eigs = flattened_eigs[sort]
         flattened_weights = flattened_weights[sort]
 
-        DOS = np.zeros_like(V_grid)
+        dos = np.zeros_like(V_grid)
 
         # DOS calculation (using the fact that eigenvalues are sorted)
         for i, V in enumerate(V_grid):
             for j, e in enumerate(flattened_eigs):
                 if e >= (V - precision * smearing):
-                    if DOS[i] == 0:
+                    if dos[i] == 0:
                         truncated_eigs = flattened_eigs[j:]
                         truncated_weights = flattened_weights[j:]
-                    DOS[i] = (
-                        DOS[i] + ut._normal_dist(e, V, smearing) * flattened_weights[j]
+                    dos[i] = (
+                        dos[i] + ut._normal_dist(e, V, smearing) * flattened_weights[j]
                     )
                 if e >= (V + precision * smearing):
                     flattened_eigs = truncated_eigs
                     flattened_weights = truncated_weights
                     break
-        self.DOS = SimpleNamespace(vgrid=V_grid * units, DOS=DOS * 1 / units)
+        self.DOS = DOS(vgrid=V_grid * units, DOS=dos * 1 / units, parent=self)
 
     def _pre_plot(
         self=None,
