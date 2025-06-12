@@ -209,7 +209,7 @@ class Spectrum(_has_lattice, _has_kpath):
             Center for the energy window (e.g., Fermi energy). Default is zero.
         window : float | list[float] | ureg.Quantity, optional
             Value window for the DOS. If float, interpreted as symmetric [-window, window].
-            If list, used as [Vmin, Vmax]. If None, the eigenvalue range is used.
+            If list, used as [Vmin, Vmax]. If None, the eigenvalue range (± smearing * precision) is used.
         smearing : float | ureg.Quantity, optional
             Gaussian smearing width in the same units as eigenvalues. Default is (window_size/200).
         steps : int, optional
