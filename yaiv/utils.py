@@ -16,6 +16,7 @@ from types import SimpleNamespace
 from typing import Sequence, Any
 
 import numpy as np
+from scipy.special import factorial, hermite
 
 from yaiv.defaults.config import ureg
 
@@ -304,7 +305,7 @@ def grid_generator(grid: list[int], periodic: bool = False) -> np.ndarray:
     return coords
 
 
-def _normal_dist(x, mean, sd, A=1):
+def _normal_dist(x, mean=0, sd=0.1, A=1):
     """
     Evaluate a normalized Gaussian (normal) distribution.
 
@@ -332,6 +333,52 @@ def _normal_dist(x, mean, sd, A=1):
     """
     y = A / (sd * np.sqrt(2 * np.pi)) * np.exp(-0.5 * ((x - mean) / sd) ** 2)
     return y
+
+
+def methpax_delta(
+    x: float, mean: float = 0.0, sigma: float = 0.1, order: int = 1, A: float = 1.0
+) -> float:
+    """
+    Methfessel-Paxton (MP) approximation to the delta fuction δ(x).
+
+    The MP impulse function generalizes a Gaussian by adding Hermite polynomial
+    corrections to improve convergence in electronic structure integrations.
+
+    For order = 0, the function reduces to a normalized Gaussian:
+        A / (σ√(2π)) * exp(-0.5 * ((x - μ) / σ)^2)
+
+    Parameters
+    ----------
+    x : float
+        Point(s) at which to evaluate the smearing function.
+    mean : float, optional
+        Center (mean) of the distribution. Default is 0.
+    sigma : float, optional
+        Smearing width (standard deviation in the Gaussian case). Default is 0.1.
+    order : int, optional
+        Order of the Methfessel-Paxton expansion. Order 0 recovers a Gaussian.
+    A : float, optional
+        Amplitude factor. If A=1, the result integrates to unity. Default is 1.
+
+    Returns
+    -------
+    y : float
+        Value(s) of the MP-smearing function evaluated at x.
+    """
+
+    def A_n(n):
+        return (-1) ** n / (factorial(n) * (4**n) * np.sqrt(np.pi))
+
+    x_scaled = (x - mean) / (np.sqrt(2) * sigma)
+
+    y = 0
+    for n in range(order + 1):
+        coeff = A_n(n)
+        H = hermite(2 * n)(x_scaled)  # Evaluate the Hermite polynomial
+        y += coeff * H * np.exp(-(x_scaled**2))
+    normalization = A * np.sqrt(2)
+
+    return normalization * y
 
 
 def _expand_zone_border(
