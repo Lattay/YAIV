@@ -191,7 +191,7 @@ class DOS:
         Notes
         -----
         The method uses cubic interpolation and `scipy.integrate.quad` for accurate integration.
-        A binary search strategy is used when `occ_states` is specified.
+        A binary search strategy is used when `occ_states` is specified. Which can fail when the DOS has negative values.
 
         Raises
         ------
@@ -245,7 +245,7 @@ class DOS:
                     X_low = X_occ
             else:
                 raise RuntimeError(
-                    "Did not converge to target occ_states within error tolerance."
+                    "Did not converge to target occ_states within error tolerance in 100 iterations."
                 )
             return X_occ * units, error * units
 
