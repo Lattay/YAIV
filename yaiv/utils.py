@@ -28,6 +28,8 @@ __all__ = [
     "cartesian2voigt",
     "voigt2cartesian",
     "grid_generator",
+    "methpax_delta",
+    "analyze_distribution",
 ]
 
 
@@ -379,6 +381,79 @@ def methpax_delta(
     normalization = A * np.sqrt(2)
 
     return normalization * y
+
+
+def analyze_distribution(X, Y):
+    """
+    Analyze the statistical properties of a function defined over a domain.
+
+    Parameters
+    ----------
+    X : array_like
+        1D array representing the domain (e.g., energy, position).
+    Y : array_like
+        1D array representing the function values over X (e.g., DOS, intensity).
+        Does not need to be normalized; normalization is handled internally.
+
+    Returns
+    -------
+    stats : SimpleNamespace
+        Object containing:
+            - mean : float
+                First moment (average) of the distribution.
+            - variance : float
+                Second central moment (spread squared).
+            - std : float
+                Standard deviation (spread of the function).
+            - skewness : float
+                Third standardized moment (asymmetry).
+                Skewness > 0: tail on the right; < 0: tail on the left.
+            - kurtosis : float
+                Fourth standardized moment (peakedness, excess).
+                Kurtosis > 3: sharper than Gaussian; < 3: flatter.
+            - norm : float
+                Area under the curve (integral of Y over X).
+
+    Raises
+    ------
+    ValueError
+        If the integral (normalization) of Y is zero. This means the function has
+        no area under the curve, and statistical quantities become ill-defined.
+    """
+    # Ensure arrays
+    X = np.asarray(X)
+    Y = np.asarray(Y)
+
+    # Compute differential element
+    dx = np.gradient(X)
+
+    # Normalization factor
+    norm = np.sum(Y * dx)
+
+    # Avoid division by zero
+    if norm == 0:
+        raise ValueError("Integral (normalization) of Y is zero.")
+
+    # Mean
+    mean = np.sum(X * Y * dx) / norm
+
+    # Central moments
+    x_shifted = X - mean
+    variance = np.sum((x_shifted) ** 2 * Y * dx) / norm
+    std = np.sqrt(variance)
+
+    # Higher moments
+    skewness = np.sum((x_shifted) ** 3 * Y * dx) / (norm * std**3)
+    kurtosis = np.sum((x_shifted) ** 4 * Y * dx) / (norm * std**4)
+
+    return SimpleNamespace(
+        mean=mean,
+        variance=variance,
+        std=std,
+        skewness=skewness,
+        kurtosis=kurtosis,
+        norm=norm,
+    )
 
 
 def _expand_zone_border(

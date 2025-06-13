@@ -109,7 +109,7 @@ read -p "Do you want to proceed with updating the main branch from pip? (yes/no)
 if [[ "$proceed" == "yes" ]]; then
     # Update main branch from pip and push
     git switch main
-    git checkout pip -- . ':!new_test_env.sh' ':!push_pypi.sh' ':!pyproject.toml'
+    git checkout pip -- . ':!new_test_env.sh' ':!push_pypi.sh' ':!pyproject.toml' ':!Updates.md'
     git commit -m "Merge pip into main — Version $VERSION"
     git merge -s ours pip -m "Merge pip into main — Version $VERSION"
     git push private main
