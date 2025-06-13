@@ -338,7 +338,7 @@ def _normal_dist(x, mean=0, sd=0.1, A=1):
 
 
 def methpax_delta(
-    x: float, mean: float = 0.0, sigma: float = 0.1, order: int = 1, A: float = 1.0
+    x: float, mean: float = 0.0, smearing: float = 0.1, order: int = 1, A: float = 1.0
 ) -> float:
     """
     Methfessel-Paxton (MP) approximation to the delta fuction δ(x).
@@ -355,8 +355,9 @@ def methpax_delta(
         Point(s) at which to evaluate the smearing function.
     mean : float, optional
         Center (mean) of the distribution. Default is 0.
-    sigma : float, optional
-        Smearing width (standard deviation in the Gaussian case). Default is 0.1.
+    smearing : float, optional
+        Smearing width, directly related to the standard deviation (σ) in the Gaussian case,
+        being [smearing = (σ√2)]. Default is 0.1.
     order : int, optional
         Order of the Methfessel-Paxton expansion. Order 0 recovers a Gaussian.
     A : float, optional
@@ -371,7 +372,7 @@ def methpax_delta(
     def A_n(n):
         return (-1) ** n / (factorial(n) * (4**n) * np.sqrt(np.pi))
 
-    x_scaled = (x - mean) / (np.sqrt(2) * sigma)
+    x_scaled = (x - mean) / (smearing)
 
     y = 0
     for n in range(order + 1):
@@ -379,7 +380,7 @@ def methpax_delta(
         H = hermite(2 * n)(x_scaled)  # Evaluate the Hermite polynomial
         y += coeff * H * np.exp(-(x_scaled**2))
 
-    normalization = A / (np.sqrt(2) * sigma)  # Restores scale in physical units
+    normalization = A / smearing  # Restores scale in physical units
     return normalization * y
 
 
