@@ -310,7 +310,7 @@ class DOS:
                     x, 0, y, alpha=alpha, color=line.get_color(), zorder=z_fill
                 )
             ax.set_xlabel(f"DOS({y.units})")
-            ax.set_xlim(left=0)
+            ax.set_xlim(left=np.min(y))
             ax.set_ylim(np.min(x), np.max(x))
         else:
             # Energy on x-axis, DOS on y-axis
@@ -321,7 +321,7 @@ class DOS:
                 )
             ax.set_ylabel(f"DOS({y.units})")
             ax.set_xlim(np.min(x), np.max(x))
-            ax.set_ylim(bottom=0)
+            ax.set_ylim(bottom=np.min(y))
 
         return ax
 
@@ -378,13 +378,16 @@ class Spectrum(_has_lattice, _has_kpath):
         window: float | list[float] | ureg.Quantity = None,
         smearing: float | ureg.Quantity = None,
         steps: int = None,
+        order: int = 0,
         precision: float = 3.0,
     ):
         """
-        Compute a density of states (DOS) using Gaussian smearing.
+        Compute a density of states (DOS) using Gaussian or Methfessel-Paxton (MP)
+        smearing of any order.
 
-        This implementation uses a normal distribution to smear each eigenvalue
-        and returns the total DOS over an eigenvalue grid.
+        This implementation uses a MP delta function to smear each eigenvalue and
+        returns the total DOS over an eigenvalue grid. Since the default order is zero,
+        it defaults to using a Gaussian distribution.
 
         Parameters
         ----------
@@ -394,9 +397,12 @@ class Spectrum(_has_lattice, _has_kpath):
             Value window for the DOS. If float, interpreted as symmetric [-window, window].
             If list, used as [Vmin, Vmax]. If None, the eigenvalue range (± smearing * precision) is used.
         smearing : float | pint.Quantity, optional
-            Gaussian smearing width in the same units as eigenvalues. Default is (window_size/200).
+            Smearing width in the same unit dimension as eigenvalues (standard deviation in the Gaussian case).
+            Default is (window_size/200).
         steps : int, optional
             Number of grid points for DOS sampling. Default is 4 * (window_size/smearing).
+        order : int, optional
+            Order of the Methfessel-Paxton expansion. Default is 0, which recovers a Gaussian smearing.
         precision : float, optional
             Number of smearing widths to use for truncation (e.g., 3 means ±3σ).
 
@@ -471,19 +477,36 @@ class Spectrum(_has_lattice, _has_kpath):
         dos = np.zeros_like(V_grid)
 
         # DOS calculation (using the fact that eigenvalues are sorted)
-        for i, V in enumerate(V_grid):
-            for j, e in enumerate(flattened_eigs):
-                if e >= (V - precision * smearing):
-                    if dos[i] == 0:
-                        truncated_eigs = flattened_eigs[j:]
-                        truncated_weights = flattened_weights[j:]
-                    dos[i] = (
-                        dos[i] + ut._normal_dist(e, V, smearing) * flattened_weights[j]
-                    )
-                if e >= (V + precision * smearing):
-                    flattened_eigs = truncated_eigs
-                    flattened_weights = truncated_weights
-                    break
+        if order == 0:
+            for i, V in enumerate(V_grid):
+                start = np.searchsorted(
+                    flattened_eigs, V - precision * smearing, side="left"
+                )
+                stop = np.searchsorted(
+                    flattened_eigs, V + precision * smearing, side="right"
+                )
+                dos[i] = np.sum(
+                    ut._normal_dist(flattened_eigs[start:stop], V, smearing)
+                    * flattened_weights[start:stop]
+                )
+                # Truncate data
+                flattened_eigs = flattened_eigs[start:]
+                flattened_weights = flattened_weights[start:]
+        else:
+            for i, V in enumerate(V_grid):
+                start = np.searchsorted(
+                    flattened_eigs, V - precision * smearing, side="left"
+                )
+                stop = np.searchsorted(
+                    flattened_eigs, V + precision * smearing, side="right"
+                )
+                dos[i] = np.sum(
+                    ut.methpax_delta(flattened_eigs[start:stop], V, smearing, order)
+                    * flattened_weights[start:stop]
+                )
+                # Truncate data
+                flattened_eigs = flattened_eigs[start:]
+                flattened_weights = flattened_weights[start:]
         self.DOS = DOS(vgrid=V_grid * units, DOS=dos * 1 / units, parent=self)
 
     def _pre_plot(

@@ -378,8 +378,8 @@ def methpax_delta(
         coeff = A_n(n)
         H = hermite(2 * n)(x_scaled)  # Evaluate the Hermite polynomial
         y += coeff * H * np.exp(-(x_scaled**2))
-    normalization = A * np.sqrt(2)
 
+    normalization = A / (np.sqrt(2) * sigma)  # Restores scale in physical units
     return normalization * y
 
 
