@@ -40,7 +40,7 @@ from yaiv import utils as ut
 from yaiv import grep as grep
 
 
-__all__ = ["Spectrum" "ElectronBands", "PhononBands"]
+__all__ = ["DOS", "Spectrum" "ElectronBands", "PhononBands"]
 
 
 class _has_lattice:
