@@ -9,7 +9,7 @@ from yaiv import cell
 from yaiv.dev import grep as grepx
 
 
-__all__ = ["Dyn", "distort_crystal"]
+__all__ = ["Dyn", "CDW"]
 
 
 def _QEdyn2Realdyn(
