@@ -236,17 +236,28 @@ class Dyn:
         self.polarizations = polarizations
 
 
-def distort_crystal(q_points, results_ph, order_parameter, modes, amplitude):
-    print("TODO")
-    # 1. Read crystal structure
-    # 2. Get dynamical matrices
-    # 3. Diagonalize matrices
-    # 4. Get displacement vectors
-    # 5. Find conmmensurate supercell
-    # 6. Get proper phase factors for each cell
-    # 7. Make Supercell displacement vectors combining phase factors and displacement vectors
-    # 8. Add the displacements to create a supercell final displacement
-    # 9. Apply displacement
-    # 10. Return final cell
+# def distort_crystal(q_points, results_ph, order_parameter, modes, amplitude):
+class CDW:
+    def __init__(self, q_cryst, results_ph_path):
+        if len(np.shape(q_cryst)) == 1:
+            q_cryst = [q_cryst]
+        print("TODO")
+        DYNS = []
+        for q in q_cryst:
+            DYNS = DYNS + [Dyn.from_file(q, results_ph_path)]
+        self.DYNS=DYNS
+        # 1. Read crystal structure
+        # 2. Get dynamical matrices
+        # 3. Diagonalize matrices
+        # 4. Get displacement vectors
+        # 5. Find conmmensurate supercell
+        # 6. Get proper phase factors for each cell
+        pass
 
-    pass
+    def distort_crystal(order_parameter, modes, amplitude):
+        print("TODO")
+        # 7. Make Supercell displacement vectors combining phase factors and displacement vectors
+        # 8. Add the displacements to create a supercell final displacement
+        # 9. Apply displacement
+        # 10. Return final cell
+        pass
