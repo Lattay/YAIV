@@ -6,9 +6,10 @@ from yaiv.defaults.config import ureg
 from yaiv import utils as ut
 from yaiv import grep
 from yaiv import cell
+from yaiv.dev import grep as grepx
 
 
-__all__ = ["diago_dyn", "distort_crystal"]
+__all__ = ["Dyn", "distort_crystal"]
 
 
 def _QEdyn2Realdyn(
@@ -76,111 +77,27 @@ def _QEdyn2Realdyn(
     return dyn * units
 
 
-def diago_dyn(
-    dyn_mat: np.ndarray | ureg.Quantity,
-    masses: np.ndarray | ureg.Quantity,
-    qe_format_in: bool = True,
-    qe_format_out: bool = True,
-) -> SimpleNamespace:
-    """
-    Diagonalize a dynamical matrix and return phonon frequencies, polarization vectors and displacements.
-
-    This function converts the input dynamical matrix to its physical form (if needed),
-    diagonalizes it to obtain phonon frequencies (in cm⁻¹), and computes the corresponding
-    normalized displacement vectors.
-
-    Parameters
-    ----------
-    dyn_mat : np.ndarray | ureg.Quantity
-        The (3N × 3N) complex-valued dynamical matrix. If `qe_format_in=True`, this is expected to
-        be the raw QE format (including √(mᵢ mⱼ) prefactors); otherwise, it should already be the
-        physical dynamical matrix in (Ry/h)² units.
-
-    masses : np.ndarray | ureg.Quantity
-        Atomic masses in units of used in the dynamical matrix if qe_format_in is True.
-
-    qe_format_in : bool, optional
-        Whether `dyn_mat` is in QE format (default: True). If so, it is converted to the real
-        physical format for diagonalization.
-
-    qe_format_out : bool, optional
-        Whether to return the normalized displacements and polarization vectors in QE format: an array of shape
-        (3N, N_atoms, 3). If False, returns a plain (3N × 3N) array of normalized eigenvectors/displacements where
-        polarizations[i] corresponds to eigenvalue freqs[i]**2.
-
-    Returns
-    -------
-    SimpleNamespace
-        An object with the following fields:
-        - `freqs` : np.ndarray
-            Array of 3N phonon frequencies in cm⁻¹. Real or negative imaginary parts indicate stable or unstable modes.
-        - `displacements` : np.ndarray
-            Normalized displacement vectors of the dynamical matrix. Format depends on `qe_format_out`.
-        - `polarizations` : np.ndarray
-            Raw polarization vectors (before mass-weighted normalization). Format depends on `qe_format_out`.
-
-    Raises
-    ------
-    ValueError
-        If eigenvalues are not purely real or imaginary (i.e., contain both parts).
-    """
-    # Check unit consistency
-    ut._check_unit_consistency([dyn_mat, masses], ["Dynamical matrix", "Atomic masses"])
-
-    # Strip units
-    if isinstance(dyn_mat, ureg.Quantity):
-        if dyn_mat.dimensionality == ureg("kg/s^2").dimensionality:
-            dyn_mat = _QEdyn2Realdyn(dyn_mat, masses)
-        dyn, units = dyn_mat.magnitude, (1 * np.sqrt(dyn_mat).units).to("c/cm")
-        masses = masses.magnitude
-    else:
-        if qe_format_in:
-            dyn_mat = _QEdyn2Realdyn(dyn_mat, masses)
-        dyn, units = dyn_mat, 1
-
-    # Diagonalize
-    eigvals, pol = np.linalg.eig(dyn)
-
-    # Convert eigenvalues (ω²) to frequencies in cm⁻¹
-    freqs = np.zeros_like(eigvals, dtype=float)
-    for i, val in enumerate(np.sqrt(eigvals)):
-        if np.isclose(np.imag(val), 0, atol=1e-10):
-            freqs[i] = np.real(val)
-        elif np.isclose(np.real(val), 0, atol=1e-10):
-            freqs[i] = -np.abs(np.imag(val))
-        else:
-            raise ValueError(
-                f"Complex eigenvalue with both real and imaginary part at index {i}: {val}"
-            )
-
-    # Normalize polarization vectors to obtain displacements
-    dim = len(masses)
-    displacements = np.copy(pol)
-    for col in range(pol.shape[1]):
-        for i in range(dim):
-            displacements[3 * i : 3 * i + 3, col] /= np.sqrt(masses[i])
-        displacements[:, col] /= np.linalg.norm(displacements[:, col])
-
-    # Sort by increasing frequency
-    order = np.argsort(freqs)
-    freqs_sorted = freqs[order] * units
-    displacements = displacements[:, order].T
-    polarizations = pol[:, order].T
-
-    if qe_format_out:
-        displacements = displacements.reshape(len(masses) * 3, len(masses), 3)
-        polarizations = polarizations.reshape(len(masses) * 3, len(masses), 3)
-
-    return SimpleNamespace(
-        freqs=freqs_sorted, displacements=displacements, polarizations=polarizations
-    )
-
-
 class Dyn:
-    def __init__(self, q=None, dyn=None, Cell=None, masses=None):
+    def __init__(
+        self,
+        q=None,
+        dyn=None,
+        masses=None,
+        Cell=None,
+    ):
+        """
+        dyn_mat : np.ndarray | ureg.Quantity
+            The (3N × 3N) complex-valued dynamical matrix. If `qe_format_in=True`, this is expected to
+            be the raw QE format (including √(mᵢ mⱼ) prefactors); otherwise, it should already be the
+            physical dynamical matrix in (Ry/h)² units.
+
+        masses : np.ndarray | ureg.Quantity
+            Atomic masses in units of used in the dynamical matrix if qe_format_in is True.
+        """
         self.q = q
         self.dyn = dyn
         self.Cell = Cell
+        self.masses = masses
 
     @classmethod
     def from_file(
@@ -215,7 +132,108 @@ class Dyn:
         Dyn
             A new Dynamical matrix instance.
         """
-        pass
+        system = grepx.read_dyn_q(q_cryst, results_ph_path, qe_format)
+        atoms = cell.Atoms(
+            system.elements, system.positions.magnitude, cell=system.lattice.magnitude
+        )
+        return cls(
+            q=system.q,
+            dyn=system.dyn,
+            Cell=cell.Cell(atoms=atoms),
+            masses=system.masses,
+        )
+
+    def diagonalize(
+        self,
+        qe_format_in: bool = True,
+        qe_format_out: bool = True,
+    ):
+        """
+        Diagonalize a dynamical matrix and return phonon frequencies, polarization vectors and displacements.
+
+        This function converts the input dynamical matrix to its physical form (if needed),
+        diagonalizes it to obtain phonon frequencies (in cm⁻¹), and computes the corresponding
+        normalized displacement vectors.
+
+        Parameters
+        ----------
+        qe_format_in : bool, optional
+            Whether `dyn_mat` is in QE format (default: True). If so, it is converted to the real
+            physical format for diagonalization.
+
+        qe_format_out : bool, optional
+            Whether to return the normalized displacements and polarization vectors in QE format: an array of shape
+            (3N, N_atoms, 3). If False, returns a plain (3N × 3N) array of normalized eigenvectors/displacements where
+            polarizations[i] corresponds to eigenvalue freqs[i]**2.
+
+        Returns
+        -------
+        New attributes to the Dyn object:
+            - freqs : np.ndarray
+                Array of 3N phonon frequencies in cm⁻¹. Real or negative imaginary parts indicate stable or unstable modes.
+            - displacements : np.ndarray
+                Normalized displacement vectors of the dynamical matrix. Format depends on `qe_format_out`.
+            - polarizations : np.ndarray
+                Raw polarization vectors (before mass-weighted normalization). Format depends on `qe_format_out`.
+
+        Raises
+        ------
+        ValueError
+            If eigenvalues are not purely real or imaginary (i.e., contain both parts).
+        """
+        # Check unit consistency
+        dyn_mat, masses = self.dyn, self.masses
+        ut._check_unit_consistency(
+            [dyn_mat, masses], ["Dynamical matrix", "Atomic masses"]
+        )
+
+        # Strip units
+        if isinstance(dyn_mat, ureg.Quantity):
+            if dyn_mat.dimensionality == ureg("kg/s^2").dimensionality:
+                dyn_mat = _QEdyn2Realdyn(dyn_mat, masses)
+            dyn, units = dyn_mat.magnitude, (1 * np.sqrt(dyn_mat).units).to("c/cm")
+            masses = masses.magnitude
+        else:
+            if qe_format_in:
+                dyn_mat = _QEdyn2Realdyn(dyn_mat, masses)
+            dyn, units = dyn_mat, 1
+
+        # Diagonalize
+        eigvals, pol = np.linalg.eig(dyn)
+
+        # Convert eigenvalues (ω²) to frequencies in cm⁻¹
+        freqs = np.zeros_like(eigvals, dtype=float)
+        for i, val in enumerate(np.sqrt(eigvals)):
+            if np.isclose(np.imag(val), 0, atol=1e-10):
+                freqs[i] = np.real(val)
+            elif np.isclose(np.real(val), 0, atol=1e-10):
+                freqs[i] = -np.abs(np.imag(val))
+            else:
+                raise ValueError(
+                    f"Complex eigenvalue with both real and imaginary part at index {i}: {val}"
+                )
+
+        # Normalize polarization vectors to obtain displacements
+        dim = len(masses)
+        displacements = np.copy(pol)
+        for col in range(pol.shape[1]):
+            for i in range(dim):
+                displacements[3 * i : 3 * i + 3, col] /= np.sqrt(masses[i])
+            displacements[:, col] /= np.linalg.norm(displacements[:, col])
+
+        # Sort by increasing frequency
+        order = np.argsort(freqs)
+        freqs_sorted = freqs[order] * units
+        displacements = displacements[:, order].T
+        polarizations = pol[:, order].T
+
+        if qe_format_out:
+            displacements = displacements.reshape(len(masses) * 3, len(masses), 3)
+            polarizations = polarizations.reshape(len(masses) * 3, len(masses), 3)
+
+        self.freqs = freqs_sorted
+        self.displacements = displacements
+        self.polarizations = polarizations
 
 
 def distort_crystal(q_points, results_ph, order_parameter, modes, amplitude):

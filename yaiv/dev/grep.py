@@ -6,8 +6,8 @@ import glob
 
 from yaiv.defaults.config import ureg
 from yaiv import grep
-from yaiv.dev import phonon as ph
 from yaiv import utils as ut
+from yaiv.dev import phonon as ph
 
 
 __all__ = ["read_dyn_file", "read_dyn_q"]
@@ -40,7 +40,7 @@ def read_dyn_file(file: str) -> SimpleNamespace:
             The lattice vectors of the unit cell.
         - freqs : ureg.Quantity, shape (n_modes,)
             Array of vibrational frequencies (in cm⁻¹).
-        - displacement_vec : np.ndarray, shape(n_modes,n_atoms,3)
+        - displacements : np.ndarray, shape(n_modes,n_atoms,3)
             An (n_modes, n_atoms, 3) array of complex normalized displacement vectors for each mode.
         - positions : ureg.Quantity, shape (n_atoms, 3)
             Atomic positions.
@@ -61,7 +61,7 @@ def read_dyn_file(file: str) -> SimpleNamespace:
     n_atoms = n_types = freqs = vec = alat = None
     species = []
     atoms = []
-    displacement_vec = []
+    displacements = []
     read_modes = False
     with open(file, "r") as lines:
         for line in lines:
@@ -100,7 +100,7 @@ def read_dyn_file(file: str) -> SimpleNamespace:
                     ]
                     vec = np.array([new]) if vec is None else np.vstack([vec, new])
                     if len(vec) == len(atoms):
-                        displacement_vec.append(vec)
+                        displacements.append(vec)
                         vec = None
 
     # Attach units and get positions, elmenets and masses.
@@ -108,7 +108,7 @@ def read_dyn_file(file: str) -> SimpleNamespace:
     indices = np.array(atoms)[:, 0].astype(int) - 1
     elements = [species[x][1] for x in indices]
     masses = np.array([species[x][2] for x in indices]) * ureg._2m_e
-    displacement_vec = np.array(displacement_vec)
+    displacements = np.array(displacements)
     q_point = (q_point * ureg._2pi / alat).to("_2pi/ang")
     freqs = freqs * ureg("c/cm")
 
@@ -116,7 +116,7 @@ def read_dyn_file(file: str) -> SimpleNamespace:
         q=q_point,
         lattice=lattice,
         freqs=freqs,
-        displacement_vec=displacement_vec,
+        displacements=displacements,
         positions=positions,
         elements=elements,
         masses=masses,
@@ -284,10 +284,10 @@ def read_dyn_q(
                     break
 
     # Clean output
-    delattr(system, "displacement_vec")
     system.q = q_cryst
-    system.lattice = lattice
+    delattr(system, "displacements")
     system.dyn = dyn_mat * ureg("_2m_e * Ry^2 / planck_constant^2")
     if not qe_format:
         system.dyn = ph._QEdyn2Realdyn(system.dyn, system.masses)
+
     return system
