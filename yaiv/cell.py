@@ -100,7 +100,7 @@ class Cell:
             )
         else:
             self.spglib = (np.array(lattice), np.array(positions), np.array(numbers))
-            self.atoms = spglib2ase(atoms)
+            self.atoms = spglib2ase(self.spglib)
 
     @classmethod
     def from_file(cls, file: str):
