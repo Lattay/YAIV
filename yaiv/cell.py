@@ -269,6 +269,48 @@ class Cell:
             indices=grouped_indices,
         )
 
+    def get_supercell(self, supercell: list[int] = [1, 1, 1]) -> "Cell":
+        """
+        Construct a supercell by repeating the current unit cell along each lattice direction.
+
+        This method generates a new `Cell` object representing a supercell formed by tiling
+        the original cell along the three lattice vectors.
+
+        Parameters
+        ----------
+        supercell : list[int], optional
+            A list of 3 integers specifying how many times to replicate the cell along
+            each lattice direction. Default is [1, 1, 1] (no replication).
+
+        Returns
+        -------
+        Cell
+            A new `Cell` object representing the expanded supercell.
+        """
+
+        lattice = np.copy(self[0])  # Original lattice vectors (3x3)
+        positions_list = []
+
+        for i in range(supercell[0]):
+            for j in range(supercell[1]):
+                for k in range(supercell[2]):
+                    displacement = np.array([i, j, k])
+                    new_pos = self[1] + displacement  # Shift all atoms
+                    positions_list.append(new_pos)
+
+        # Stack all positions and flatten to a single (N_atoms × 3) array
+        positions = np.vstack(positions_list)
+
+        # Repeat the atomic elements accordingly
+        elements = np.tile(self[2], np.prod(supercell))
+
+        # Expand the lattice
+        for i in range(3):
+            lattice[i] *= supercell[i]
+            positions[:, i] /= supercell[i]  # Normalize positions to new cell
+
+        return Cell(lattice, positions, elements)
+
 
 def ase2spglib(crystal_ase: Atoms) -> tuple:
     """
