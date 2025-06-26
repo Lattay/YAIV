@@ -1,4 +1,6 @@
 from types import SimpleNamespace
+from math import gcd
+import warnings
 
 import numpy as np
 
@@ -236,25 +238,121 @@ class Dyn:
         self.polarizations = polarizations
 
 
+def _find_supercell(
+    q_cryst: np.ndarray | ureg.Quantity | list[np.ndarray] | list[ureg.Quantity],
+) -> SimpleNamespace:
+    """
+    Compute the minimal supercell that is commensurate with a set of q-points in crystal units.
+
+    This function finds the smallest supercell that accommodates the periodicity
+    of the input q-points by ensuring that the phase factors `exp(2πi q·R)` close
+    after a finite number of lattice translations. It also computes the corresponding
+    phase factor grids over the supercell.
+
+    Parameters
+    ----------
+    q_cryst : np.ndarray | ureg.Quantity | list[np.ndarray | ureg.Quantity]
+        A single q-point or list of q-points, given in crystalline units
+        (units of 2π/crystal). If provided with units, they must be `"_2pi/crystal"`.
+
+    Returns
+    -------
+    SimpleNamespace
+        A namespace with the following attributes:
+        - size : np.ndarray
+            A 3-element integer array defining the minimal commensurate supercell.
+        - phase_factors : list[np.ndarray]
+            List of 3D complex-valued arrays with the phase factors
+            `exp(2πi q·R)` evaluated on the supercell grid for each q-point.
+            Each has dimnesion equal to the supercell size [phase_factors.shape = size].
+        - q : list[ureg.Quantity]
+            The q-points, returned as quantities with units `_2pi/crystal`.
+
+    Raises
+    ------
+    ValueError
+        If q-points do not have units of 2π/crystal, or if no commensurate supercell
+        is found in a direction within 100 lattice multiples.
+    """
+    # Normalize input to list of np.ndarray
+    if len(np.shape(q_cryst)) == 1:
+        q_cryst = [q_cryst]
+
+    # Check units and convert to magnitudes
+    ut._check_unit_consistency(q_cryst)
+    if isinstance(q_cryst[0], ureg.Quantity):
+        for q in q_cryst:
+            if q.units != ureg("_2pi/crystal"):
+                raise ValueError("Each q-point must have units of 2π/crystal.")
+        q_cryst_mag = [q.magnitude for q in q_cryst]
+    else:
+        q_cryst_mag = q_cryst
+
+    supersize = np.ones(3, dtype=int)
+
+    for q in q_cryst_mag:
+        p_super = np.zeros(3, dtype=int)
+        for i, n in enumerate(q):
+            for cell in range(1, 101):
+                if (cell * n) % 1 == 0:
+                    p_super[i] = cell
+                    break
+            else:
+                raise ValueError(
+                    f"Could not find commensurate cell for q = {q} in direction {i} "
+                    "within 100 multiples. Check that q is rational."
+                )
+        # LCM between existing and partial supercell
+        for i in range(3):
+            supersize[i] = supersize[i] * p_super[i] // gcd(supersize[i], p_super[i])
+
+    # Compute phase factors over supercell grid
+    phase_factors = []
+    for q in q_cryst_mag:
+        phases_q = np.empty(supersize, dtype=complex)
+        for i in range(supersize[0]):
+            for j in range(supersize[1]):
+                for k in range(supersize[2]):
+                    R = np.array([i, j, k])
+                    phases_q[i, j, k] = np.exp(2j * np.pi * np.dot(q, R))
+        phase_factors.append(phases_q)
+
+    q_cryst_with_units = [np.array(q) * ureg("_2pi/crystal") for q in q_cryst_mag]
+
+    return SimpleNamespace(
+        size=supersize,
+        phase_factors=phase_factors,
+        q=q_cryst_with_units,
+    )
+
+
 # def distort_crystal(q_points, results_ph, order_parameter, modes, amplitude):
 class CDW:
-    def __init__(self, q_cryst, results_ph_path):
+    def __init__(self, dyn_matrices: list):
+        self.dyn_matrices = dyn_matrices
+        # 1. Read crystal structure
+        self.Cell = self.dyn_matrices[0].Cell
+        q_cryst = []
+        # 2. Get dynamical matrices
+        for i in range(len(self.dyn_matrices)):
+            self.dyn_matrices[i].diagonalize()
+            q_cryst = q_cryst + [self.dyn_matrices[i].q.magnitude]
+        self.q = q_cryst
+        # 3. Find conmmensurate supercell and get phase factors
+        self._supercell = _find_supercell(q_cryst)
+        # 4. Build supercell
+        self.SuperCell = self.Cell.get_supercell(self._supercell.size)
+
+    @classmethod
+    def from_file(cls, q_cryst, results_ph_path):
         if len(np.shape(q_cryst)) == 1:
             q_cryst = [q_cryst]
-        print("TODO")
-        DYNS = []
+        dyn_matrices = []
         for q in q_cryst:
-            DYNS = DYNS + [Dyn.from_file(q, results_ph_path)]
-        self.DYNS=DYNS
-        # 1. Read crystal structure
-        # 2. Get dynamical matrices
-        # 3. Diagonalize matrices
-        # 4. Get displacement vectors
-        # 5. Find conmmensurate supercell
-        # 6. Get proper phase factors for each cell
-        pass
+            dyn_matrices = dyn_matrices + [Dyn.from_file(q, results_ph_path)]
+        return cls(dyn_matrices)
 
-    def distort_crystal(order_parameter, modes, amplitude):
+    def distort_crystal(order_paramete=None, modes=None, amplitude=0.01):
         print("TODO")
         # 7. Make Supercell displacement vectors combining phase factors and displacement vectors
         # 8. Add the displacements to create a supercell final displacement
