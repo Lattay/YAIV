@@ -80,6 +80,30 @@ def _QEdyn2Realdyn(
 
 
 class Dyn:
+    """
+    A container for a single phonon dynamical matrix at a given q-point.
+
+    This class provides functionality to read and manipulate dynamical matrices
+    produced by Quantum ESPRESSO, convert them to real physical units, and diagonalize
+    them to obtain phonon frequencies and polarization vectors.
+
+    Attributes
+    ----------
+    q : pint.Quantity [2π/crystal]
+        The q-point in reciprocal space (reduced coordinates).
+    dyn : np.ndarray or Quantity
+        The dynamical matrix, either in QE format (with mass prefactors) or physical units.
+    Cell : cell.Cell
+        The atomic structure associated with this q-point, including lattice, positions, elements.
+    masses : Quantity [2*m_e]
+        Array of atomic masses, usually in units of 2 electron masses as per QE convention.
+    freqs : Quantity [cm⁻¹], optional
+        Frequencies of the phonon modes after diagonalization.
+    displacements : np.ndarray, optional
+        Mass-normalized eigenvectors (displacements). Shape and units depend on output format.
+    polarizations : np.ndarray, optional
+        Raw polarization vectors before mass normalization.
+    """
     def __init__(
         self,
         q=None,
@@ -326,36 +350,134 @@ def _find_supercell(
     )
 
 
-# def distort_crystal(q_points, results_ph, order_parameter, modes, amplitude):
 class CDW:
+    """
+    Class representing a charge-density wave (CDW) structure built from a set
+    of phonon dynamical matrices at different q-points.
+
+    This class:
+    - Stores the dynamical matrices.
+    - Determines the commensurate supercell that accommodates the q-points.
+    - Builds the corresponding supercell.
+    - Applies distortions associated with the soft phonon modes.
+
+    Attributes
+    ----------
+    dyn_matrices : list
+        List of `Dyn` objects, each containing a dynamical matrix and metadata.
+    Cell : Cell
+        The primitive unit cell object, taken from the first `Dyn` entry.
+    q : list[np.ndarray]
+        List of q-points (in 2π/crystal units) corresponding to the dynamical matrices.
+    _supercell : SimpleNamespace
+        Contains the commensurate supercell size and phase factors.
+    SuperCell : Cell
+        The supercell constructed from the primitive cell and commensurate size.
+    """
+
     def __init__(self, dyn_matrices: list):
+        """
+        Initialize the CDW object from a list of `Dyn` objects.
+
+        Parameters
+        ----------
+        dyn_matrices : list of Dyn
+            List of dynamical matrices at different q-points.
+
+        Raises
+        ------
+        ValueError
+            If q-points do not have units of 2π/crystal.
+        """
         self.dyn_matrices = dyn_matrices
-        # 1. Read crystal structure
         self.Cell = self.dyn_matrices[0].Cell
+
+        # Diagonalize and extract q-points
         q_cryst = []
-        # 2. Get dynamical matrices
-        for i in range(len(self.dyn_matrices)):
-            self.dyn_matrices[i].diagonalize()
-            q_cryst = q_cryst + [self.dyn_matrices[i].q.magnitude]
-        self.q = q_cryst
-        # 3. Find conmmensurate supercell and get phase factors
-        self._supercell = _find_supercell(q_cryst)
-        # 4. Build supercell
+        for dyn in self.dyn_matrices:
+            dyn.diagonalize()
+            q_cryst.append(dyn.q)
+        ut._check_unit_consistency(q_cryst)
+        if isinstance(q_cryst[0], ureg.Quantity):
+            for q in q_cryst:
+                if q.units != ureg("_2pi/crystal"):
+                    raise ValueError("Each q-point must have units of 2π/crystal.")
+            q_cryst_mag = [q.magnitude for q in q_cryst]
+        else:
+            q_cryst_mag = q_cryst
+        self.q = q_cryst_mag * ureg("_2pi/crystal")
+
+        # Determine supercell and construct it
+        self._supercell = _find_supercell(self.q)
         self.SuperCell = self.Cell.get_supercell(self._supercell.size)
 
     @classmethod
     def from_file(cls, q_cryst, results_ph_path):
+        """
+        Construct a CDW object by reading .dyn files from a directory.
+
+        Parameters
+        ----------
+        q_cryst : np.ndarray or list[np.ndarray]
+            One or more q-points to read (in 2π/crystal units).
+        results_ph_path : str
+            Path to folder containing QE phonon outputs (.dyn*).
+
+        Returns
+        -------
+        CDW
+            The constructed CDW object.
+        """
         if len(np.shape(q_cryst)) == 1:
             q_cryst = [q_cryst]
-        dyn_matrices = []
-        for q in q_cryst:
-            dyn_matrices = dyn_matrices + [Dyn.from_file(q, results_ph_path)]
+        dyn_matrices = [Dyn.from_file(q, results_ph_path) for q in q_cryst]
         return cls(dyn_matrices)
 
-    def distort_crystal(order_paramete=None, modes=None, amplitude=0.01):
-        print("TODO")
-        # 7. Make Supercell displacement vectors combining phase factors and displacement vectors
-        # 8. Add the displacements to create a supercell final displacement
-        # 9. Apply displacement
-        # 10. Return final cell
-        pass
+    def distort_crystal(
+        self,
+        order_parameter: list[complex] = None,
+        modes: list[int] = None,
+        amplitude: float = 0.01,
+    ):
+        """
+        Apply a charge density wave distortion to the supercell.
+
+        Parameters
+        ----------
+        order_parameter : list[complex]
+            List of complex amplitudes (including phase) for each q-mode.
+        modes : list[int]
+            List of mode indices to be activated at each q-point.
+        amplitude : float, optional
+            Global real amplitude factor for the distortion.
+
+        Returns
+        -------
+        Cell
+            A new `Cell` object representing the distorted supercell.
+        """
+        supercell_ind = 0
+        cell_size = len(self.Cell[1])
+        positions = self.SuperCell.atoms.positions
+        OP = np.array(order_parameter) * amplitude
+
+        for i in range(self._supercell.size[0]):
+            for j in range(self._supercell.size[1]):
+                for k in range(self._supercell.size[2]):
+                    for q_ind in range(len(self.q)):
+                        start = supercell_ind * cell_size
+                        end = (supercell_ind + 1) * cell_size
+                        phase = self._supercell.phase_factors[q_ind][i, j, k]
+                        displacements = self.dyn_matrices[q_ind].displacements[
+                            modes[q_ind]
+                        ]
+                        positions[start:end] += np.real(
+                            displacements * phase * OP[q_ind]
+                        )
+                    supercell_ind += 1
+
+        # Construct new Atoms object and return as Cell
+        distorted = cell.Atoms(
+            self.SuperCell.atoms.numbers, positions, cell=self.SuperCell.atoms.cell
+        )
+        return cell.Cell(atoms=distorted)
