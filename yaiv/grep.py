@@ -49,13 +49,13 @@ kpointsFrequencies(file)
 
 Examples
 --------
->>> from yaiv.grep import kpointsEnergies
->>> spectrum = kpointsEnergies("OUTCAR")
+>>> from yaiv grep import grep
+>>> spectrum = grep.kpointsEnergies("OUTCAR")
 >>> spectrum.eigenvalues.shape
 (100, 32)
 
->>> from yaiv.grep import lattice
->>> a = lattice("qe.out")
+>>> from yaiv grep import grep
+>>> a = grep.lattice("qe.out")
 >>> a.shape
 (3, 3)
 
@@ -197,7 +197,7 @@ def electron_num(file: str) -> int:
     return num_elec
 
 
-def lattice(file: str, alat: bool = False) -> np.ndarray:
+def lattice(file: str, alat: bool = False) -> ureg.Quantity:
     """
     Greps the lattice vectors from various outputs.
 
