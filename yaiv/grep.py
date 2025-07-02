@@ -18,8 +18,34 @@ Supported formats include:
 - Quantum ESPRESSO output/input: `pw.x`, `ph.x`, `bands.in`, `projwfc.x`, `matdyn.x`
 - VASP output: `OUTCAR`, `EIGENVAL`, `KPOINTS`, `PROCAR`
 
-This module is intended to feed high-level classes like `electronBands` and `phononBands`
-by providing clean NumPy arrays or `spectrum` objects with physical units.
+Functions
+---------
+_filetype(file)
+    Heuristically determines the type of simulation output file (QE, VASP, etc.).
+
+electron_num(file)
+    Greps the number of electrons from a QE or VASP output file.
+
+lattice(file, alat=False)
+    Extracts the lattice vectors from outputs. Optionally in internal units (alat).
+
+fermi(file)
+    Extracts the Fermi energy from an output file.
+
+total_energy(file, decomposition=False)
+    Extracts the total free energy, optionally returning its internal decomposition (QE).
+
+stress_tensor(file)
+    Extracts the total stress tensor from a QE or VASP output file.
+
+kpath(file, labels=True)
+    Extracts the k-point path in reciprocal space, optionally with high-symmetry labels.
+
+kpointsEnergies(file)
+    Greps the k-points, their weights, and the associated electronic energies from QE or VASP outputs.
+
+kpointsFrequencies(file)
+    Extracts k-points and phonon frequencies from Quantum ESPRESSO phonon outputs.
 
 Examples
 --------

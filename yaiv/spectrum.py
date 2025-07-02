@@ -9,6 +9,39 @@ k-points. It also supports reciprocal lattice handling and coordinate transforma
 The classes in this module can be used independently or as output containers from
 grepping functions.
 
+Classes
+-------
+DOS
+    Container for density of states data. Supports integration and plotting.
+    Provides:
+    - integrate(): Computes the integral of the DOS or finds the eigenvalue corresponding to a filled state count.
+    - plot(): Plots the DOS curve with optional fill and orientation options.
+
+Spectrum
+    General container for k-resolved eigenvalue spectra (e.g., bands, phonons).
+    Supports plotting, DOS calculation, and band visualizations.
+    Provides:
+    - get_DOS(...): Computes the density of states via Gaussian or Methfessel–Paxton smearing.
+    - plot(...): Plots the band structure along a cumulative k-path.
+    - plot_fat(...): Fat-band style scatter plot for visualizing weights/projections over bands.
+    - plot_color(...): Color-gradient line plot for weights/projections over bands.
+
+ElectronBands
+    Specialized `Spectrum` subclass for electronic band structures extracted from files.
+    Adds Fermi level, number of electrons, and automatic parsing.
+
+PhononBands
+    Specialized `Spectrum` subclass for phonon spectra extracted from files.
+
+
+Private Utilities
+-----------------
+_Has_lattice
+    Mixin that adds lattice handling capabilities.
+
+_Has_kpath
+    Mixin that adds support for k-path functionalities.
+
 Examples
 --------
 >>> from yaiv.spectrum import ElectronBands
@@ -43,7 +76,7 @@ from yaiv import grep as grep
 __all__ = ["DOS", "Spectrum" "ElectronBands", "PhononBands"]
 
 
-class _has_lattice:
+class _Has_lattice:
     """
     Mixin that provides lattice-related functionality:
     loading a lattice, computing its reciprocal basis, and transforming k-points.
@@ -89,9 +122,9 @@ class _has_lattice:
         self._lattice = ut.reciprocal_basis(value)
 
 
-class _has_kpath:
+class _Has_kpath:
     """
-    Mixin that provides lattice-related functionality:
+    Mixin that provides kpath-related functionality:
 
     Attributes
     ----------
@@ -326,7 +359,7 @@ class DOS:
         return ax
 
 
-class Spectrum(_has_lattice, _has_kpath):
+class Spectrum(_Has_lattice, _Has_kpath):
     """
     General class for storing the eigenvalues of a periodic operator over k-points.
 
@@ -368,8 +401,8 @@ class Spectrum(_has_lattice, _has_kpath):
         self.eigenvalues = eigenvalues
         self.kpoints = kpoints
         self.weights = weights
-        _has_lattice.__init__(self, lattice, k_lattice)
-        _has_kpath.__init__(self, kpath)
+        _Has_lattice.__init__(self, lattice, k_lattice)
+        _Has_kpath.__init__(self, kpath)
         self.DOS = DOS(parent=self)
 
     def get_DOS(

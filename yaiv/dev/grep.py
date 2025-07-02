@@ -1,3 +1,17 @@
+"""
+Functions
+---------
+
+read_dyn_file(file)
+    Parses a QE `.dyn` file and returns vibrational data (q-point (2π/Å), lattice (Å), frequencies, ...)
+
+read_dyn_q(q_cryst, results_ph_path, qe_format=True)
+    Locates and reads `.dyn*` file for a given q-point, returning the full dynamical matrix (3Nx3N).
+
+_find_dyn_file(q_cryst, results_ph_path)
+    Internal helper that searches `.dyn*` files matching the specified q-point.
+"""
+
 import re
 from types import SimpleNamespace
 

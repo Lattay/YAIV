@@ -13,6 +13,33 @@ symmetry operations in symbolic form.
 The module also includes conversion tools between ASE and spglib formats,
 as well as symmetry naming utilities.
 
+Classes
+-------
+Cell
+    Wrapper around ASE Atoms + spglib tuple (lattice, positions, numbers).
+    Provides:
+    - from_file(path): Read a file and return Cell.
+    - from_spglib_tuple(tup): Construct Cell from spglib-format tuple.
+    - get_sym_info(symprec=...): Print symbolic symmetry operations and Wyckoff info.
+    - get_wyckoff_positions(symprec=...): Group atoms by Wyckoff positions.
+    - get_supercell(supercell): Return a repeated Cell object.
+
+Functions
+---------
+ase2spglib(crystal_ase)
+    Convert an ASE Atoms object to a spglib tuple (lattice, positions, numbers).
+
+spglib2ase(spglib_crystal)
+    Convert a spglib-format tuple back into an ASE Atoms object.
+
+read_spg(file)
+    Read a structure file and return its spglib-compatible tuple.
+
+Private Utilities
+-----------------
+_rot_name(rot, lattice)
+    Identify the symbolic name and axis of a rotation matrix (e.g. 'C3', 'm') using its eigenstructure.
+
 Examples
 --------
 >>> from yaiv.cell import Cell

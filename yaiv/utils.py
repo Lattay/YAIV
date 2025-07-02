@@ -6,6 +6,44 @@ This module provides general-purpose utility functions that are used across vari
 and methods in the codebase. They are also intended to be reusable by the user for custom
 workflows, especially when combined with the data extraction tools.
 
+Functions
+---------
+_check_unit_consistency(quantities, names=None)
+    Verifies that a list of variables are either all unitful or all unitless. Raises `TypeError` if mixed.
+
+invQ(matrix)
+    Returns the inverse of a matrix, preserving units if present.
+
+reciprocal_basis(lattice)
+    Computes the reciprocal lattice vectors from a real-space lattice basis.
+
+cartesian2cryst(cartesian_coord, cryst_basis)
+    Transforms coordinates from Cartesian to crystal basis, with unit handling.
+
+cryst2cartesian(crystal_coord, cryst_basis)
+    Transforms coordinates from crystal to Cartesian basis, with unit handling.
+
+cartesian2voigt(xyz)
+    Converts a 3×3 symmetric tensor to 6-element Voigt notation.
+
+voigt2cartesian(voigt)
+    Converts a 6-element Voigt vector to a 3×3 symmetric tensor.
+
+grid_generator(grid, periodic=False)
+    Generates a uniform D-dimensional grid in either periodic or bounded mode.
+
+_normal_dist(x, mean=0, sd=0.1, A=1)
+    Computes the value of a normalized Gaussian distribution.
+
+methpax_delta(x, mean=0.0, smearing=0.1, order=1, A=1.0)
+    Evaluates the Methfessel–Paxton delta approximation up to a given order.
+
+analyze_distribution(X, Y)
+    Computes the mean, std, skewness, kurtosis and normalization of a distribution defined over `X`.
+
+_expand_zone_border(q_point)
+    Returns a q-point and its ±1-shifted equivalents along each reciprocal direction.
+
 See Also
 --------
 yaiv.grep             : File parsing functions that uses these utilities.

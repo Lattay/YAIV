@@ -17,6 +17,42 @@ The main abstractions in this module are:
 - `Dyn`: Represents a single dynamical matrix at a given q-point. Provides diagonalization and unit conversion.
 - `CDW`: Builds a supercell compatible with multiple q-points and applies structural distortions.
 
+Classes
+-------
+Dyn
+    Container for a dynamical matrix at a specific q-point. Provides file I/O, diagonalization,
+    and access to phonon frequencies and displacements.
+
+    Methods
+    -------
+    from_file(q_cryst, results_ph_path, qe_format=True)
+        Class method to construct a `Dyn` object by reading a `.dyn*` file from Quantum ESPRESSO output.
+    diagonalize(qe_format_in=True, qe_format_out=True)
+        Diagonalizes the dynamical matrix, returning phonon frequencies and eigenvectors.
+        Adds `.freqs`, `.displacements`, and `.polarizations` attributes to the instance.
+
+CDW
+    Constructs and manipulates charge-density wave (CDW) distorted supercells from
+    multiple q-point phonon modes. Includes supercell generation and mode projection.
+
+    Methods
+    -------
+    from_file(q_cryst, results_ph_path)
+        Class method to initialize a `CDW` object by reading `.dyn*` files at one or more q-points.
+    distort_crystal(order_parameter=None, modes=None, amplitude=0.01)
+        Applies the displacement pattern of selected phonon modes to the supercell, simulating
+        a CDW distortion. Returns a new `Cell` object with distorted atomic positions.
+
+Functions
+---------
+_QEdyn2Realdyn(dyn_mat, masses)
+    Convert a QE-format dynamical matrix (with √(mᵢ mⱼ) prefactors) to the true physical matrix
+    whose eigenvalues are phonon frequencies squared (in s⁻² or (Ry/h)²).
+
+_find_supercell(q_cryst)
+    Given one or more q-points, computes the minimal supercell for which exp(2πi·q·R)
+    is periodic over the lattice. Returns supercell size and grid of phase factors.
+
 Examples
 --------
 >>> from yaiv.phonon import Dyn

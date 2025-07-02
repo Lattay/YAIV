@@ -1,5 +1,7 @@
 # List of updates to add to the new release:
 
+- Improved documentation
+
 Utils:
     - methpax_delta.
     - analyze_distribution.

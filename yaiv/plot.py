@@ -16,6 +16,37 @@ The visualizations are based on `matplotlib`, and include options for:
 - Detecting and patching discontinuities in the k-path
 - Annotating high-symmetry points from KPOINTS or bands.in
 
+Functions
+---------
+get_HSP_ticks(kpath, k_lattice=None)
+    Computes tick positions and LaTeX labels for high-symmetry points along a k-path.
+
+kpath(ax, kpath, k_lattice=None)
+    Plots vertical lines and labels at high-symmetry points in a matplotlib Axes.
+
+bands(electronBands, ax=None, ...)
+    Plots the electronic band structure for one or multiple systems.
+
+phonons(phononBands, ax=None, ...)
+    Plots the phonon band structure for one or multiple systems.
+
+DOS(spectra, ax=None, ...)
+    Plots the density of states (DOS) for a single or multiple eigenvalue spectra.
+
+bandsDOS(electronBands, fig=None, axes=None, ...)
+    Plots a band structure and its corresponding DOS side-by-side.
+
+phononDOS(phononBands, fig=None, axes=None, ...)
+    Plots a phonon band structure and its corresponding DOS side-by-side.
+
+Private Utilities
+-----------------
+_compare_spectra(spectra, ax, ...)
+    Internal utility to overlay multiple spectra on the same Axes with legends and formatting.
+
+_spectra_DOS(spectra, plot_func, ...)
+    Internal helper to produce spectrum + DOS panels for electronic or vibrational bands.
+
 Examples
 --------
 >>> from yaiv.spectrum import ElectronBands
