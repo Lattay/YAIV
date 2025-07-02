@@ -141,6 +141,7 @@ class Dyn:
     polarizations : np.ndarray, optional
         Raw polarization vectors before mass normalization.
     """
+
     def __init__(
         self,
         q=None,
@@ -481,12 +482,14 @@ class CDW:
 
         Parameters
         ----------
-        order_parameter : list[complex]
-            List of complex amplitudes (including phase) for each q-mode.
-        modes : list[int]
-            List of mode indices to be activated at each q-point.
+        order_parameter : list[complex], optional
+            List of complex amplitudes (including phase) for each q-mode. Default being
+            a value of 1 for each q-point (np.ones(len(self.q))).
+        modes : list[int], optional
+            List of mode indices to be activated at each q-point. Default being the
+            lowest energy mode for each q point.
         amplitude : float, optional
-            Global real amplitude factor for the distortion.
+            Global real amplitude factor for the distortion. Default being 0.01.
 
         Returns
         -------
@@ -496,6 +499,10 @@ class CDW:
         supercell_ind = 0
         cell_size = len(self.Cell[1])
         positions = self.SuperCell.atoms.positions
+        if OP is None:
+            OP = np.ones(len(self.q))
+        if modes is None:
+            modes = np.zeros(len(self.q))
         OP = np.array(order_parameter) * amplitude
 
         for i in range(self._supercell.size[0]):
