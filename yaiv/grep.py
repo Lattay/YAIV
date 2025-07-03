@@ -658,7 +658,6 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
                 elif READ_energies:
                     if line.lstrip().startswith("k ="):
                         OCCUPATIONS = False
-                        print(line)
                     elif OCCUPATIONS:
                         pass
                     elif line.strip() != "":
