@@ -281,12 +281,14 @@ def bands(
     if type(electronBands) is not list:
         band = electronBands
         indices = list(range(band.eigenvalues.shape[1]))
+        # For non-spin orbit weights might add up to 2.
+        valence_bands = round(band.electron_num / np.sum(band.weights))
         # plot valence bands
         ax = band.plot(
             ax=ax,
             shift=band.fermi,
             patched=patched,
-            bands=indices[: band.electron_num],
+            bands=indices[:valence_bands],
             color=user_color or pdft.valence_c,
             label=user_label,
             **kwargs,
@@ -296,7 +298,7 @@ def bands(
             ax=ax,
             shift=band.fermi,
             patched=patched,
-            bands=indices[band.electron_num :],
+            bands=indices[valence_bands:],
             color=user_color or pdft.conduction_c,
             **kwargs,
         )
