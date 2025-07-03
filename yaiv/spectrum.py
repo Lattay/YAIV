@@ -38,6 +38,8 @@ Private Utilities
 -----------------
 _Has_lattice
     Mixin that adds lattice handling capabilities.
+    Provides:
+    - get_1Dkpath(self, patched=True): Provides a one dimensional Kpath
 
 _Has_kpath
     Mixin that adds support for k-path functionalities.
