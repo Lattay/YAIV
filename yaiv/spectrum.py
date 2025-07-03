@@ -432,8 +432,7 @@ class Spectrum(_Has_lattice, _Has_kpath):
             Value window for the DOS. If float, interpreted as symmetric [-window, window].
             If list, used as [Vmin, Vmax]. If None, the eigenvalue range (± smearing * precision) is used.
         smearing : float | pint.Quantity, optional
-            Smearing width in the same unit dimension as eigenvalues (standard deviation in the Gaussian case).
-            Default is (window_size/200).
+            Smearing width in the same unit dimension as eigenvalues. Default is (window_size/200).
         steps : int, optional
             Number of grid points for DOS sampling. Default is 4 * (window_size/smearing).
         order : int, optional

@@ -404,6 +404,7 @@ def DOS(
     window: float | list[float] | ureg.Quantity = None,
     smearing: float | ureg.Quantity = None,
     steps: int = None,
+    order: int = 0,
     precision: float = 3.0,
     switchXY: bool = False,
     fill: bool = True,
@@ -429,6 +430,8 @@ def DOS(
         Gaussian smearing width in the same units as eigenvalues. Default is (window_size/200).
     steps : int, optional
         Number of grid points for DOS sampling. Default is 4 * (window_size/smearing).
+    order : int, optional
+        Order of the Methfessel-Paxton expansion. Default is 0, which recovers a Gaussian smearing.
     precision : float, optional
         Number of smearing widths to use for truncation (e.g., 3 means ±3σ).
     switchXY : bool, optional
@@ -467,6 +470,7 @@ def DOS(
             window=window,
             smearing=smearing,
             steps=steps,
+            order=order,
             precision=precision,
         )
         ax = S.DOS.plot(
@@ -497,6 +501,7 @@ def DOS(
                 window=window,
                 smearing=smearing,
                 steps=steps,
+                order=order,
                 precision=precision,
             )
             ax = S.DOS.plot(
