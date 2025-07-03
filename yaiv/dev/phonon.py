@@ -232,7 +232,7 @@ class Dyn:
         Dyn
             A new Dynamical matrix instance.
         """
-        system = grepx.read_dyn_q(q_cryst, results_ph_path, qe_format)
+        system = grepx.dyn_q(q_cryst, results_ph_path, qe_format)
         atoms = cell.Atoms(
             system.elements, system.positions.magnitude, cell=system.lattice.magnitude
         )

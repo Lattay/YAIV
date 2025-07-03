@@ -2,10 +2,10 @@
 Functions
 ---------
 
-read_dyn_file(file)
+dyn_file(file)
     Parses a QE `.dyn` file and returns vibrational data (q-point (2π/Å), lattice (Å), frequencies, ...)
 
-read_dyn_q(q_cryst, results_ph_path, qe_format=True)
+dyn_q(q_cryst, results_ph_path, qe_format=True)
     Locates and reads `.dyn*` file for a given q-point, returning the full dynamical matrix (3Nx3N).
 
 _find_dyn_file(q_cryst, results_ph_path)
@@ -24,10 +24,10 @@ from yaiv import utils as ut
 from yaiv.dev import phonon as ph
 
 
-__all__ = ["read_dyn_file", "read_dyn_q"]
+__all__ = ["dyn_file", "dyn_q"]
 
 
-def read_dyn_file(file: str) -> SimpleNamespace:
+def dyn_file(file: str) -> SimpleNamespace:
     """
     Parse a dynamical matrix file and extract phonon mode information.
 
@@ -170,7 +170,7 @@ def _find_dyn_file(q_cryst: np.ndarray | ureg.Quantity, results_ph_path: str) ->
         )
 
     # Read lattice and convert to alat units
-    lattice = read_dyn_file(dyn1[0]).lattice
+    lattice = dyn_file(dyn1[0]).lattice
     lattice = lattice / np.linalg.norm(lattice[0]) * ureg.alat
     k_basis = ut.reciprocal_basis(lattice)
 
@@ -197,7 +197,7 @@ def _find_dyn_file(q_cryst: np.ndarray | ureg.Quantity, results_ph_path: str) ->
     )
 
 
-def read_dyn_q(
+def dyn_q(
     q_cryst: np.ndarray | ureg.Quantity, results_ph_path: str, qe_format: bool = True
 ) -> SimpleNamespace:
     """
@@ -254,7 +254,7 @@ def read_dyn_q(
 
     file = _find_dyn_file(q_cryst, results_ph_path)
 
-    system = read_dyn_file(file)
+    system = dyn_file(file)
     dim = 3 * len(system.elements)
     dyn_mat = np.zeros((dim, dim), dtype=complex)
 
