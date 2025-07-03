@@ -788,7 +788,8 @@ def kpointsFrequencies(file: str) -> SimpleNamespace:
             for line in lines:
                 l = line.split()
                 if "nbnd" in line:
-                    num_bands, num_points = int(l[2][:-1]), int(l[-2])
+                    num_bands = int(l[2][:-1])
+                    num_points = int(line.split("nks=")[-1][:-2])
                 elif len(l) == 3:
                     k = [float(x) for x in l]
                     KPOINTS = (
