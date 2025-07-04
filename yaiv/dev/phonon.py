@@ -22,26 +22,17 @@ Classes
 Dyn
     Container for a dynamical matrix at a specific q-point. Provides file I/O, diagonalization,
     and access to phonon frequencies and displacements.
-
-    Methods
-    -------
-    from_file(q_cryst, results_ph_path, qe_format=True)
-        Class method to construct a `Dyn` object by reading a `.dyn*` file from Quantum ESPRESSO output.
-    diagonalize(qe_format_in=True, qe_format_out=True)
-        Diagonalizes the dynamical matrix, returning phonon frequencies and eigenvectors.
-        Adds `.freqs`, `.displacements`, and `.polarizations` attributes to the instance.
+    Provides:
+    - from_file(): Class method to construct a `Dyn` object by reading a `.dyn*` file from Quantum ESPRESSO output.
+    - diagonalize(): Diagonalizes the dynamical matrix, returning phonon frequencies and eigenvectors.
 
 CDW
     Constructs and manipulates charge-density wave (CDW) distorted supercells from
-    multiple q-point phonon modes. Includes supercell generation and mode projection.
-
-    Methods
-    -------
-    from_file(q_cryst, results_ph_path)
-        Class method to initialize a `CDW` object by reading `.dyn*` files at one or more q-points.
-    distort_crystal(order_parameter=None, modes=None, amplitude=0.01)
-        Applies the displacement pattern of selected phonon modes to the supercell, simulating
-        a CDW distortion. Returns a new `Cell` object with distorted atomic positions.
+    multiple q-point phonon modes.
+    Provides:
+    - from_file(): Class method to initialize a `CDW` object by reading `.dyn*` files at one or more q-points.
+    - distort_crystal(): Applies the displacement pattern of selected phonon modes to the supercell.
+    - sym_analysis(): Perform a symmetry analysis of commensurate CDW distortions across a grid of order parameters.
 
 Functions
 ---------
@@ -76,8 +67,10 @@ from math import gcd
 import warnings
 
 import numpy as np
+import spglib as spg
 
 from yaiv.defaults.config import ureg
+from yaiv.defaults.config import defaults
 from yaiv import utils as ut
 from yaiv import grep
 from yaiv import cell
@@ -534,11 +527,12 @@ class CDW:
         """
         supercell_ind = 0
         cell_size = len(self.Cell[1])
-        positions = self.SuperCell.atoms.positions
-        if OP is None:
-            OP = np.ones(len(self.q))
+        # Positions are given in angstroms
+        positions = np.copy(self.SuperCell.atoms.positions)
+        if order_parameter is None:
+            order_parameter = np.ones(len(self.q))
         if modes is None:
-            modes = np.zeros(len(self.q))
+            modes = np.zeros(len(self.q), dtype=int)
         OP = np.array(order_parameter) * amplitude
 
         for i in range(self._supercell.size[0]):
@@ -555,9 +549,87 @@ class CDW:
                             displacements * phase * OP[q_ind]
                         )
                     supercell_ind += 1
-
         # Construct new Atoms object and return as Cell
         distorted = cell.Atoms(
             self.SuperCell.atoms.numbers, positions, cell=self.SuperCell.atoms.cell
         )
         return cell.Cell(atoms=distorted)
+
+    def sym_analysis(
+        self,
+        modes: list[int] = None,
+        grid: list[int] = None,
+        amplitude: float = 0.01,
+        symprec: float = defaults.symprec,
+    ):
+        """
+        Perform a symmetry analysis of commensurate CDW distortions across a grid of order parameters.
+
+        This function generates all symmetry-inequivalent distortions resulting from a combination
+        of phonon modes and computes the resulting space groups after displacing atoms along the
+        corresponding eigenvectors with various amplitudes.
+
+        Parameters
+        ----------
+        modes : list[int], optional
+            List of mode indices (starting at 0) to be used for the displacement. If None, the lowest
+            frequency modes will be selected.
+
+        grid : list[int], optional
+            Grid resolution for scanning order parameters in each mode direction. Each entry N_i sets
+            the number of points in [-1, 1] for the i-th mode. Defaults to [3, 3, ..., 3].
+
+        amplitude : float, optional
+            Global scaling factor applied to each distortion vector. Final displacement is given by:
+            `Real(OP * amplitude * displacement)` in Å.
+
+        symprec : float, optional
+            Tolerance used by spglib to determine space group symmetry. Default is `defaults.symprec`.
+
+        Returns
+        -------
+        SimpleNamespace
+            Contains:
+            - order_parameters : np.ndarray
+                Array of real-valued vectors defining the amplitude of distortion for each mode.
+            - space_groups : list[str]
+                List of space group symbols (e.g. 'P1', 'R-3m') returned by spglib.
+            - cell_sizes : np.ndarray
+                Ratio of the number of atoms in the distorted supercell to the original cell.
+
+        Notes
+        -----
+        - For even-sized grids, the origin (0) will not be included.
+        - This function relies on `spglib` to determine space groups and primitive cells.
+        """
+
+        DIM = len(self.q)
+        # Modes
+        if modes is None:
+            modes = np.zeros(DIM).astype(int)
+        elif isinstance(modes, int):
+            modes = [modes]
+        # Grid
+        if grid is None:
+            grid = np.ones(DIM, dtype=int) * 3
+        elif isinstance(grid, int):
+            grid = [grid]
+
+        # Generate order parameters and distort
+        OPs = ut.grid_generator(grid)
+        num_in_atoms = len(self.Cell[1])
+        SGs, sizes = [], []
+
+        for OP in OPs:
+            distorted = self.distort_crystal(
+                order_parameter=OP, modes=modes, amplitude=amplitude
+            )
+            SG = spg.get_spacegroup(distorted, symprec=symprec)
+            num_out_atoms = len(spg.find_primitive(distorted, symprec=symprec)[1])
+            s = int(num_out_atoms / num_in_atoms)
+            SGs.append(SG)
+            sizes.append(s)
+
+        return SimpleNamespace(
+            order_parameters=OPs, space_groups=SGs, cell_sizes=np.array(sizes)
+        )
