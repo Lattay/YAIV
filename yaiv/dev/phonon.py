@@ -44,6 +44,9 @@ _find_supercell(q_cryst)
     Given one or more q-points, computes the minimal supercell for which exp(2πi·q·R)
     is periodic over the lattice. Returns supercell size and grid of phase factors.
 
+_format_input(CDW, order_parameter, modes, grid)
+    Formats and normalizes user input for a CDW distortion calculation.
+
 Examples
 --------
 >>> from yaiv.phonon import Dyn
@@ -504,7 +507,7 @@ class CDW:
         self,
         order_parameter: list[complex] = None,
         modes: list[int] = None,
-        amplitude: float = 0.01,
+        amplitude: complex = 0.01,
     ):
         """
         Apply a charge density wave distortion to the supercell.
@@ -517,22 +520,22 @@ class CDW:
         modes : list[int], optional
             List of mode indices to be activated at each q-point. Default being the
             lowest energy mode for each q point.
-        amplitude : float, optional
-            Global real amplitude factor for the distortion. Default being 0.01.
+        amplitude : complex, optional
+            Global scaling factor applied to each distortion vector. Final displacement is given by:
+            `Real( Σ (OP * amplitude * displacement))` in Å.
 
         Returns
         -------
         Cell
             A new `Cell` object representing the distorted supercell.
         """
+        _formatted = _format_input(self, order_parameter=order_parameter, modes=modes)
+        order_parameter, modes = _formatted.order_parameter, _formatted.modes
+
         supercell_ind = 0
         cell_size = len(self.Cell[1])
         # Positions are given in angstroms
         positions = np.copy(self.SuperCell.atoms.positions)
-        if order_parameter is None:
-            order_parameter = np.ones(len(self.q))
-        if modes is None:
-            modes = np.zeros(len(self.q), dtype=int)
         OP = np.array(order_parameter) * amplitude
 
         for i in range(self._supercell.size[0]):
@@ -559,7 +562,7 @@ class CDW:
         self,
         modes: list[int] = None,
         grid: list[int] = None,
-        amplitude: float = 0.01,
+        amplitude: complex | list[complex] = 0.01,
         symprec: float = defaults.symprec,
     ):
         """
@@ -575,13 +578,12 @@ class CDW:
             List of mode indices (starting at 0) to be used for the displacement. If None, the lowest
             frequency modes will be selected.
 
-        grid : list[int], optional
-            Grid resolution for scanning order parameters in each mode direction. Each entry N_i sets
+        grid : list[int], optional Grid resolution for scanning order parameters in each mode direction. Each entry N_i sets
             the number of points in [-1, 1] for the i-th mode. Defaults to [3, 3, ..., 3].
 
-        amplitude : float, optional
-            Global scaling factor applied to each distortion vector. Final displacement is given by:
-            `Real(OP * amplitude * displacement)` in Å.
+        amplitude : complex | list[complex], optional
+            Scaling factor applied to each distortion vector. Final displacement is given by:
+            `Real( Σ (OP * amplitude * displacement))` in Å.
 
         symprec : float, optional
             Tolerance used by spglib to determine space group symmetry. Default is `defaults.symprec`.
@@ -591,11 +593,15 @@ class CDW:
         SimpleNamespace
             Contains:
             - order_parameters : np.ndarray
-                Array of real-valued vectors defining the amplitude of distortion for each mode.
+                Array of real-valued vectors defining the grid of order parameter values.
             - space_groups : list[str]
                 List of space group symbols (e.g. 'P1', 'R-3m') returned by spglib.
             - cell_sizes : np.ndarray
                 Ratio of the number of atoms in the distorted supercell to the original cell.
+            - structures : list[cell.Cell]
+                List of distorted crystal structures.
+            - amplitudes : list[complex]
+                List of amplitudes (global factor) for each mode.
 
         Notes
         -----
@@ -603,33 +609,190 @@ class CDW:
         - This function relies on `spglib` to determine space groups and primitive cells.
         """
 
-        DIM = len(self.q)
-        # Modes
-        if modes is None:
-            modes = np.zeros(DIM).astype(int)
-        elif isinstance(modes, int):
-            modes = [modes]
-        # Grid
-        if grid is None:
-            grid = np.ones(DIM, dtype=int) * 3
-        elif isinstance(grid, int):
-            grid = [grid]
+        _formatted = _format_input(self, grid=grid, modes=modes, amplitude=amplitude)
+        grid, modes, amplitude = _formatted.grid, _formatted.modes, _formatted.amplitude
 
         # Generate order parameters and distort
         OPs = ut.grid_generator(grid)
         num_in_atoms = len(self.Cell[1])
-        SGs, sizes = [], []
+        SGs, sizes, structures = [], [], []
 
         for OP in OPs:
             distorted = self.distort_crystal(
-                order_parameter=OP, modes=modes, amplitude=amplitude
+                order_parameter=OP * amplitude, modes=modes, amplitude=1
             )
             SG = spg.get_spacegroup(distorted, symprec=symprec)
             num_out_atoms = len(spg.find_primitive(distorted, symprec=symprec)[1])
             s = int(num_out_atoms / num_in_atoms)
             SGs.append(SG)
             sizes.append(s)
+            structures.append(distorted)
 
         return SimpleNamespace(
-            order_parameters=OPs, space_groups=SGs, cell_sizes=np.array(sizes)
+            order_parameters=OPs,
+            space_groups=SGs,
+            cell_sizes=np.array(sizes),
+            structures=structures,
+            amplitudes=amplitude,
         )
+
+
+def _format_input(
+    CDW: CDW,
+    order_parameter: list[complex] = None,
+    modes: list[int] = None,
+    grid: list[int] = None,
+    amplitude: complex | list[complex] = None,
+):
+    """
+    Formats and normalizes user input for a CDW distortion calculation.
+
+    Ensures that `order_parameter`, `modes`, and `grid` are provided in consistent list formats.
+    Defaults are assigned based on the number of q-vectors in the CDW object.
+
+    Parameters
+    ----------
+    CDW : CDW
+        CDW object containing the q-vectors and structure information.
+    order_parameter : list[complex] or scalar, optional
+        Complex order parameter for each mode. Defaults to `[1, ..., 1]` (real).
+        If a scalar is given, it is broadcasted.
+    modes : list[int] or int, optional
+        List of phonon mode indices corresponding to each q-vector. Defaults to lowest-frequency modes (0).
+        If a single integer is given, it is wrapped in a list.
+    grid : list[int] or int, optional
+        Number of points per direction in the grid of order parameters. Defaults to `[3, ..., 3]`.
+        If a scalar is given, it is broadcasted.
+    amplitude : list[complex] or complex, optional
+        Complex amplitudes for each mode. Defaults to 0.01 (real).
+
+    Returns
+    -------
+    SimpleNamespace
+        A namespace with normalized fields:
+        - order_parameter : list[complex]
+        - modes : list[int]
+        - grid : list[int]
+        - amplitude : list[complex]
+    """
+    DIM = len(CDW.q)
+
+    # Order parameter
+    if order_parameter is None:
+        order_parameter = np.ones(DIM, dtype=complex)
+    elif isinstance(order_parameter, (complex, float, int)):
+        order_parameter = [order_parameter]
+
+    # Modes
+    if modes is None:
+        modes = np.zeros(DIM, dtype=int)
+    elif isinstance(modes, int):
+        modes = [modes]
+
+    # Grid
+    if grid is None:
+        grid = np.ones(DIM, dtype=int) * 3
+    elif isinstance(grid, int):
+        grid = [grid]
+
+    # Amplitude
+    if isinstance(amplitude, (complex, float, int)):
+        amplitude = np.array([amplitude] * DIM)
+
+    return SimpleNamespace(
+        order_parameter=order_parameter, modes=modes, grid=grid, amplitude=amplitude
+    )
+
+
+class BOES:
+    def __init__(self, CDW: CDW = None):
+        self.CDW = CDW
+
+    def generate_structures_grid(
+        self,
+        grid: list[int] = None,
+        modes: list[int] = None,
+        amplitude: complex | list[complex] = 0.01,
+    ):
+
+        _formatted = _format_input(
+            self.CDW, grid=grid, modes=modes, amplitude=amplitude
+        )
+        grid, modes, amplitude = _formatted.grid, _formatted.modes, _formatted.amplitude
+
+        print("---------------------------------------------------")
+        print(
+            "Order parameter in a",
+            grid,
+            "grid  // ",
+            "Amplitudes = ",
+            amplitude,
+        )
+        print()
+        print("The general displacement at each config is given by:")
+        print("Real ( Σ (OP * amplitudes * displacements)) * Å")
+        print()
+        print("---------------------------------------------------")
+        print(
+            'Final applied "maximum" displacement (Å): (Σ abs(amplitudes) * displacements ) ='
+        )
+        distorted = self.CDW.distort_crystal(
+            order_parameter=np.abs(amplitude), modes=modes, amplitude=1
+        )
+        displacement = (
+            self.CDW.Cell.atoms.positions
+            - distorted.atoms.positions[: len(self.CDW.Cell[1])]
+        )
+        print(np.around(displacement, decimals=5))
+
+        out = self.CDW.sym_analysis(modes=modes, grid=grid, amplitude=amplitude)
+        self.structures = out.structures
+        self.order_parameters = out.order_parameters
+        self.amplitudes = out.amplitudes
+
+    def saveas_jobs_pwi(
+        self,
+        dest_folder: str = None,
+        template: str = None,
+        primitive: bool = False,
+        symprec: float = defaults.symprec,
+        write: bool = False,
+    ):
+        """Creates the necessary QE inputs to create an energy landscape for any combination of order parameters.
+        All the information of the created configurations will be saved into a "surf.txt" file.
+        There are two main modes:
+            GRIDMODE : It creates an uniform grid in the Order parameter space.
+            LINEMODE : It explores a predefined direction in the Order parameter space.
+
+        q_cryst = q points you are interested in crystaline units.
+        results_ph_path = Folder where you ph.x output is stored.
+        dest_folder = Folder where your inputs will be stored.
+        template = A template QE input you want to copy to generate your inputs.
+        OP = If OP is defined, then LINEMODE is activated and OP defines your direction in the Order Parameter space.
+        grid = In GRIDMODE:
+                [N1,N2,N3...] describing your grid (between [-1,1])
+                By default will be a [2,2,2...] grid
+                If Ni=1 then Xi=1 for all points
+               In LINEMODE:
+                It defines the number of points in your line.
+        freq = index of the frequenzies you are interested in (starting at 1).
+                By default it will take the lowest frequency ones.
+        boundary = In GRIDMODE:
+                   Amount of distortion in any the desired direction.
+                   It also supports a LIST input so you define a different value for each grid component.
+                   The final distortion will be multiplied by this factor.
+                   In LINEMODE:
+                   The boundary factors by which you want to multiply your order parameter (OP).
+        primitive = (Boolean) Whether you want to resulting structures in primitive cell or in supercell form.
+        symprec = Symmetry thushold as defined by spglib.
+        write = (Bolean) Whether to write the results in your filesystem. Defaulted to False in order to avoid overwritting a previous configuration.
+        """
+
+    def _plot_energy_landscape(self):
+        pass
+
+    def _read_energy_surf_data_txt(file):
+        pass
+j
+    def _read_energy_surf_data(self):
+        pass
