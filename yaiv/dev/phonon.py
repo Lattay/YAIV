@@ -42,7 +42,8 @@ BOES
     - save_as(): Save the entire BOES object as a .pkl file.
     - generate_structures_grid(): Generate distorted structures over a regular grid in order parameter space.
     - generate_structures_line(): Generate distorted structures along a 1D path in order parameter space.
-    - saveas_jobs_pwi(): Export all generated distorted structures as QE input files (.pwi).
+    - save_jobs_pwi(): Export all generated distorted structures as QE input files (.pwi).
+    - read_energies_pwo(): Grep total energies from Quantum ESPRESSO output files (.pwo).
 
 Functions
 ---------
@@ -737,6 +738,10 @@ class BOES:
         List of amplitude factors used in each distortion.
     modes : list[int]
         Indices of phonon modes used in the distortions.
+    space_groups : list[str]
+        List of space group symbols (e.g. 'P1', 'R-3m') returned by spglib.
+    energies : SimpleNamespace | list[float]
+        List of BOES energies, either total Free energies or a decomposition of the different terms.
     """
 
     def __init__(self, CDW: CDW = None):
@@ -769,14 +774,14 @@ class BOES:
             obj = pickle.load(f)
         return obj
 
-    def save_as(self, filename: str):
+    def save_as(self, filename: str = "BOES.pkl"):
         """
         Save the entire BOES object, including the CDW instance and all structures in a .pkl file.
 
         Parameters
         ----------
-        filename : str
-            Path to the output file. '.pkl' will be added if missing.
+        filename : str, Optional
+            Path to the output file. '.pkl' will be added if missing. Default `BOES.pkl`.
         """
         if not filename.endswith(".pkl"):
             filename += ".pkl"
@@ -957,11 +962,40 @@ class BOES:
             structure.write_espresso_in(filename, template=template)
         print("Done.")
 
+    def read_energies_pwo(self, dest_folder: str, decomposition: bool = True):
+        """
+        Grep total energies from Quantum ESPRESSO output files (.pwo) for each distorted structure.
+
+        This method reads energy values from files named as `0.pwo`, `1.pwo`, ..., located in
+        the specified folder, and stores the resulting list in `self.energies`.
+
+        Parameters
+        ----------
+        dest_folder : str
+            Path to the folder containing the .pwo output files corresponding to each distorted structure.
+        decomposition : bool, Optional
+            If True, extract both total Free energy and component energies (e.g., electronic, ion-ion).
+            If False, only the total Free energy energy is returned. Default is True.
+        """
+        energies = []
+        for i in range(len(self.structures)):
+            filename = dest_folder + "/" + str(i) + ".pwo"
+            energies.append(grep.total_energy(filename, decomposition=decomposition))
+
+        if isinstance(energies[0], SimpleNamespace):
+            units = energies[0].F.units
+            energies = SimpleNamespace(
+                F=[X.F.magnitude for X in energies] * units,
+                TS=[X.TS.magnitude for X in energies] * units,
+                U=[X.U.magnitude for X in energies] * units,
+                U_one_electron=[X.U_one_electron.magnitude for X in energies] * units,
+                U_hartree=[X.U_hartree.magnitude for X in energies] * units,
+                U_xc=[X.U_xc.magnitude for X in energies] * units,
+                U_ewald=[X.U_ewald.magnitude for X in energies] * units,
+            )
+        else:
+            energies = [X.magnitude for X in energies] * energies[0].units
+        self.energies = energies
+
     def _plot_energy_landscape(self):
-        pass
-
-    def _read_energy_surf_data_txt(file):
-        pass
-
-    def _read_energy_surf_data(self):
         pass
