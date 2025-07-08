@@ -76,6 +76,7 @@ yaiv.utils        : Unit management and basis transformation utilities
 from types import SimpleNamespace
 from math import gcd
 import warnings
+import os
 
 import numpy as np
 import spglib as spg
@@ -750,6 +751,7 @@ class BOES:
         grid: list[int] = None,
         modes: list[int] = None,
         amplitude: complex | list[complex] = 0.01,
+        symprec: float = defaults.symprec,
     ):
         """
         Generate distorted structures over a regular grid in order parameter space.
@@ -762,6 +764,8 @@ class BOES:
             Mode indices to displace along at each q-point. Defaults to softest modes.
         amplitude : complex | list[complex]
             Scaling factors applied to eigenvectors in each direction. Defaults to 0.01.
+        symprec : float, optional
+            Tolerance used by spglib to determine space group symmetry. Default is `defaults.symprec`.
         """
         _formatted = _format_input(
             self.CDW, grid=grid, modes=modes, amplitude=amplitude
@@ -794,11 +798,14 @@ class BOES:
         )
         print(np.around(displacement, decimals=5))
 
-        out = self.CDW.sym_analysis(modes=modes, grid=grid, amplitude=amplitude)
+        out = self.CDW.sym_analysis(
+            modes=modes, grid=grid, amplitude=amplitude, symprec=symprec
+        )
         self.structures = out.structures
         self.order_parameters = out.order_parameters
         self.amplitudes = out.amplitudes
         self.modes = modes
+        self.space_groups = out.space_groups
 
     def generate_structures_line(
         self,
@@ -806,6 +813,7 @@ class BOES:
         order_parameter_f: list[int] = None,
         modes: list[int] = None,
         steps: int = 31,
+        symprec: float = defaults.symprec,
     ):
         """
         Generate distorted structures along a 1D path in order parameter space.
@@ -820,6 +828,8 @@ class BOES:
             Mode indices used to generate the displacements.
         steps : int
             Number of interpolation steps between initial and final distortion.
+        symprec : float, optional
+            Tolerance used by spglib to determine space group symmetry. Default is `defaults.symprec`.
         """
         modes = _format_input(self.CDW, modes=modes).modes
         order_parameter_i = _format_input(
@@ -861,17 +871,20 @@ class BOES:
         )
         print(np.around(displacement, decimals=5))
         OPs = np.linspace(order_parameter_i, order_parameter_f, steps)
-        structures = []
+        structures, SGs = [], []
         for OP in OPs:
             distorted = self.CDW.distort_crystal(
                 order_parameter=OP, modes=modes, amplitude=1
             )
+            SG = spg.get_spacegroup(distorted, symprec=symprec)
+            SGs.append(SG)
             structures.append(distorted)
 
         self.structures = structures
         self.order_parameters = OPs
         self.amplitudes = np.ones(len(self.CDW.q))
         self.modes = modes
+        self.space_groups = SGs
 
     def saveas_jobs_pwi(
         self,
@@ -898,14 +911,14 @@ class BOES:
             os.makedirs(dest_folder)
             print("Folder created...")
 
+        print("Generating input files...")
         for i, structure in enumerate(self.structures):
-            print("Generating input files...")
             if primitive:
                 structure.spglib = spg.find_primitive(structure)
                 structure.atoms = cell.spglib2ase(structure.spglib, symprec=symprec)
             filename = dest_folder + "/" + str(i) + ".pwi"
             structure.write_espresso_in(filename, template=template)
-            print("Done.")
+        print("Done.")
 
     def _plot_energy_landscape(self):
         pass
