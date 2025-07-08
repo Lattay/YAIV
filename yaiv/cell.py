@@ -430,6 +430,7 @@ class Cell:
         temp.close()
         output.close()
 
+
 def ase2spglib(crystal_ase: Atoms) -> tuple:
     """
     Convert an ASE Atoms object into the tuple format required by spglib.

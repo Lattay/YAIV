@@ -26,6 +26,7 @@ import matplotlib.pyplot as plt
 ureg = pint.UnitRegistry()
 ureg.setup_matplotlib(True)
 ureg.load_definitions(files("yaiv") / "defaults/extra_units.txt")
+pint.set_application_registry(ureg)
 
 # === Misc defaults ===
 defaults = SimpleNamespace(symprec=1e-5)  # Default symmetry precision

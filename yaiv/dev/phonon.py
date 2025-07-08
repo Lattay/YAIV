@@ -38,6 +38,8 @@ CDW
 BOES
     Class for constructing a Born-Oppenheimer energy surface (BOES) associated with charge-density wave (CDW) distortions.
     Provides:
+    - from_file(): Load a BOES object from a .pkl file.
+    - save_as(): Save the entire BOES object as a .pkl file.
     - generate_structures_grid(): Generate distorted structures over a regular grid in order parameter space.
     - generate_structures_line(): Generate distorted structures along a 1D path in order parameter space.
     - saveas_jobs_pwi(): Export all generated distorted structures as QE input files (.pwi).
@@ -77,11 +79,13 @@ from types import SimpleNamespace
 from math import gcd
 import warnings
 import os
+import pickle
 
 import numpy as np
 import spglib as spg
 
 from yaiv.defaults.config import ureg
+
 from yaiv.defaults.config import defaults
 from yaiv import utils as ut
 from yaiv import grep
@@ -746,6 +750,39 @@ class BOES:
         """
         self.CDW = CDW
 
+    @classmethod
+    def from_file(cls, filename: str):
+        """
+        Load a BOES object from a .pkl file.
+
+        Parameters
+        ----------
+        filename : str
+            Path to file created with `save_as`.
+
+        Returns
+        -------
+        BOES
+            Fully reconstructed BOES object.
+        """
+        with open(filename, "rb") as f:
+            obj = pickle.load(f)
+        return obj
+
+    def save_as(self, filename: str):
+        """
+        Save the entire BOES object, including the CDW instance and all structures in a .pkl file.
+
+        Parameters
+        ----------
+        filename : str
+            Path to the output file. '.pkl' will be added if missing.
+        """
+        if not filename.endswith(".pkl"):
+            filename += ".pkl"
+        with open(filename, "wb") as f:
+            pickle.dump(self, f)
+
     def generate_structures_grid(
         self,
         grid: list[int] = None,
@@ -886,7 +923,7 @@ class BOES:
         self.modes = modes
         self.space_groups = SGs
 
-    def saveas_jobs_pwi(
+    def save_jobs_pwi(
         self,
         dest_folder: str,
         template: str = None,
