@@ -62,7 +62,7 @@ plot_defaults = SimpleNamespace(
 
 # Optional: override matplotlib rcParams directly if desired
 matplotlib.rcParams["axes.prop_cycle"] = plt.cycler(color=plot_defaults.color_cycle)
-matplotlib.rcParams['image.cmap'] = 'plasma'
+matplotlib.rcParams["image.cmap"] = "plasma"
 # matplotlib.rcParams["lines.linewidth"] = plot_defaults.linewidth
 # matplotlib.rcParams["font.size"] = plot_defaults.font_size
 # matplotlib.rcParams["axes.labelsize"] = plot_defaults.label_size
@@ -70,3 +70,27 @@ matplotlib.rcParams['image.cmap'] = 'plasma'
 # matplotlib.rcParams["ytick.labelsize"] = plot_defaults.tick_size
 # matplotlib.rcParams["axes.linewidth"] = plot_defaults.axis_linewidth
 # matplotlib.rcParams["figure.dpi"] = plot_defaults.dpi
+
+# === Quantum Espresso input_data defaults ===
+qe_defaults = SimpleNamespace(
+    input_data={
+        "calculation": "scf",
+        "restart_mode": "from_scratch",
+        "pseudo_dir": "./pseudo",
+        "outdir": "/tmp",
+        "verbosity": "high",
+        "tstress": True,
+        "tprnfor": True,
+        "noncolin": True,
+        "lspinorb": True,
+        "ibrav": 0,
+        "ecutwfc": 60,
+        "ecutrho": 600,
+        "occupations": "smearing",
+        "smearing": "mp",
+        "degauss": 0.02,
+        "conv_thr": 1e-10,
+        "mixing_beta": 0.7,
+    },
+    kpts=(10, 10, 10),
+)

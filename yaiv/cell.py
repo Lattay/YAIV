@@ -23,6 +23,7 @@ Cell
     - get_sym_info(symprec=...): Print symbolic symmetry operations and Wyckoff info.
     - get_wyckoff_positions(symprec=...): Group atoms by Wyckoff positions.
     - get_supercell(supercell): Return a repeated Cell object.
+    - write_espresso_in(...): Write Quantum ESPRESSO input file.
 
 Functions
 ---------
@@ -60,6 +61,8 @@ yaiv.utils    : Utility functions for basis and vector transformations
 """
 
 from types import SimpleNamespace
+import re
+import os
 
 import numpy as np
 import spglib as spg
@@ -68,6 +71,7 @@ from ase.io import read, write
 from ase import Atoms
 
 from yaiv.defaults.config import defaults as dft
+from yaiv.defaults.config import qe_defaults
 from yaiv import utils as ut
 
 __all__ = ["read", "write", "read_spg", "ase2spglib", "spglib2ase", "Cell"]
@@ -338,6 +342,93 @@ class Cell:
 
         return Cell(lattice, positions, elements)
 
+    def write_espresso_in(self, filename: str = "espresso.pwi", template: str = None):
+        """
+        Write Quantum ESPRESSO input file using either default parameters or a template.
+
+        If no template is provided, writes a new input using default settings stored
+        in `qe_defaults`. If a template is provided, it replaces the structural
+        information (cell, atomic positions, nat) in the template with those from
+        `self.atoms`.
+
+        Parameters
+        ----------
+        filename : str
+            Output input file name (e.g. 'espresso.pwi').
+        template : str
+            Optional template input file to use as a base. Only geometry-related fields
+            (CELL_PARAMETERS, ATOMIC_POSITIONS, nat) are updated.
+        """
+        if template is None:
+            write(
+                filename,
+                self.atoms,
+                input_data=qe_defaults.input_data,
+                kpts=qe_defaults.kpts,
+                format="espresso-in",
+            )
+            return
+
+        # Write a temporary QE input from the structure to extract updated geometry
+        write(".tmp.pwi", self.atoms, format="espresso-in")
+
+        # Extract updated geometry info: CELL_PARAMETERS, ATOMIC_POSITIONS, nat
+        basis = []
+        pos = []
+        cell_line = -4
+        pos_line = -999999
+        nat = 0
+        with open(".tmp.pwi", "r") as lines:
+            for n, line in enumerate(lines):
+                if re.search(r"\bnat\b", line):
+                    nat = int(line.split()[2])
+                if re.search("CELL_PARAMETERS", line):
+                    cell_line = n
+                if re.search("ATOMIC_POSITIONS", line):
+                    pos_line = n
+                if n - cell_line in [1, 2, 3]:
+                    basis.append(line)
+                if n - pos_line in range(1, nat + 1):
+                    pos.append(line)
+        os.remove(".tmp.pwi")
+
+        # Open template and inject updated structural info
+        write_nat = True
+        write_pos = True
+        write_basis = True
+        K_points = False
+
+        temp = open(template, "r")
+        output = open(filename, "w")
+        for line in temp:
+            if re.search("ibrav", line):
+                if "0" not in line:
+                    raise ValueError("ERROR: Your template must have ibrav = 0.")
+            elif re.search("pseudo_dir", line):
+                line = "  pseudo_dir = '$PSEUDO_DIR',\n"
+            elif re.search("outdir", line):
+                line = "  outdir = './tmp',\n"
+            elif re.search("nat*=", line) and write_nat == True:
+                line = "  nat=" + str(nat) + ",\n"
+                write_nat = False
+            elif re.search("POSITIONS", line, re.IGNORECASE) and write_pos == True:
+                line = "ATOMIC_POSITIONS {angstrom}\n"
+                output.write(line)
+                for line in pos:
+                    output.write(line)
+                write_pos = False
+            elif re.search("POINTS", line, re.IGNORECASE):
+                K_points = True
+            elif re.search("CELL", line, re.IGNORECASE):
+                line = "CELL_PARAMETERS {angstrom}\n"
+                output.write(line)
+                for line in basis:
+                    output.write(line)
+                K_points = False
+            if write_pos == True or K_points == True:
+                output.write(line)
+        temp.close()
+        output.close()
 
 def ase2spglib(crystal_ase: Atoms) -> tuple:
     """

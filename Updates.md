@@ -9,3 +9,6 @@ Utils:
 Spectrum:
     - New `DOS` class.
     - DOS can be computed with both Gaussian and MP smearing of any order.
+
+Cell:
+    - New `write_espresso_in` method.
