@@ -10,81 +10,6 @@ from ase.visualize import view
 from ase import Atoms
 
 
-def store_structure_QE_pwi(structure, filename, template=None):
-    """Writes a QE input based for a given crystal structure and calculation template:
-
-    structure = your ase or spglib structure
-    filename = name of your input
-    template = A template input you want to copy
-    """
-    if type(structure) == tuple:  # spglib structure
-        structure = spglib2ase(structure)
-    if template == None:
-        filename = filename
-        write(filename, structure, format="espresso-in")
-    else:
-        write(".tmp.pwi", structure, format="espresso-in")
-
-        # process relevant data of new structure
-        basis = []
-        pos = []
-        cell_line = -4
-        pos_line = -999999
-        nat = 0
-        file = open(".tmp.pwi", "r")
-        for n, line in enumerate(file):
-            if re.search("nat", line):
-                nat = int(line.split()[2])
-            if n - cell_line <= 3:
-                basis = basis + [line]
-            if n - pos_line <= nat:
-                pos = pos + [line]
-            if re.search("CELL_PARAMETERS", line):
-                cell_line = n
-            if re.search("ATOMIC_POSITIONS", line):
-                pos_line = n
-        file.close()
-        os.remove(".tmp.pwi")
-
-        # open template and change input accordingly
-        write_nat = True
-        write_pos = True
-        write_basis = True
-        K_points = False
-        temp = open(template, "r")
-        output = open(filename, "w")
-        for line in temp:
-            if re.search("ibrav", line):
-                if "0" not in line:
-                    print("ERROR: Your template has not ibrav=0")
-                    return ERROR
-            elif re.search("pseudo_dir", line):
-                line = "  pseudo_dir = 'pseudo',\n"
-            elif re.search("outdir", line):
-                line = "  outdir = './tmp',\n"
-            elif re.search("nat*=", line) and write_nat == True:
-                line = "  nat=" + str(nat) + ",\n"
-                write_nat = False
-            elif re.search("POSITIONS", line, re.IGNORECASE) and write_pos == True:
-                line = "ATOMIC_POSITIONS {angstrom}\n"
-                output.write(line)
-                for line in pos:
-                    output.write(line)
-                write_pos = False
-            elif re.search("POINTS", line, re.IGNORECASE):
-                K_points = True
-            elif re.search("CELL", line, re.IGNORECASE):
-                line = "CELL_PARAMETERS {angstrom}\n"
-                output.write(line)
-                for line in basis:
-                    output.write(line)
-                K_points = False
-            if write_pos == True or K_points == True:
-                output.write(line)
-        temp.close()
-        output.close()
-
-
 def write_struc(crystal, file, primitive=True, conventional=False, silent=True):
     """Output a structure in a sensible readable way
     crystal = Either QE/VASP file, spglib or ase object.
@@ -115,8 +40,7 @@ def write_struc(crystal, file, primitive=True, conventional=False, silent=True):
         new = np.hstack([s, np.array(POS[i], dtype=object)])
         try:
             positions = np.vstack((new, positions))
-        except NameError:
-            positions = new
+        except NameError: positions = new
     # print(positions)
     if silent == True:
         np.savetxt(file, CELL, fmt="%14.9f", header="CELL (Anstrom)")
