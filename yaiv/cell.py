@@ -218,7 +218,7 @@ class Cell:
         print("Site symmetry simbols:")
         print(dataset.site_symmetry_symbols)
         print()
-        print("SYMMETRY OPERATIONS:")
+        print("Symmetry Operations:")
         print()
         symmetry = [(r, t) for r, t in zip(dataset.rotations, dataset.translations)]
         for i in range(len(symmetry)):
