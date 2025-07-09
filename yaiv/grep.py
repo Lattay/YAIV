@@ -20,9 +20,6 @@ Supported formats include:
 
 Functions
 ---------
-_filetype(file)
-    Heuristically determines the type of simulation output file (QE, VASP, etc.).
-
 electron_num(file)
     Greps the number of electrons from a QE or VASP output file.
 
@@ -55,6 +52,9 @@ dyn_q(q_cryst, results_ph_path, qe_format=True)
 
 Private Utilities
 -----------------
+_filetype(file)
+    Heuristically determines the type of simulation output file (QE, VASP, etc.).
+
 _find_dyn_file(q_cryst, results_ph_path)
     Internal helper that searches `.dyn*` files matching the specified q-point.
 
