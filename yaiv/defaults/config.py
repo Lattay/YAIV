@@ -80,8 +80,8 @@ qe_defaults = SimpleNamespace(
     input_data={
         "calculation": "scf",
         "restart_mode": "from_scratch",
-        "pseudo_dir": "./pseudo",
-        "outdir": "/tmp",
+        "pseudo_dir": "$PSEUDO_DIR",
+        "outdir": "./tmp",
         "verbosity": "high",
         "tstress": True,
         "tprnfor": True,
