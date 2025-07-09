@@ -29,7 +29,10 @@ ureg.load_definitions(files("yaiv") / "defaults/extra_units.txt")
 pint.set_application_registry(ureg)
 
 # === Misc defaults ===
-defaults = SimpleNamespace(symprec=1e-5)  # Default symmetry precision
+defaults = SimpleNamespace(
+    symprec=1e-5,  # Default symmetry precision
+    CDW_amplitude=0.5 * ureg.ang,  # Default CDW amplitude
+)
 
 # === Plotting defaults ===
 

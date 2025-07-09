@@ -86,39 +86,6 @@ def pp_CDW_sym_analysis(OPs, SGs):
         indices = indices + [ind]
     return diff_SGs, indices
 
-
-def __qe_norm_factor2(QE_disp, masses):
-    """Gets the normalization factor for each QE eigenvalue.
-    With the QE dynamical matrix and QE normalized displacements the output of the sandwitch:
-    <vector|Dynamical|vector>=N^2 freq^2  (freq in Ry)
-    Where N^2 is given by this function using eig=QE_disp
-    It has units of mass (the ones of the masses you input)
-    """
-    atoms = len(masses)
-    N = 0
-    for i in range(atoms):
-        N = N + masses[i] * (np.linalg.norm(QE_disp[i])) ** 2
-    return N
-
-
-def qe_disp2pol(QE_disp, masses):
-    """From QE normalized displacement vectors to polarization vectors.
-    You can feed either one or a list of polarization vectors.
-    return polarization_vectors
-    """
-    rank = len(np.shape(QE_disp))
-    pol = np.copy(QE_disp)
-    if rank == 2:
-        pol = [pol]
-    for i, p in enumerate(pol):
-        for j, vec in enumerate(p):
-            pol[i][j] = vec * np.sqrt(masses[j])
-        pol[i] = pol[i] / (np.linalg.norm(pol[i]))
-    if rank == 2:
-        return pol[0]
-    return pol
-
-
 def poli(x, coef):
     """Generates the y value at the x point for a polinomy defined by certain coeficients
     x = point to evaluate

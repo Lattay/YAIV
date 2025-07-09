@@ -58,6 +58,9 @@ _find_supercell(q_cryst)
 _format_input(CDW, amplitudes, modes, grid)
     Formats and normalizes user input for a CDW distortion calculation.
 
+_amplitude2order_parameter(amplitudes, masses, displacements)
+    Convert displacement amplitudes into proper order parameters with [length × sqrt(mass)] units.
+
 Examples
 --------
 >>> from yaiv.phonon import Dyn
@@ -519,7 +522,7 @@ class CDW:
 
     def distort_crystal(
         self,
-        amplitudes: list[complex] = None,
+        amplitudes: list[ureg.Quantity] | list[complex] = defaults.CDW_amplitude,
         modes: list[int] = None,
     ):
         """
@@ -527,9 +530,9 @@ class CDW:
 
         Parameters
         ----------
-        amplitudes : list[complex], optional
+        amplitudes : list[ureg.Quantity] | list[complex], optional
             List of complex amplitudes (including phase) for each q-mode. Default being
-            a value of 0.01 for each q-point (np.ones(len(self.q)))*0.01.
+            a value of 0.5 Å for each q-point (np.ones(len(self.q)))*0.5 Å.
         modes : list[int], optional
             List of mode indices to be activated at each q-point. Default being the
             lowest energy mode for each q point.
@@ -543,7 +546,8 @@ class CDW:
         -----
         Final displacement is found by applying the given amplitudes to the individual
         normalized displacements:
-            `Real( Σ (amplitudes * displacement))` Å, where `norm (displacement) = 1`
+            `Real( Σ (amplitudes * displacement))`, where `norm (displacement) = 1`
+            If no units are defined the amplitudes are considered to be in angstroms.
         """
         _formatted = _format_input(self, amplitudes=amplitudes, modes=modes)
         amplitudes, modes = _formatted.amplitudes, _formatted.modes
@@ -578,7 +582,7 @@ class CDW:
         self,
         grid: list[int] = None,
         modes: list[int] = None,
-        amplitudes: complex | list[complex] = 0.01,
+        amplitudes: complex | list[complex] = defaults.CDW_amplitude,
         symprec: float = defaults.symprec,
     ):
         """
@@ -598,10 +602,10 @@ class CDW:
             List of mode indices (starting at 0) to be used for the displacement. If None, the lowest
             frequency modes will be selected.
 
-        amplitudes : complex | list[complex], optional
+        amplitudes : list[ureg.Quantity] | list[complex], optional
             Amplitud factors applied to each normalized distortion vector. Final displacement is given by:
-            `Real( Σ (grid_point * amplitudes * displacement))` in Å, where `norm(displacement) = 1`.
-            Default is 0.01 Å for each mode.
+            `Real( Σ (grid_point * amplitudes * displacement))`, where `norm(displacement) = 1`.
+            Default is 0.5 Å for each mode.
 
         symprec : float, optional
             Tolerance used by spglib to determine space group symmetry. Default is `defaults.symprec`.
@@ -610,8 +614,10 @@ class CDW:
         -------
         SimpleNamespace
             Contains:
-            - amplitudes : list[complex]
-                Array of complex vectors defining the grid of amplitude values.
+            - amplitudes : ureg.Quantity[np.ndarray]
+                Array of complex vectors defining the grid of amplitude values, [lenght] units.
+            - order_parameters : ureg.Quantity[np.ndarray]
+                Array of complex vectors defining the grid of order_parameter values [lenght * sqrt(mass)] units.
             - space_groups : list[str]
                 List of space group symbols (e.g. 'P1', 'R-3m') returned by spglib.
             - cell_sizes : np.ndarray
@@ -647,8 +653,21 @@ class CDW:
             sizes.append(s)
             structures.append(distorted)
 
+        # Obtain order parameters
+        amplitudes *= ureg.ang
+        displacements = []
+        for i in range(len(self.q)):
+            displacements.append(self.dyn_matrices[i].displacements[modes[i]])
+
+        order_parameters = _amplitude2order_parameter(
+            amplitudes=amplitudes,
+            masses=self.dyn_matrices[0].masses,
+            displacements=displacements,
+        )
+
         return SimpleNamespace(
             amplitudes=amplitudes,
+            order_parameters=order_parameters,
             space_groups=SGs,
             cell_sizes=np.array(sizes),
             structures=structures,
@@ -664,7 +683,8 @@ def _format_input(
     """
     Formats and normalizes user input for a CDW distortion calculation.
 
-    Ensures that `amplitudes`, `modes`, and `grid` are provided in consistent list formats.
+    Ensures that `amplitudes`, `modes`, and `grid` are provided in consistent list formats
+    and that amplitudes are in angstroms.
     Defaults are assigned based on the number of q-vectors in the CDW object.
 
     Parameters
@@ -672,8 +692,7 @@ def _format_input(
     CDW : CDW
         CDW object containing the q-vectors and structure information.
     amplitudes : list[complex] or scalar, optional
-        Complex amplitudes for each mode. Defaults to `[0.01, ..., 0.01]` (real).
-        If a scalar is given, it is broadcasted.
+        Complex amplitudes for each mode. Defaults to `[0.5, ..., 0.5] Å` (real).
     modes : list[int] or int, optional
         List of phonon mode indices corresponding to each q-vector. Defaults to lowest-frequency modes (0).
         If a single integer is given, it is wrapped in a list.
@@ -692,10 +711,12 @@ def _format_input(
     """
     DIM = len(CDW.q)
 
-    # Order parameter
+    # Order parameter (convert to angstrom and stripe units)
     if amplitudes is None:
-        amplitudes = np.ones(DIM, dtype=complex) * 0.01
-    elif isinstance(amplitudes, (complex, float, int)):
+        amplitudes = np.ones(DIM) * defaults.CDW_amplitude
+    elif isinstance(amplitudes, ureg.Quantity):
+        amplitudes = amplitudes.to("ang").magnitude
+    if isinstance(amplitudes, (complex, float, int)):
         amplitudes = [amplitudes] * DIM
 
     # Modes
@@ -727,16 +748,16 @@ class BOES:
         A CDW object containing dynamical matrices and crystal structure.
     structures : list[cell.Cell]
         Distorted structures generated by grid or line scans.
-    amplitudes : list[complex]
-        List of amplitude factors used in each distortion.
+    amplitudes : ureg.Quantity[np.ndarray]
+        Array of complex vectors defining the amplitude values, [lenght] units.
+    order_parameters : ureg.Quantity[np.ndarray]
+        Array of complex vectors defining the order_parameter values [lenght * sqrt(mass)] units.
     modes : list[int]
         Indices of phonon modes used in the distortions.
     space_groups : list[str]
         List of space group symbols (e.g. 'P1', 'R-3m') returned by spglib.
     energies : SimpleNamespace | list[float]
         List of BOES energies, either total Free energies or a decomposition of the different terms.
-    order_parameters : np.ndarray
-        Real-valued vectors defining each distortion in terms of order parameters.
     """
 
     def __init__(self, CDW: CDW = None):
@@ -787,7 +808,7 @@ class BOES:
         self,
         grid: list[int] = None,
         modes: list[int] = None,
-        amplitudes: complex | list[complex] = 0.01,
+        amplitudes: complex | list[complex] = defaults.CDW_amplitude,
         symprec: float = defaults.symprec,
     ):
         """
@@ -803,10 +824,10 @@ class BOES:
             List of mode indices (starting at 0) to be used for the displacement. If None, the lowest
             frequency modes will be selected.
 
-        amplitudes : complex | list[complex], optional
+        amplitudes : list[ureg.Quantity] | list[complex], optional
             Amplitud factors applied to each normalized distortion vector. Final displacement is given by:
-            `Real( Σ (grid_point * amplitudes * displacement))` in Å, where `norm(displacement) = 1`.
-            Default is 0.01 Å for each mode.
+            `Real( Σ (grid_point * amplitudes * displacement))`, where `norm(displacement) = 1`.
+            Default is 0.5 Å for each mode.
 
         symprec : float, optional
             Tolerance used by spglib to determine space group symmetry. Default is `defaults.symprec`.
@@ -821,20 +842,19 @@ class BOES:
         )
 
         print(
-            "Order parameter in a",
+            "Amplitudes in a",
             grid,
-            "grid  with ",
-            "amplitudes = ",
-            amplitude,
-            "and modes",
+            "grid  with max amplitudes of",
+            amplitudes,
+            "Å, for modes",
             modes,
+            ", in q points:",
         )
+        print(self.CDW.q)
         print()
         print("The general displacement at each config is given by:")
         # print("Real ( Σ (OP * amplitudes * displacements)) * Å")
-        print(
-            "Real( Σ (grid_point * amplitudes * displacement))` in Å, where `norm(displacement) = 1`"
-        )
+        print("Real( Σ (amplitudes * displacement)) Å`, where `norm(displacement) = 1`")
         print()
         print("---------------------------------------------------")
         print(
@@ -854,11 +874,12 @@ class BOES:
         self.amplitudes = out.amplitudes
         self.modes = modes
         self.space_groups = out.space_groups
+        self.order_parameters = out.order_parameters
 
     def generate_structures_line(
         self,
-        amplitude_i: list[int] = None,
-        amplitude_f: list[int] = None,
+        amplitude_i: list[int] = -defaults.CDW_amplitude,
+        amplitude_f: list[int] = defaults.CDW_amplitude,
         modes: list[int] = None,
         steps: int = 31,
         symprec: float = defaults.symprec,
@@ -868,10 +889,10 @@ class BOES:
 
         Parameters
         ----------
-        amplitude_i : list[int]
-            Initial point in the amplitude space.
-        amplitude_f : list[int]
-            Final point in the amplitude space.
+        amplitude_i : list[ureg.Quantity] | list[complex]
+            Initial point in the amplitude space. Default units are Å.
+        amplitude_f : list[ureg.Quantity] | list[complex]
+            Final point in the amplitude space. Default units are Å.
         modes : list[int]
             Mode indices used to generate the displacements.
         steps : int
@@ -882,7 +903,7 @@ class BOES:
         Notes
         -----
         Final displacement is given by:
-            `Real( Σ amplitudes * displacement)` in Å, where `norm(displacement) = 1`.
+            `Real( Σ amplitudes * displacement)`, where `norm(displacement) = 1`.
         """
         modes = _format_input(self.CDW, modes=modes).modes
         amplitude_i = _format_input(self.CDW, amplitudes=amplitude_i).amplitudes
@@ -891,16 +912,18 @@ class BOES:
         print(
             "Amplitude varying from",
             amplitude_i,
-            "to",
+            "Å to",
             amplitude_f,
-            "in",
+            "Å in",
             steps,
-            "steps for modes",
+            "steps, for modes",
             modes,
+            ", in q points:",
         )
+        print(self.CDW.q)
         print()
         print("The general displacement at each config is given by:")
-        print("Real ( Σ amplitudes * displacements) * Å")
+        print("Real ( Σ amplitudes * displacements) Å")
         print()
         print("---------------------------------------------------")
         print(
@@ -925,10 +948,23 @@ class BOES:
             SGs.append(SG)
             structures.append(distorted)
 
+        # Obtain order parameters
+        amplitudes *= ureg.ang
+        displacements = []
+        for i in range(len(self.CDW.q)):
+            displacements.append(self.CDW.dyn_matrices[i].displacements[modes[i]])
+
+        order_parameters = _amplitude2order_parameter(
+            amplitudes=amplitudes,
+            masses=self.CDW.dyn_matrices[0].masses,
+            displacements=displacements,
+        )
+
         self.structures = structures
         self.amplitudes = amplitudes
         self.modes = modes
         self.space_groups = SGs
+        self.order_parameters = order_parameters
 
     def save_jobs_pwi(
         self,
@@ -1001,3 +1037,58 @@ class BOES:
 
     def _plot_energy_landscape(self):
         pass
+
+
+def _amplitude2order_parameter(
+    amplitudes: ureg.Quantity | list[complex],
+    masses: ureg.Quantity | list[float],
+    displacements: list[np.ndarray],
+) -> ureg.Quantity:
+    """
+    Convert displacement amplitudes into proper order parameters with mass scaling.
+
+    Given phonon mode amplitudes applied to mass-normalized displacement vectors, this function
+    returns the associated order parameters with physical units of length × sqrt(mass). The relation used is:
+
+        q_s = A × sqrt(Σ_i M_i |ε_i^s|²)
+
+    Parameters
+    ----------
+    amplitudes : ureg.Quantity or list[complex]
+        Scalar amplitudes for each phonon distortion mode (with units of length or dimensionless).
+
+    masses : ureg.Quantity or list[float]
+        Atomic masses (usually in 2m_e units), one per atom in the unit cell.
+
+    displacements : list[np.ndarray]
+        Normalized displacement vectors for each mode. Each element has shape (N_atoms, 3)
+        and is assumed to be mass-normalized (as in QE output).
+
+    Returns
+    -------
+    ureg.Quantity
+        Order parameters with units of length × sqrt(mass), one per mode.
+    """
+    # Strip units
+    units = 1
+    if isinstance(amplitudes, ureg.Quantity):
+        units *= amplitudes.units
+        amplitudes = np.array(amplitudes.magnitude)
+    else:
+        amplitudes = np.array(amplitudes)
+    if isinstance(masses, ureg.Quantity):
+        units *= np.sqrt(1 * masses.units)
+        masses = masses.magnitude
+
+    # QE normalization constant: sum_i M_i * |ε_i|^2
+    if len(amplitudes.shape) == 2:
+        NN = [0] * amplitudes.shape[1]
+    else:
+        NN = [0] * len(amplitudes)
+
+    for i in range(len(NN)):
+        for j in range(len(masses)):
+            NN[i] += masses[j] * (np.linalg.norm(displacements[i][j])) ** 2
+
+    order_parameter = amplitudes * np.sqrt(NN)
+    return order_parameter * units
