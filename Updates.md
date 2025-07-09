@@ -1,23 +1,32 @@
-# List of updates to add to the new release:
+# Changelog
 
-- Improved documentation
+## ✅ General Improvements
 
-Utils:
-    - New `methpax_delta` function.
-    - New `analyze_distribution` function.
+- Improved and expanded documentation across the entire codebase.
 
-Grep:
-    - New `dyn_file` for parsing a QE `.dyn` file and getting vibrational data (q-point (2π/Å), lattice (Å), frequencies, ...).
-    - New `dyn_q` for locating and reading a `.dyn*` file for a given q-point, returning the full dynamical matrix (3Nx3N).
+---
 
-Spectrum:
-    - New `DOS` class.
-    - DOS can be computed with both Gaussian and MP smearing of any order.
+## 📦 Module-Specific Updates
 
-Cell:
-    - New `write_espresso_in` method.
+### `utils`
+- Added `methpax_delta` function.
+- Added `analyze_distribution` function.
 
-Phonon:
-    - New `Dyn` class for handling dynamical matrices, diagnoalizing, eigenvectors, displacement vectors, frequencies...
-    - New `CDW` class for constructing and manipulating charge-density wave (CDW) distorted supercells from multiple q-point phonon modes.
-    - New `BOES` class for constructing a Born-Oppenheimer energy surface (BOES) associated with charge-density wave (CDW) distortions.
+### `grep`
+- New `dyn_file` function for parsing a QE `.dyn` file and extracting vibrational data such as q-point (in 2π/Å), lattice vectors (in Å), phonon frequencies, etc.
+- New `dyn_q` function for locating and reading a `.dyn*` file for a specific q-point. Returns the full 3N×3N dynamical matrix.
+
+### `spectrum`
+- Added `DOS` class.
+- Now supports computation of the density of states with both **Gaussian** and **MP smearing** (any order).
+
+### `cell`
+- Added `write_espresso_in` method for generating QE input files from a `Cell` object.
+
+### `phonon`
+- Added `Dyn` class for handling:
+    - Reading and constructing dynamical matrices,
+    - Diagonalization,
+    - Extraction of eigenvectors, displacement patterns, and phonon frequencies.
+- Added `CDW` class for building charge-density wave (CDW) distorted supercells from multiple q-point phonon modes.
+- Added `BOES` class to construct the **Born-Oppenheimer Energy Surface (BOES)** associated with CDW distortions.
