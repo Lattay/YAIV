@@ -455,6 +455,9 @@ class CDW:
         Contains the commensurate supercell size and phase factors.
     SuperCell : Cell
         The supercell constructed from the primitive cell and commensurate size.
+    masses : Quantity [2*m_e]
+        Array of atomic masses, usually in units of 2 electron masses as per QE convention.
+        This are read from the first dynamical matrix.
     """
 
     def __init__(self, dyn_matrices: list):
@@ -514,6 +517,14 @@ class CDW:
             q_cryst = [q_cryst]
         dyn_matrices = [Dyn.from_file(q, results_ph_path) for q in q_cryst]
         return cls(dyn_matrices)
+
+    @property
+    def masses(self):
+        """
+        Property that returns the masses of the first stored dynamical matrix.
+        Masses should be the same for all matrices.
+        """
+        return self.dyn_matrices[0].masses
 
     def distort_crystal(
         self,
@@ -656,7 +667,7 @@ class CDW:
 
         order_parameters = ut.amplitude2order_parameter(
             amplitudes=amplitudes,
-            masses=self.dyn_matrices[0].masses,
+            masses=self.masses,
             displacements=displacements,
         )
 
@@ -951,7 +962,7 @@ class BOES:
 
         order_parameters = ut.amplitude2order_parameter(
             amplitudes=amplitudes,
-            masses=self.CDW.dyn_matrices[0].masses,
+            masses=self.CDW.masses,
             displacements=displacements,
         )
 
