@@ -41,6 +41,11 @@ methpax_delta(x, mean=0.0, smearing=0.1, order=1, A=1.0)
 analyze_distribution(X, Y)
     Computes the mean, std, skewness, kurtosis and normalization of a distribution defined over `X`.
 
+amplitude2order_parameter(amplitudes, masses, displacements)
+    Convert displacement amplitudes into proper order parameters with [length × sqrt(mass)] units.
+
+Private Utilities
+-----------------
 _expand_zone_border(q_point)
     Returns a q-point and its ±1-shifted equivalents along each reciprocal direction.
 
@@ -68,6 +73,7 @@ __all__ = [
     "grid_generator",
     "methpax_delta",
     "analyze_distribution",
+    "amplitude2order_parameter",
 ]
 
 
@@ -551,3 +557,64 @@ def _expand_zone_border(
     output = np.array(output)
 
     return output * units
+
+
+def amplitude2order_parameter(
+    amplitudes: ureg.Quantity | list[complex],
+    masses: ureg.Quantity | list[float],
+    displacements: list[np.ndarray],
+) -> ureg.Quantity:
+    """
+    Convert amplitudes of normalized displacements into proper order parameters with mass scaling.
+
+    Given phonon mode amplitudes applied to mass-normalized displacement vectors, this function
+    returns the associated order parameters with physical units of length × sqrt(mass). The relation used is:
+
+        q_s = A × sqrt(Σ_i M_i |ε_i^s|²)
+
+    Parameters
+    ----------
+    amplitudes : ureg.Quantity or list[complex]
+        Scalar amplitudes for each phonon distortion mode (with units of length or dimensionless).
+
+    masses : ureg.Quantity or list[float]
+        Atomic masses (usually in 2m_e units), one per atom in the unit cell.
+
+    displacements : list[np.ndarray]
+        Normalized displacement vectors for each mode. Each element has shape (N_atoms, 3)
+        and is assumed to be mass-normalized (as in QE output).
+
+    Returns
+    -------
+    ureg.Quantity
+        Order parameters with units of length × sqrt(mass), one per mode.
+    """
+    # Strip units
+    units = 1
+    if isinstance(amplitudes, ureg.Quantity):
+        units *= amplitudes.units
+        amplitudes = amplitudes.magnitude
+    if isinstance(masses, ureg.Quantity):
+        units *= np.sqrt(1 * masses.units)
+        masses = masses.magnitude
+
+    # Formats amplitudes and displacements as np.ndarrays
+    if isinstance(amplitudes, int | float | complex):
+        amplitudes = np.array([amplitudes])
+    else:
+        amplitudes = np.array(amplitudes)
+    if not isinstance(displacements, list):
+        displacements = [displacements]
+
+    # QE normalization constant: sum_i M_i * |ε_i|^2
+    if len(amplitudes.shape) == 2:
+        NN = [0] * amplitudes.shape[1]
+    else:
+        NN = [0] * len(amplitudes)
+
+    for i in range(len(NN)):
+        for j in range(len(masses)):
+            NN[i] += masses[j] * (np.linalg.norm(displacements[i][j])) ** 2
+
+    order_parameter = amplitudes * np.sqrt(NN)
+    return order_parameter * units

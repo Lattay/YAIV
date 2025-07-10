@@ -11,6 +11,7 @@
 ### `utils`
 - Added `methpax_delta` function.
 - Added `analyze_distribution` function.
+- Added `amplitude2order_parameter` to convert displacement amplitudes into proper order parameters with [length × sqrt(mass)] units.
 
 ### `grep`
 - New `dyn_file` function for parsing a QE `.dyn` file and extracting vibrational data such as q-point, lattice vectors, phonon frequencies, etc.

@@ -58,9 +58,6 @@ _find_supercell(q_cryst)
 _format_input(CDW, amplitudes, modes, grid)
     Formats and normalizes user input for a CDW distortion calculation.
 
-_amplitude2order_parameter(amplitudes, masses, displacements)
-    Convert displacement amplitudes into proper order parameters with [length × sqrt(mass)] units.
-
 Examples
 --------
 >>> from yaiv.phonon import Dyn
@@ -657,7 +654,7 @@ class CDW:
         for i in range(len(self.q)):
             displacements.append(self.dyn_matrices[i].displacements[modes[i]])
 
-        order_parameters = _amplitude2order_parameter(
+        order_parameters = ut.amplitude2order_parameter(
             amplitudes=amplitudes,
             masses=self.dyn_matrices[0].masses,
             displacements=displacements,
@@ -952,7 +949,7 @@ class BOES:
         for i in range(len(self.CDW.q)):
             displacements.append(self.CDW.dyn_matrices[i].displacements[modes[i]])
 
-        order_parameters = _amplitude2order_parameter(
+        order_parameters = ut.amplitude2order_parameter(
             amplitudes=amplitudes,
             masses=self.CDW.dyn_matrices[0].masses,
             displacements=displacements,
@@ -1035,58 +1032,3 @@ class BOES:
 
     def _plot_energy_landscape(self):
         pass
-
-
-def _amplitude2order_parameter(
-    amplitudes: ureg.Quantity | list[complex],
-    masses: ureg.Quantity | list[float],
-    displacements: list[np.ndarray],
-) -> ureg.Quantity:
-    """
-    Convert displacement amplitudes into proper order parameters with mass scaling.
-
-    Given phonon mode amplitudes applied to mass-normalized displacement vectors, this function
-    returns the associated order parameters with physical units of length × sqrt(mass). The relation used is:
-
-        q_s = A × sqrt(Σ_i M_i |ε_i^s|²)
-
-    Parameters
-    ----------
-    amplitudes : ureg.Quantity or list[complex]
-        Scalar amplitudes for each phonon distortion mode (with units of length or dimensionless).
-
-    masses : ureg.Quantity or list[float]
-        Atomic masses (usually in 2m_e units), one per atom in the unit cell.
-
-    displacements : list[np.ndarray]
-        Normalized displacement vectors for each mode. Each element has shape (N_atoms, 3)
-        and is assumed to be mass-normalized (as in QE output).
-
-    Returns
-    -------
-    ureg.Quantity
-        Order parameters with units of length × sqrt(mass), one per mode.
-    """
-    # Strip units
-    units = 1
-    if isinstance(amplitudes, ureg.Quantity):
-        units *= amplitudes.units
-        amplitudes = np.array(amplitudes.magnitude)
-    else:
-        amplitudes = np.array(amplitudes)
-    if isinstance(masses, ureg.Quantity):
-        units *= np.sqrt(1 * masses.units)
-        masses = masses.magnitude
-
-    # QE normalization constant: sum_i M_i * |ε_i|^2
-    if len(amplitudes.shape) == 2:
-        NN = [0] * amplitudes.shape[1]
-    else:
-        NN = [0] * len(amplitudes)
-
-    for i in range(len(NN)):
-        for j in range(len(masses)):
-            NN[i] += masses[j] * (np.linalg.norm(displacements[i][j])) ** 2
-
-    order_parameter = amplitudes * np.sqrt(NN)
-    return order_parameter * units
