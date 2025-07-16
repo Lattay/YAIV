@@ -776,6 +776,10 @@ class BOES:
             The CDW object defining the parent structure and q-point modes.
         """
         self.CDW = CDW
+        # Initialize to None the rest of attributes
+        self.structures = self.amplitudes = self.order_parameters = self.modes = (
+            self.space_groups
+        ) = self.energies = None
 
     @classmethod
     def from_file(cls, filename: str):

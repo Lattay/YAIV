@@ -44,6 +44,9 @@ analyze_distribution(X, Y)
 amplitude2order_parameter(amplitudes, masses, displacements)
     Convert displacement amplitudes into proper order parameters with [length × sqrt(mass)] units.
 
+cumulative_integral(X, Y)
+    Compute the cumulative integral of a function defined by discrete x and y values.
+
 Private Utilities
 -----------------
 _expand_zone_border(q_point)
@@ -60,6 +63,7 @@ from typing import Sequence, Any
 
 import numpy as np
 from scipy.special import factorial, hermite
+from scipy import integrate
 
 from yaiv.defaults.config import ureg
 
@@ -74,6 +78,7 @@ __all__ = [
     "methpax_delta",
     "analyze_distribution",
     "amplitude2order_parameter",
+    "cumulative_integral",
 ]
 
 
@@ -618,3 +623,43 @@ def amplitude2order_parameter(
 
     order_parameter = amplitudes * np.sqrt(NN)
     return order_parameter * units
+
+
+def cumulative_integral(x: np.ndarray, y: np.ndarray):
+    """
+    Compute the cumulative integral of a function defined by discrete x and y values
+    (handles pint units).
+
+    Parameters
+    ----------
+    x : np.ndarray | ureg.Quantity
+        1D array of x-values (must be increasing).
+    y : np.ndarray | ureg.Quantity
+        1D array of y-values evaluated at the x-points.
+
+    Returns
+    -------
+    I : ndarray
+        1D array of cumulative integral values at each x, starting from zero.
+
+    Notes
+    -----
+    It uses scipy's cumulative_trapezoid method.
+    """
+    units = 1
+    if isinstance(x, ureg.Quantity):
+        units *= x.units
+        x = x.magnitude
+    if isinstance(y, ureg.Quantity):
+        units *= y.units
+        y = y.magnitude
+
+    if x.ndim != 1 or y.ndim != 1:
+        raise ValueError("x and y must be one-dimensional arrays.")
+    if x.shape != y.shape:
+        raise ValueError("x and y must have the same shape.")
+    if not np.all(np.diff(x) > 0):
+        raise ValueError("x values must be strictly increasing.")
+
+    Y = np.hstack([0, integrate.cumulative_trapezoid(y, x)])
+    return Y * units
