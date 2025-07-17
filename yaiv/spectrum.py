@@ -38,11 +38,11 @@ Private Utilities
 -----------------
 _Has_lattice
     Mixin that adds lattice handling capabilities.
-    Provides:
-    - get_1Dkpath(self, patched=True): Provides a one dimensional Kpath
 
 _Has_kpath
     Mixin that adds support for k-path functionalities.
+    Provides:
+    - get_1Dkpath(self, patched=True): Provides a one dimensional Kpath
 
 Examples
 --------
@@ -81,12 +81,7 @@ __all__ = ["DOS", "Spectrum" "ElectronBands", "PhononBands"]
 class _Has_lattice:
     """
     Mixin that provides lattice-related functionality:
-    loading a lattice, computing its reciprocal basis, and transforming k-points.
-
-    Parameters
-    ----------
-    lattice : np.ndarray, optional
-        3x3 matrix of direct lattice vectors in [length] units.
+    loading a lattice, computing its reciprocal basis, and keeping them syncd.
 
     Attributes
     ----------
@@ -96,7 +91,21 @@ class _Has_lattice:
         3x3 matrix of reciprocal lattice vectors in 2π[length]⁻¹ units.
     """
 
-    def __init__(self, lattice: np.ndarray = None, k_lattice: np.ndarray = None):
+    def __init__(
+        self,
+        lattice: np.ndarray | ureg.Quantity = None,
+        k_lattice: np.ndarray | ureg.Quantity = None,
+    ):
+        """
+        Initialize the _Has_lattice object from either the real or reciprocal space lattice.
+
+        Parameters
+        ----------
+        lattice : np.ndarray | ureg.Quantity
+            3x3 matrix of direct lattice vectors in [length] units.
+        k_lattice : np.ndarray | ureg.Quantity
+            3x3 matrix of reciprocal lattice vectors in [length]⁻¹ units.
+        """
         self._lattice = self._k_lattice = None
         if lattice is not None:
             self._lattice = lattice
@@ -133,9 +142,24 @@ class _Has_kpath:
     kpath : SimpleNamespace | np.ndarray
         A namespace with attributes `path`(ndarray) and `labels`(list)
         or just a ndarray.
+
+    Methods
+    -------
+    get_1Dkpath()
+        Computes the 1D cumulative k-path from the k-point coordinates.
     """
 
     def __init__(self, kpath: SimpleNamespace | np.ndarray = None):
+        """
+        Initialize the _Has_kpath object from a SimpleNamespace as given by
+        `yaiv.grep.kpath`.
+
+        Parameters
+        ----------
+        kpath : SimpleNamespace | np.ndarray
+            A namespace with attributes `path`(ndarray) and `labels`(list)
+            or just a ndarray.
+        """
         self.kpath = kpath
 
     def get_1Dkpath(self, patched=True) -> np.ndarray:
@@ -150,7 +174,7 @@ class _Has_kpath:
             plots (e.g., flat bands across high-symmetry points).
 
         Returns
-        ----------
+        -------
         kpath : np.ndarray
             The 1D cumulative k-path from the k-point coordinates.
         """
@@ -183,15 +207,42 @@ class DOS:
     """
     General class for storing density of states (DOS) values.
 
+    Attributes
+    ----------
     DOS : np.ndarray | pint.Quantity
         Array of shape (N,) with the corresponding DOS values (1/eigenvalue) units.
     vgrid : np.ndarray | pint.Quantity
         Array of shape (N,) with the eigenvalue units.
     parent : Spectrum | ElectronBands | PhononBands
         Parent class so that DOS can access parent attributes.
+
+    Methods
+    -------
+    integrate(...)
+        Integrate the density of states (DOS) up to a given energy or to determine
+        the energy at which a certain number of states are filled.
+    plot(...)
+        Plot the DOS over an eigenvalue-window.
     """
 
-    def __init__(self, DOS=None, vgrid=None, parent=None):
+    def __init__(
+        self,
+        DOS: np.ndarray | ureg.Quantity = None,
+        vgrid: np.ndarray | ureg.Quantity = None,
+        parent: Spectrum | ElectronBands | PhononBands = None,
+    ):
+        """
+        Initialize DOS object.
+
+        Parameters
+        ----------
+        DOS : np.ndarray | pint.Quantity
+            Array of shape (N,) with the corresponding DOS values (1/eigenvalue) units.
+        vgrid : np.ndarray | pint.Quantity
+            Array of shape (N,) with the eigenvalue units.
+        parent : Spectrum | ElectronBands | PhononBands, optional
+            Parent class so that DOS can access parent attributes.
+        """
         self.DOS = DOS
         self.vgrid = vgrid
         self._parent = parent
@@ -366,40 +417,63 @@ class Spectrum(_Has_lattice, _Has_kpath):
     General class for storing the eigenvalues of a periodic operator over k-points.
 
     This can represent band structures, phonon spectra, or eigenvalues of other operators.
-
+    It is a subclass of `_Has_lattice` and `_Has_kpath` mixing classes.
 
     Attributes
     ----------
-    eigenvalues : np.ndarray, optional
+    eigenvalues : np.ndarray | ureg.Quantity, optional
         Array of shape (nkpts, neigs), e.g., energy or frequency values.
-    kpoints : np.ndarray, optional
+    kpoints : np.ndarray | ureg.Quantity, optional
         Array of shape (nkpts, 3) with k-points.
     weights : np.ndarray, optional
         Optional weights for each k-point.
-    lattice : np.ndarray, optional
-        3x3 matrix of direct lattice vectors in [length] units.
-    k_lattice : np.ndarray, optional
-        3x3 matrix of reciprocal lattice vectors in 2π[length]⁻¹ units.
-        Will be ignored when defining the spectrum if lattice is given.
-    kpath : SimpleNamespace | np.ndarray, optional
-        A namespace with attributes `path`(ndarray) and `labels`(list)
-        or just a ndarray.
     DOS : DOS, optional
         - vgrid : np.ndarray | pint.Quantity
             Array of shape (steps,) with the eigenvalue units.
         - DOS : np.ndarray
             Array of shape (steps,) with the corresponding DOS values.
+
+    Methods
+    -------
+    get_DOS(...)
+        Compute a density of states (DOS) for the set of eigenvalues.
+    def plot(...)
+        Plot the spectrum over a cumulative k-path.
+    def plot_fat(...)
+        Fat-band style plotting for weights over a cumulative k-path.
+    def plot_color(...)
+        Color gradient line-style for weights over a cumulative k-path.
     """
 
     def __init__(
         self,
-        eigenvalues: np.ndarray = None,
-        kpoints: np.ndarray = None,
+        eigenvalues: np.ndarray | ureg.Quantity = None,
+        kpoints: np.ndarray | ureg.Quantity = None,
         weights: list | np.ndarray = None,
-        lattice: np.ndarray = None,
-        k_lattice: np.ndarray = None,
+        lattice: np.ndarray | ureg.Quantity = None,
+        k_lattice: np.ndarray | ureg.Quantity = None,
         kpath: SimpleNamespace | np.ndarray = None,
     ):
+        """
+        Initialize Spectrum object.
+
+        Parameters
+        ----------
+        eigenvalues : np.ndarray | ureg.Quantity, optional
+            Array of shape (nkpts, neigs), e.g., energy or frequency values.
+        kpoints : np.ndarray | ureg.Quantity, optional
+            Array of shape (nkpts, 3) with k-points.
+        weights : np.ndarray, optional
+            Optional weights for each k-point.
+        lattice : np.ndarray | ureg.Quantity, optional
+            3x3 matrix of direct lattice vectors in [length] units.
+        k_lattice : np.ndarray | ureg.Quantity, optional
+            3x3 matrix of reciprocal lattice vectors in 2π[length]⁻¹ units.
+            Will be ignored when defining the spectrum if lattice is given.
+        kpath : SimpleNamespace | np.ndarray, optional
+            A namespace with attributes `path`(ndarray) and `labels`(list)
+            or just a ndarray.
+        """
         self.eigenvalues = eigenvalues
         self.kpoints = kpoints
         self.weights = weights
@@ -818,12 +892,7 @@ class Spectrum(_Has_lattice, _Has_kpath):
 
 class ElectronBands(Spectrum):
     """
-    Class for handling electronic bandstructures and spectrums.
-
-    Parameters
-    ----------
-    file : str
-        File from which to extract the bands.
+    Dressed `Spectrum` subclass for handling electronic bandstructures and spectrums.
 
     Attributes
     ----------
@@ -831,21 +900,19 @@ class ElectronBands(Spectrum):
         Path to the file containing electronic structure output.
     electron_num : int
         Total number of electrons in the system.
-    eigenvalues : np.ndarray
-        Array of shape (nkpts, neigs) with energy values.
-    kpoints : np.ndarray
-        Array of shape (nkpts, 3) with k-points.
-    weights : np.ndarray
-        Optional weights for each k-point.
-    lattice : np.ndarray
-        3x3 matrix of lattice vectors in [length] units.
-    k_lattice : np.ndarray
-        3x3 matrix of reciprocal lattice vectors in 2π[length]⁻¹ units.
     fermi : float
         Fermi energy (0 if not found).
     """
 
     def __init__(self, file: str = None):
+        """
+        Initialize ElectronBands object.
+
+        Parameters
+        ----------
+        file : str
+            File from which to extract the bands.
+        """
         if file is not None:
             self.filepath = file
             self.electron_num = grep.electron_num(self.filepath)
@@ -872,30 +939,23 @@ class ElectronBands(Spectrum):
 
 class PhononBands(Spectrum):
     """
-    Class for handling phonon bandstructures and spectrums.
-
-    Parameters
-    ----------
-    file : str
-        File from which to extract the spectrum.
+    Dressed `Spectrum` subclass for handling phonon bandstructures and spectrums.
 
     Attributes
     ----------
     filepath : str
         Path to the file containing phonon frequencies output.
-    eigenvalues : np.ndarray
-        Array of shape (nkpts, neigs) with frequency values.
-    kpoints : np.ndarray
-        Array of shape (nkpts, 3) with k-points.
-    weights : np.ndarray
-        Optional weights for each k-point.
-    lattice : np.ndarray
-        3x3 matrix of lattice vectors in [length] units.
-    k_lattice : np.ndarray
-        3x3 matrix of reciprocal lattice vectors in 2π[length]⁻¹ units.
     """
 
     def __init__(self, file: str = None):
+        """
+        Initialize PhononBands object.
+
+        Parameters
+        ----------
+        file : str
+            Path to the file containing phonon frequencies output.
+        """
         if file is not None:
             self.filepath = file
             try:
