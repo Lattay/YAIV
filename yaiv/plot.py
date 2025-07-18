@@ -445,7 +445,7 @@ def phonons(
         )
     else:
         ax = _compare_spectra(
-            phononBands, ax, patched, colors, labels, grids=grid, **kwargs
+            phononBands, ax, patched, colors, labels, grid=grid, **kwargs
         )
         band = phononBands[0]
 
