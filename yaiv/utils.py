@@ -520,7 +520,8 @@ def _expand_zone_border(
     Parameters
     ----------
     q_point : pint.Quantity | np.ndarray
-        A 3-element q-point in fractional (crystal) coordinates.
+        A 3-element q-point in fractional (crystal) coordinates. Or a np.ndarray of shape(N,3) with N
+        q-points.
 
     Returns
     -------
@@ -548,18 +549,18 @@ def _expand_zone_border(
         q_point = np.array(q_point)
         units = 1
 
-    output = [q_point]
+    if len(q_point.shape) == 1:
+        output = np.array([q_point])
+    else:
+        output = np.array(q_point)
     for i in range(3):
         new_points = []
         for point in output:
-            point = np.array(point)
             for delta in [-1, 1]:
                 shifted = point.copy()
                 shifted[i] += delta
                 new_points.append(shifted)
-        output.extend(new_points)
-
-    output = np.array(output)
+        output = np.vstack([output, new_points])
 
     return output * units
 
@@ -663,3 +664,44 @@ def cumulative_integral(x: np.ndarray, y: np.ndarray):
 
     Y = np.hstack([0, integrate.cumulative_trapezoid(y, x)])
     return Y * units
+
+
+def _point_to_segment_distance(
+    point: np.ndarray, endpoint_a: np.ndarray, endpoint_b: np.ndarray
+) -> float:
+    """
+    Compute the Euclidean distance from a point to a line segment in 3D.
+
+    The function returns the shortest distance from `point` to the line segment
+    defined by the endpoints `endpoint_a` and `endpoint_b`. All inputs must be
+    3-element numpy arrays representing Cartesian coordinates.
+
+    Parameters
+    ----------
+    point : np.ndarray
+        Cartesian coordinates of the point (shape: (3,)).
+    endpoint_a : np.ndarray
+        Cartesian coordinates of the first segment endpoint (shape: (3,)).
+    endpoint_b : np.ndarray
+        Cartesian coordinates of the second segment endpoint (shape: (3,)).
+
+    Returns
+    -------
+    float
+        The shortest distance from the point to the segment.
+    """
+    # Tangent vector of the segment, normalized
+    segment_vec = endpoint_b - endpoint_a
+    segment_dir = segment_vec / np.linalg.norm(segment_vec)
+
+    # Signed projections onto the line extension
+    dist_a = np.dot(endpoint_a - point, segment_dir)
+    dist_b = np.dot(point - endpoint_b, segment_dir)
+
+    # Clamp to segment endpoints if projection is outside
+    parallel_dist = max(dist_a, dist_b, 0)
+
+    # Orthogonal (perpendicular) component
+    perpendicular_vec = np.cross(point - endpoint_a, segment_dir)
+
+    return np.hypot(parallel_dist, np.linalg.norm(perpendicular_vec))

@@ -15,54 +15,6 @@ import yaiv.defaults as defaults
 
 # PLOTTING BANDS----------------------------------------------------------------
 
-def __ticks_generator(vectors,ticks,grid=None):
-    """From the real vectors, the High Sym points for the path in crystal reciprocal space units and the 
-    grid, it generates the positions for the hight sym points (tick_pos) and grid (grid_pos):
-
-    vectors=[[a1,a2,a3],...,[c1,c2,c3]]
-    ticks=[[tick1x,tick1y,tick1z,100],...,[ticknx,tickny,ticknz,1]]
-    grid=[[grid1x,grid1y,grid1z],...,[gridnx,gridny,gridnz]]
-
-    returns either tick_pos or tick_pos, grid_pos
-    """
-    K_vec=ut.K_basis(vectors)
-    path=0
-    tick0=ticks[0][:3]
-    ticks_pos=np.array(0)
-    for i in range(1,ticks.shape[0]):
-        tick1=ticks[i][:3]
-        if  ticks[i-1][3]==1:
-            tick0=tick1
-        else:
-            if np.any(grid!= None):
-                for point in grid:
-                    dist=__lineseg_dist(point,tick0,tick1)
-                    if np.around(dist,decimals=3)==0:
-                        if np.around(np.linalg.norm(point-tick0),decimals=3)==0:
-                            delta=0
-                        elif np.around(np.linalg.norm(point-tick1),decimals=3)==0:
-                            vector=(tick1-tick0)
-                            delta=np.linalg.norm(ut.cryst2cartesian(vector,K_vec))
-                        else:
-                            vector=(point-tick0)
-                            delta=np.linalg.norm(ut.cryst2cartesian(vector,K_vec))
-                        try:
-                            if np.all(grid_ticks!=(path+delta)):  #grid_ticks are not degenerate
-                                grid_ticks=np.append(grid_ticks,path+delta)
-                        except NameError:
-                            grid_ticks=np.array(path+delta)
-            vector=(tick1-tick0)
-            delta=ut.cryst2cartesian(vector,K_vec)
-            path=path+np.linalg.norm(delta)
-            ticks_pos=np.append(ticks_pos,path)
-            tick0=tick1
-    if np.any(grid!= None):
-        return ticks_pos, grid_ticks
-    else:
-        return ticks_pos
-
-
-
 def DOS_projected(file,proj_file,fermi='auto',smearing=0.02,window=[-5,5],steps=500,precision=3,filetype=None,proj_filetype=None,
                   species=None,atoms=None,l=None,j=None,mj=None,title=None,figsize=None,reverse=False,legend=None,color='black',
                   save_as=None,axis=None,silent=False,fill=True,alpha=0.5,linewidth=1.0,symprec=1e-5):
@@ -338,23 +290,6 @@ def bands_fat(file,proj_file,KPATH=None,aux_file=None,species=None,atoms=None,l=
         plt.savefig(save_as, dpi=500)
     if axis == None:
         plt.show()
-
-# PLOTTING PHONONS----------------------------------------------------------------
-
-def __lineseg_dist(p, a, b):
-    """Function lineseg_dist returns the distance the distance from point p to line segment [a,b]. p, a and b are np.arrays."""
-    # normalized tangent vector
-    d = np.divide(b - a, np.linalg.norm(b - a))
-    # signed parallel distance components
-    s = np.dot(a - p, d)
-    t = np.dot(p - b, d)
-    # clamped parallel distance
-    h = np.maximum.reduce([s, t, 0])
-    # perpendicular distance component
-    c = np.cross(p - a, d)
-    return np.hypot(h, np.linalg.norm(c))
-
-
 
 # PLOTTING MISCELLANY----------------------------------------------------------------
  

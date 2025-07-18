@@ -22,6 +22,9 @@
 - Added `DOS` class.
 - Now supports computation of the density of states with both Gaussian and MP smearing (any order).
 
+### `plot`
+- Added the option to highlight grid in the k-path for phonon bands.
+
 ### `cell`
 - Added `write_espresso_in` method for generating QE input files from a `Cell` object.
 
