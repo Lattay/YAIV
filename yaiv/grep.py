@@ -106,6 +106,20 @@ __all__ = [
 ]
 
 
+class _OrbitalProjectionContainer:
+    def __init__(self):
+        # Nested dictionary to store projection matrices
+        self._data = {}
+
+    def add(self, ion, l, m, j, matrix):
+        """Store a matrix with the given quantum labels."""
+        self._data[(ion, l, m, j)] = matrix
+
+    def __call__(self, ion, l, m, j):
+        """Retrieve the matrix for a given set of labels."""
+        return self._data[(spin, l, m, ion)]
+
+
 def _filetype(file: str) -> str:
     """
     Detects the filetype of the provided file.
@@ -449,17 +463,18 @@ def stress_tensor(file: str) -> np.ndarray:
     """
     filetype = _filetype(file)
     READ = False
+    stress = []
     with open(file, "r") as lines:
         if filetype == "qe_scf_out":
             for line in lines:
                 if READ == True:
                     vec = np.array([float(x) for x in line.split()[:3]])
-                    stress = np.vstack([stress, vec]) if "stress" in locals() else vec
-                    if stress.shape == (3, 3):
+                    stress.append(vec)
+                    if np.shape(stress) == (3, 3):
                         break
                 elif re.search("total.*stress", line):
                     READ = True
-            stress = stress * (ureg("Ry") / ureg("bohr") ** 3).to("kbar")
+            stress = np.array(stress) * (ureg("Ry") / ureg("bohr") ** 3).to("kbar")
         elif filetype == "outcar":
             for line in lines:
                 if "in kB" in line:
@@ -515,7 +530,7 @@ def kpath(file: str, labels: bool = True) -> SimpleNamespace | np.ndarray:
     """
 
     def read_qe_path(line_iter):
-        kpath = k_names = N = None
+        kpath, k_names, N = [], [], None
         for line in line_iter:
             if N is None:
                 N = int(line.split()[0])
@@ -529,17 +544,15 @@ def kpath(file: str, labels: bool = True) -> SimpleNamespace | np.ndarray:
                     kpoint = line
                 # Grep K point
                 kpoint = [float(x) for x in kpoint.split()]
-                kpath = np.vstack([kpath, kpoint]) if kpath is not None else [kpoint]
+                kpath.append(kpoint)
                 # Grep K point label
                 if labels:
                     new_name = label.split()[0]
-                    k_names = (
-                        k_names + [new_name] if k_names is not None else [new_name]
-                    )
+                    k_names.append(new_name)
                 # Check if path is complete
                 if len(kpath) == N:
                     break
-        return kpath, k_names
+        return np.array(kpath), k_names
 
     filetype = _filetype(file)
     READ = EVEN = False
@@ -637,8 +650,8 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
     """
 
     filetype = _filetype(file)
-    READ_energies = READ_kpoints = RELAX_calc = RELAXED = OCCUPATIONS = False
-    KPOINTS = ENERGIES = WEIGHTS = E = None
+    READ_energies = READ_kpoints = RELAX_calc = RELAXED = False
+    KPOINTS, ENERGIES, WEIGHTS, E, PROJ = [], [], [], [], []
     with open(file, "r") as lines:
         if filetype == "qe_scf_out":
             for line in lines:
@@ -661,32 +674,16 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
                 elif READ_kpoints:
                     k = [float(x) for x in line.split("(")[2].split(")")[0].split()]
                     w = float(line.split()[-1])
-                    KPOINTS = (
-                        np.vstack([KPOINTS, k])
-                        if KPOINTS is not None
-                        else np.array([k])
-                    )
-                    WEIGHTS = (
-                        np.hstack([WEIGHTS, w])
-                        if WEIGHTS is not None
-                        else np.array([w])
-                    )
+                    KPOINTS.append(k)
+                    WEIGHTS.append(w)
                     if len(WEIGHTS) == num_points:
                         READ_kpoints = False
-                elif READ_energies:
-                    if line.lstrip().startswith("k ="):
-                        OCCUPATIONS = False
-                    elif OCCUPATIONS:
-                        pass
-                    elif line.strip() != "":
-                        e = [float(x) for x in re.findall(r"[-+]?\d*\.\d+|\d+", line)]
-                        E = np.hstack([E, e]) if E is not None else e
-                        if len(E) == num_bands:
-                            ENERGIES = (
-                                np.vstack([ENERGIES, E]) if ENERGIES is not None else E
-                            )
-                            E = None
-                            OCCUPATIONS = True
+                elif READ_energies and line.strip() and "k =" not in line:
+                    for e in re.findall(r"[-+]?\d*\.\d+|\d+", line):
+                        E.append(float(e))
+                    if len(E) == num_bands:
+                        ENERGIES.append(E)
+                        E = []
             # Recover crystal units
             lat = grep.lattice(file)
             lat = lat / np.linalg.norm(lat[0])
@@ -704,30 +701,19 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
                     if len(l) == 4:
                         k = [float(x) for x in l[:3]]
                         w = float(l[-1])
-                        KPOINTS = (
-                            np.vstack([KPOINTS, k])
-                            if KPOINTS is not None
-                            else np.array([k])
-                        )
-                        WEIGHTS = (
-                            np.hstack([WEIGHTS, w])
-                            if WEIGHTS is not None
-                            else np.array([w])
-                        )
+                        KPOINTS.append(k)
+                        WEIGHTS.append(w)
                     # Energy line
                     elif len(l) == 3:
-                        e = float(l[1])
-                        E = np.hstack([E, e]) if E is not None else [e]
+                        E.append(float(l[1]))
                         if len(E) == num_bands:
-                            ENERGIES = (
-                                np.vstack([ENERGIES, E]) if ENERGIES is not None else E
-                            )
-                            E = None
+                            ENERGIES.append(E)
+                            E = []
         elif filetype == "outcar":
             for line in lines:
                 if "NBANDS" in line:
                     num_bands = int(line.split()[-1])
-                elif "Coordinates" in line and KPOINTS is None:
+                elif "Coordinates" in line and len(KPOINTS) == 0:
                     READ_kpoints = True
                 elif "band No." in line:
                     READ_energies = True
@@ -736,37 +722,53 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
                     if len(l) != 0:
                         k = [float(x) for x in l[:3]]
                         w = float(l[-1])
-                        KPOINTS = (
-                            np.vstack([KPOINTS, k])
-                            if KPOINTS is not None
-                            else np.array([k])
-                        )
-                        WEIGHTS = (
-                            np.hstack([WEIGHTS, w])
-                            if WEIGHTS is not None
-                            else np.array([w])
-                        )
+                        KPOINTS.append(k)
+                        WEIGHTS.append(w)
                     else:
                         num_points = len(KPOINTS)
                         READ_kpoints = False
                 elif READ_energies:
                     l = line.split()
                     if len(l) == 3:
-                        e = float(l[1])
-                        E = np.hstack([E, e]) if E is not None else [e]
+                        E.append(float(l[1]))
                         if len(E) == num_bands:
-                            ENERGIES = (
-                                np.vstack([ENERGIES, E]) if ENERGIES is not None else E
-                            )
+                            ENERGIES.append(E)
+                            E = []
                             if len(ENERGIES) == num_points:
                                 break
-                            E = None
+        elif filetype == "procar":
+            PROJ = []
+            for i, line in enumerate(lines):
+                if i < 30:
+                    # print(line)
+                    pass
+                if "k-points" in line:
+                    l = line.split()
+                    num_points = int(l[3])
+                    num_bands = int(l[7])
+                    num_ions = int(l[-1])
+                elif "k-point" in line:
+                    numbers = [float(x) for x in re.findall(r"[-+]?\d*\.\d+|\d+", line)]
+                    k = numbers[1:4]
+                    w = numbers[-1]
+                    print(k)
+                    KPOINTS.append(k)
+                    WEIGHTS.append(w)
+                elif "energy" in line:
+                    E.append(float(line.split()[4]))
+                    if len(E) == num_bands:
+                        ENERGIES.append(E)
+                        E = []
+                elif "tot" not in line and len(line.split()) == 11:
+                    proj = [float(x) for x in line.split()[1:-1]]
+                    PROJ.append(proj)
         else:
             raise NotImplementedError("Unsupported filetype")
     return SimpleNamespace(
-        energies=ENERGIES * ureg("eV"),
-        kpoints=KPOINTS * (ureg._2pi / ureg.crystal),
-        weights=WEIGHTS,
+        energies=np.array(ENERGIES) * ureg("eV"),
+        kpoints=np.array(KPOINTS) * (ureg._2pi / ureg.crystal),
+        weights=np.array(WEIGHTS),
+        projections=np.array(PROJ),
     )
 
 
@@ -799,7 +801,7 @@ def kpointsFrequencies(file: str) -> SimpleNamespace:
     """
 
     filetype = _filetype(file)
-    KPOINTS = FREQS = F = None
+    KPOINTS, FREQS, F = [], [], []
     READ_freqs = False
     with open(file, "r") as lines:
         if filetype == "qe_freq_out":
@@ -810,23 +812,19 @@ def kpointsFrequencies(file: str) -> SimpleNamespace:
                     num_points = int(line.split("nks=")[-1][:-2])
                 elif len(l) == 3:
                     k = [float(x) for x in l]
-                    KPOINTS = (
-                        np.vstack([KPOINTS, k])
-                        if KPOINTS is not None
-                        else np.array([k])
-                    )
+                    KPOINTS.append(k)
                     READ_freqs = True
                 elif READ_freqs:
-                    f = [float(x) for x in l]
-                    F = np.hstack([F, f]) if F is not None else f
+                    for f in l:
+                        F.append(float(f))
                     if len(F) == num_bands:
-                        FREQS = np.vstack([FREQS, F]) if FREQS is not None else F
-                        F = None
+                        FREQS.append(F)
+                        F = []
         else:
             raise NotImplementedError("Unsupported filetype")
     # Give proper units
-    FREQS = FREQS * ureg("c") / ureg("cm")
-    KPOINTS = KPOINTS * (ureg("_2pi") / ureg("alat"))
+    FREQS = np.array(FREQS) * ureg("c") / ureg("cm")
+    KPOINTS = np.array(KPOINTS) * (ureg("_2pi") / ureg("alat"))
     return SimpleNamespace(frequencies=FREQS, kpoints=KPOINTS)
 
 
@@ -876,6 +874,7 @@ def dyn_file(file: str) -> SimpleNamespace:
         raise NotImplementedError("Unsupported filetype")
     lattice = grep.lattice(file)
     n_atoms = n_types = freqs = vec = alat = None
+    vec, freqs = [], []
     species = []
     atoms = []
     displacements = []
@@ -905,20 +904,17 @@ def dyn_file(file: str) -> SimpleNamespace:
                 if "q = (" in line:
                     q_point = np.array([float(x) for x in l[3:6]])
                 elif "freq" in line:
-                    new = float(l[-2])
-                    freqs = (
-                        np.array([new]) if freqs is None else np.hstack([freqs, new])
-                    )
+                    freqs.append(float(l[-2]))
                 elif len(l) == 8:
                     nums = l[1:-1]
                     new = [
                         complex(float(nums[i]), float(nums[i + 1]))
                         for i in range(0, 6, 2)
                     ]
-                    vec = np.array([new]) if vec is None else np.vstack([vec, new])
+                    vec.append(new)
                     if len(vec) == len(atoms):
                         displacements.append(vec)
-                        vec = None
+                        vec = []
 
     # Attach units and get positions, elmenets and masses.
     positions = (np.array(atoms)[:, 1:] * alat).to("ang")
@@ -927,7 +923,7 @@ def dyn_file(file: str) -> SimpleNamespace:
     masses = np.array([species[x][2] for x in indices]) * ureg._2m_e
     displacements = np.array(displacements)
     q_point = (q_point * ureg._2pi / alat).to("_2pi/ang")
-    freqs = freqs * ureg("c/cm")
+    freqs = np.array(freqs) * ureg("c/cm")
 
     return SimpleNamespace(
         q=q_point,
