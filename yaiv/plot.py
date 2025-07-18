@@ -86,10 +86,13 @@ __all__ = [
 
 
 def get_HSP_ticks(
-    kpath: SimpleNamespace | np.ndarray, k_lattice: np.ndarray = None
+    kpath: SimpleNamespace | np.ndarray,
+    k_lattice: np.ndarray = None,
+    grid: list[int] = None,
 ) -> SimpleNamespace:
     """
     Compute tick positions and labels for high-symmetry points (HSPs) along a k-path.
+    And optionally also the ticks for the grid points that lie in the path.
 
     Parameters
     ----------
@@ -98,15 +101,19 @@ def get_HSP_ticks(
     k_lattice : np.ndarray, optional
         3x3 matrix of reciprocal lattice vectors in rows (optional).
         If provided, the high-symmetry points are converted from crystal to Cartesian coordinates.
+    grid : list[int], optional
+        Γ centred grid to show in the path.
 
     Returns
     -------
     ticks : SimpleNamespace
         Object with the following attributes:
-        - x_coord : np.ndarray
+        - ticks : np.ndarray
             Normalized cumulative distance for each high-symmetry point.
         - labels : list of str or None
             Corresponding labels for the ticks, or None if not available.
+        - grid : np.ndarray
+            Normalized cumulative distance for each grid point in the k-path.
     """
     if isinstance(kpath, SimpleNamespace):
         path_array = kpath.path
@@ -115,6 +122,9 @@ def get_HSP_ticks(
         path_array = kpath
         label_list = None
 
+    # Handle units
+    quantities, names = [path_array, k_lattice], ["kpath", "k_lattice"]
+    ut._check_unit_consistency(quantities, names)
     if isinstance(path_array, ureg.Quantity):
         path_array = path_array.magnitude
 

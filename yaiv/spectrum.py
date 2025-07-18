@@ -11,12 +11,6 @@ grepping functions.
 
 Classes
 -------
-DOS
-    Container for density of states data. Supports integration and plotting.
-    Provides:
-    - integrate(): Computes the integral of the DOS or finds the eigenvalue corresponding to a filled state count.
-    - plot(): Plots the DOS curve with optional fill and orientation options.
-
 Spectrum
     General container for k-resolved eigenvalue spectra (e.g., bands, phonons).
     Supports plotting, DOS calculation, and band visualizations.
@@ -33,6 +27,11 @@ ElectronBands
 PhononBands
     Specialized `Spectrum` subclass for phonon spectra extracted from files.
 
+DOS
+    Container for density of states data. Supports integration and plotting.
+    Provides:
+    - integrate(): Computes the integral of the DOS or finds the eigenvalue corresponding to a filled state count.
+    - plot(): Plots the DOS curve with optional fill and orientation options.
 
 Private Utilities
 -----------------
@@ -75,7 +74,7 @@ from yaiv import utils as ut
 from yaiv import grep as grep
 
 
-__all__ = ["DOS", "Spectrum" "ElectronBands", "PhononBands"]
+__all__ = ["Spectrum" "ElectronBands", "PhononBands", "DOS"]
 
 
 class _Has_lattice:
@@ -201,215 +200,6 @@ class _Has_kpath:
             segment_lengths = np.where(segment_lengths > threshold, 0, segment_lengths)
         kpath = np.concatenate([[0], np.cumsum(segment_lengths)])
         return kpath * units
-
-
-class DOS:
-    """
-    General class for storing density of states (DOS) values.
-
-    Attributes
-    ----------
-    DOS : np.ndarray | pint.Quantity
-        Array of shape (N,) with the corresponding DOS values (1/eigenvalue) units.
-    vgrid : np.ndarray | pint.Quantity
-        Array of shape (N,) with the eigenvalue units.
-    parent : Spectrum | ElectronBands | PhononBands
-        Parent class so that DOS can access parent attributes.
-
-    Methods
-    -------
-    integrate(...)
-        Integrate the density of states (DOS) up to a given energy or to determine
-        the energy at which a certain number of states are filled.
-    plot(...)
-        Plot the DOS over an eigenvalue-window.
-    """
-
-    def __init__(
-        self,
-        DOS: np.ndarray | ureg.Quantity = None,
-        vgrid: np.ndarray | ureg.Quantity = None,
-        parent: Spectrum | ElectronBands | PhononBands = None,
-    ):
-        """
-        Initialize DOS object.
-
-        Parameters
-        ----------
-        DOS : np.ndarray | pint.Quantity
-            Array of shape (N,) with the corresponding DOS values (1/eigenvalue) units.
-        vgrid : np.ndarray | pint.Quantity
-            Array of shape (N,) with the eigenvalue units.
-        parent : Spectrum | ElectronBands | PhononBands, optional
-            Parent class so that DOS can access parent attributes.
-        """
-        self.DOS = DOS
-        self.vgrid = vgrid
-        self._parent = parent
-
-    def integrate(
-        self, limit: float | ureg.Quantity = None, occ_states: float = None
-    ) -> (float, float):
-        """
-        Integrate the density of states (DOS) up to a given energy or to determine
-        the energy at which a certain number of states are filled.
-
-        This method supports two use cases:
-        1. **Plain integration**: returns the total number of states up to `limit`.
-        2. **Inverse filling**: finds the energy at which the number of filled states equals `occ_states`.
-
-        Parameters
-        ----------
-        limit : float or pint.Quantity, optional
-            Upper energy bound for the integration. If None, integrates up to the
-            maximum of `self.vgrid`.
-
-        occ_states : float, optional
-            Target number of filled states. If provided, the method finds the energy
-            at which this number of states is reached by integration of the DOS.
-
-        Returns
-        -------
-        tuple(float, float) : value, error
-            - If `occ_states` is None: value is the integrated number of states (and estimated error).
-            - If `occ_states` is set: value is the energy at which that number of states is filled (and error).
-
-        Notes
-        -----
-        The method uses cubic interpolation and `scipy.integrate.quad` for accurate integration.
-        A binary search strategy is used when `occ_states` is specified. Which can fail when the DOS has negative values.
-
-        Raises
-        ------
-        RuntimeError:
-           When convergence for the energy to get the filled states is not achieved in 100 iterations.
-        """
-        # Determine integration limit
-        if limit is None:
-            limit = self.vgrid[-1]
-
-        # Unit consistency check
-        quantities = [self.DOS, self.vgrid, limit]
-        names = ["DOS", "vgrid", "limit"]
-        ut._check_unit_consistency(quantities, names)
-
-        # Handle Pint quantities
-        if isinstance(self.DOS, ureg.Quantity):
-            units = self.vgrid.units
-            X = self.vgrid.magnitude
-            Y = self.DOS.to(1 / units).magnitude
-            X_max = limit.to(units).magnitude
-        else:
-            units = 1
-            X = self.vgrid
-            Y = self.DOS
-            X_max = limit
-
-        # Create interpolation function
-        f_interp = interpolate.interp1d(
-            X, Y, kind="cubic", fill_value=0.0, bounds_error=False
-        )
-
-        if occ_states is None:
-            # Case 1: Plain integration
-            integral, error = integrate.quad(f_interp, X[0], X_max, limit=100)
-            return integral, error
-        else:
-            # Case 2: Inverse problem — find X_occ such that integral = occ_states
-            X_low = X[0]
-            X_high = X[-1]
-            max_iter = 100
-
-            for _ in range(max_iter):
-                X_occ = 0.5 * (X_low + X_high)
-                integral, error = integrate.quad(f_interp, X[0], X_occ, limit=100)
-                if abs(integral - occ_states) < error:
-                    break
-                if integral > occ_states:
-                    X_high = X_occ
-                else:
-                    X_low = X_occ
-            else:
-                raise RuntimeError(
-                    "Did not converge to target occ_states within error tolerance in 100 iterations."
-                )
-            return X_occ * units, error * units
-
-    def plot(
-        self,
-        ax: Axes = None,
-        shift: float | ureg.Quantity = None,
-        switchXY: bool = False,
-        fill: bool = True,
-        alpha: float = pdft.alpha,
-        **kwargs,
-    ) -> Axes:
-        """
-        Plot the DOS over an eigenvalue-window.
-
-        Parameters
-        ----------
-        ax : Axes, optional
-            Axes to plot on. If None, a new figure and axes are created.
-        shift : float | pint.Quantity, optional
-            A constant shift applied to the DOS (e.g., Fermi level).
-            Default is zero.
-        switchXY : bool, optional
-            Whether to plot the DOS along the x-axis (horizontal plot). Default is False.
-        fill : bool, optional
-            Whether to fill the area under the curve. Default is True.
-        alpha : float, optional
-            Opacity of the fill (0 = transparent, 1 = solid).
-        **kwargs : dict
-            Additional matplotlib arguments passed to `plot()`.
-
-        Returns
-        ----------
-        ax : Axes
-            The axes with the spectrum plot.
-        """
-        # Handle units
-        if self.DOS is None:
-            quantities = [self._parent.eigenvalues, shift]
-            names = ["self.eigenvalues", "shift"]
-        else:
-            quantities = [self.DOS, self.vgrid, shift]
-            names = ["self.DOS", "self.vgrid", "shift"]
-        ut._check_unit_consistency(quantities, names)
-
-        if ax is None:
-            fig, ax = plt.subplots()
-
-        if self.DOS is None:
-            self._parent.get_DOS()
-        x = self.vgrid if shift is None else self.vgrid - shift
-        y = self.DOS
-
-        z_line = kwargs.pop("zorder", 2)  # allow overriding via kwargs
-        z_fill = z_line - 1  # ensure fill is below the line
-
-        if switchXY:
-            # DOS on x-axis, energy on y-axis
-            (line,) = ax.plot(y, x, zorder=z_line, **kwargs)
-            if fill:
-                ax.fill_betweenx(
-                    x, 0, y, alpha=alpha, color=line.get_color(), zorder=z_fill
-                )
-            ax.set_xlabel(f"DOS({y.units})")
-            ax.set_xlim(left=np.min(y))
-            ax.set_ylim(np.min(x), np.max(x))
-        else:
-            # Energy on x-axis, DOS on y-axis
-            (line,) = ax.plot(x, y, zorder=z_line, **kwargs)
-            if fill:
-                ax.fill_between(
-                    x, y, alpha=alpha, color=line.get_color(), zorder=z_fill
-                )
-            ax.set_ylabel(f"DOS({y.units})")
-            ax.set_xlim(np.min(x), np.max(x))
-            ax.set_ylim(bottom=np.min(y))
-
-        return ax
 
 
 class Spectrum(_Has_lattice, _Has_kpath):
@@ -971,3 +761,212 @@ class PhononBands(Spectrum):
             )
         else:
             Spectrum.__init__(self)
+
+
+class DOS:
+    """
+    General class for storing density of states (DOS) values.
+
+    Attributes
+    ----------
+    DOS : np.ndarray | pint.Quantity
+        Array of shape (N,) with the corresponding DOS values (1/eigenvalue) units.
+    vgrid : np.ndarray | pint.Quantity
+        Array of shape (N,) with the eigenvalue units.
+    parent : Spectrum | ElectronBands | PhononBands
+        Parent class so that DOS can access parent attributes.
+
+    Methods
+    -------
+    integrate(...)
+        Integrate the density of states (DOS) up to a given energy or to determine
+        the energy at which a certain number of states are filled.
+    plot(...)
+        Plot the DOS over an eigenvalue-window.
+    """
+
+    def __init__(
+        self,
+        DOS: np.ndarray | ureg.Quantity = None,
+        vgrid: np.ndarray | ureg.Quantity = None,
+        parent: Spectrum | ElectronBands | PhononBands = None,
+    ):
+        """
+        Initialize DOS object.
+
+        Parameters
+        ----------
+        DOS : np.ndarray | pint.Quantity
+            Array of shape (N,) with the corresponding DOS values (1/eigenvalue) units.
+        vgrid : np.ndarray | pint.Quantity
+            Array of shape (N,) with the eigenvalue units.
+        parent : Spectrum | ElectronBands | PhononBands, optional
+            Parent class so that DOS can access parent attributes.
+        """
+        self.DOS = DOS
+        self.vgrid = vgrid
+        self._parent = parent
+
+    def integrate(
+        self, limit: float | ureg.Quantity = None, occ_states: float = None
+    ) -> (float, float):
+        """
+        Integrate the density of states (DOS) up to a given energy or to determine
+        the energy at which a certain number of states are filled.
+
+        This method supports two use cases:
+        1. **Plain integration**: returns the total number of states up to `limit`.
+        2. **Inverse filling**: finds the energy at which the number of filled states equals `occ_states`.
+
+        Parameters
+        ----------
+        limit : float or pint.Quantity, optional
+            Upper energy bound for the integration. If None, integrates up to the
+            maximum of `self.vgrid`.
+
+        occ_states : float, optional
+            Target number of filled states. If provided, the method finds the energy
+            at which this number of states is reached by integration of the DOS.
+
+        Returns
+        -------
+        tuple(float, float) : value, error
+            - If `occ_states` is None: value is the integrated number of states (and estimated error).
+            - If `occ_states` is set: value is the energy at which that number of states is filled (and error).
+
+        Notes
+        -----
+        The method uses cubic interpolation and `scipy.integrate.quad` for accurate integration.
+        A binary search strategy is used when `occ_states` is specified. Which can fail when the DOS has negative values.
+
+        Raises
+        ------
+        RuntimeError:
+           When convergence for the energy to get the filled states is not achieved in 100 iterations.
+        """
+        # Determine integration limit
+        if limit is None:
+            limit = self.vgrid[-1]
+
+        # Unit consistency check
+        quantities = [self.DOS, self.vgrid, limit]
+        names = ["DOS", "vgrid", "limit"]
+        ut._check_unit_consistency(quantities, names)
+
+        # Handle Pint quantities
+        if isinstance(self.DOS, ureg.Quantity):
+            units = self.vgrid.units
+            X = self.vgrid.magnitude
+            Y = self.DOS.to(1 / units).magnitude
+            X_max = limit.to(units).magnitude
+        else:
+            units = 1
+            X = self.vgrid
+            Y = self.DOS
+            X_max = limit
+
+        # Create interpolation function
+        f_interp = interpolate.interp1d(
+            X, Y, kind="cubic", fill_value=0.0, bounds_error=False
+        )
+
+        if occ_states is None:
+            # Case 1: Plain integration
+            integral, error = integrate.quad(f_interp, X[0], X_max, limit=100)
+            return integral, error
+        else:
+            # Case 2: Inverse problem — find X_occ such that integral = occ_states
+            X_low = X[0]
+            X_high = X[-1]
+            max_iter = 100
+
+            for _ in range(max_iter):
+                X_occ = 0.5 * (X_low + X_high)
+                integral, error = integrate.quad(f_interp, X[0], X_occ, limit=100)
+                if abs(integral - occ_states) < error:
+                    break
+                if integral > occ_states:
+                    X_high = X_occ
+                else:
+                    X_low = X_occ
+            else:
+                raise RuntimeError(
+                    "Did not converge to target occ_states within error tolerance in 100 iterations."
+                )
+            return X_occ * units, error * units
+
+    def plot(
+        self,
+        ax: Axes = None,
+        shift: float | ureg.Quantity = None,
+        switchXY: bool = False,
+        fill: bool = True,
+        alpha: float = pdft.alpha,
+        **kwargs,
+    ) -> Axes:
+        """
+        Plot the DOS over an eigenvalue-window.
+
+        Parameters
+        ----------
+        ax : Axes, optional
+            Axes to plot on. If None, a new figure and axes are created.
+        shift : float | pint.Quantity, optional
+            A constant shift applied to the DOS (e.g., Fermi level).
+            Default is zero.
+        switchXY : bool, optional
+            Whether to plot the DOS along the x-axis (horizontal plot). Default is False.
+        fill : bool, optional
+            Whether to fill the area under the curve. Default is True.
+        alpha : float, optional
+            Opacity of the fill (0 = transparent, 1 = solid).
+        **kwargs : dict
+            Additional matplotlib arguments passed to `plot()`.
+
+        Returns
+        ----------
+        ax : Axes
+            The axes with the spectrum plot.
+        """
+        # Handle units
+        if self.DOS is None:
+            quantities = [self._parent.eigenvalues, shift]
+            names = ["self.eigenvalues", "shift"]
+        else:
+            quantities = [self.DOS, self.vgrid, shift]
+            names = ["self.DOS", "self.vgrid", "shift"]
+        ut._check_unit_consistency(quantities, names)
+
+        if ax is None:
+            fig, ax = plt.subplots()
+
+        if self.DOS is None:
+            self._parent.get_DOS()
+        x = self.vgrid if shift is None else self.vgrid - shift
+        y = self.DOS
+
+        z_line = kwargs.pop("zorder", 2)  # allow overriding via kwargs
+        z_fill = z_line - 1  # ensure fill is below the line
+
+        if switchXY:
+            # DOS on x-axis, energy on y-axis
+            (line,) = ax.plot(y, x, zorder=z_line, **kwargs)
+            if fill:
+                ax.fill_betweenx(
+                    x, 0, y, alpha=alpha, color=line.get_color(), zorder=z_fill
+                )
+            ax.set_xlabel(f"DOS({y.units})")
+            ax.set_xlim(left=np.min(y))
+            ax.set_ylim(np.min(x), np.max(x))
+        else:
+            # Energy on x-axis, DOS on y-axis
+            (line,) = ax.plot(x, y, zorder=z_line, **kwargs)
+            if fill:
+                ax.fill_between(
+                    x, y, alpha=alpha, color=line.get_color(), zorder=z_fill
+                )
+            ax.set_ylabel(f"DOS({y.units})")
+            ax.set_xlim(np.min(x), np.max(x))
+            ax.set_ylim(bottom=np.min(y))
+
+        return ax

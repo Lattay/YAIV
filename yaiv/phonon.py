@@ -198,7 +198,7 @@ class Dyn:
         q: np.ndarray | ureg.Quantity = None,
         dyn: np.ndarray | ureg.Quantity = None,
         masses: np.ndarray | ureg.Quantity = None,
-        Cell: Cell = None,
+        Cell: cell.Cell = None,
     ):
         """
         Initialize the a `Dyn` object.
@@ -211,7 +211,7 @@ class Dyn:
             The dynamical matrix, either in QE format (with mass prefactors) or physical units.
         masses : np.ndarray | ureg.Quantity
             Array of atomic masses, usually in units of 2 electron masses as per QE convention.
-        Cell : Cell
+        Cell : cell.Cell
             The atomic structure associated with this q-point, including lattice, positions, elements.
         """
         self.q = q
