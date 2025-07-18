@@ -92,6 +92,21 @@ class Cell:
     spglib : tuple
         Tuple (lattice, positions, numbers) derived from the Atoms object,
         used for spglib symmetry operations.
+
+    Methods
+    -------
+    from_file(...)
+        Read a structure file using ASE and return a Cell instance.
+    from_spglib_tuple(...)
+        Initialize from a (lattice, positions, numbers) spglib tuple.
+    get_sym_info(...)
+        Print a detailed report of symmetry information for the crystal structure.
+    get_wyckoff_positions(...)
+        Analyze the structure and store information about independent Wyckoff positions.
+    get_supercell(...)
+        Construct a supercell by repeating the current unit cell along each lattice direction.
+    write_espresso_in(...)
+        Write Quantum ESPRESSO input file using either default parameters or a template.
     """
 
     def __init__(
