@@ -45,7 +45,7 @@ kpointsFrequencies(file)
     Extracts k-points and phonon frequencies from Quantum ESPRESSO phonon outputs.
 
 dyn_file(file)
-    Parses a QE `.dyn` file and returns vibrational data (q-point (2π/Å), lattice (Å), frequencies, ...)
+    Reads a QE `.dyn` file and returns vibrational data (q-point (2π/Å), lattice (Å), frequencies, ...)
 
 dyn_q(q_cryst, results_ph_path, qe_format=True)
     Locates and reads `.dyn*` file for a given q-point, returning the full dynamical matrix (3Nx3N).
@@ -55,14 +55,14 @@ Private Utilities
 _filetype(file)
     Heuristically determines the type of simulation output file (QE, VASP, etc.).
 
+_OrbitalProjectionContainer:
+    Container for orbital-resolved projection matrices.
+
 _find_dyn_file(q_cryst, results_ph_path)
     Internal helper that searches `.dyn*` files matching the specified q-point.
 
 _point_to_segment_distance(point, endpoint_a, endpoint_b)
     Compute the Euclidean distance from a point to a line segment in 3D.
-
-_OrbitalProjectionContainer:
-    Container for orbital-resolved projection matrices.
 
 Examples
 --------
@@ -848,7 +848,6 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
                             if len(ENERGIES) == num_points:
                                 break
         elif filetype == "procar":
-            PROJ = []
             for line in lines:
                 if "k-points" in line:
                     l = line.split()
@@ -870,6 +869,7 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
                     proj = [float(x) for x in line.split()[1:-1]]
                     PROJ.append(proj)
 
+            #Save projections into the proper container
             PROJ = np.array(PROJ)
             M = round(PROJ.shape[0] / (np.prod(np.shape(ENERGIES)) * num_ions))
             PROJECTIONS = _OrbitalProjectionContainer()
