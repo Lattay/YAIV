@@ -39,7 +39,7 @@ kpath(file, labels=True)
     Extracts the k-point path in reciprocal space, optionally with high-symmetry labels.
 
 kpointsEnergies(file)
-    Greps the k-points, their weights, and the associated electronic energies from QE or VASP outputs.
+    Greps the k-points, energies, kpoint-weights  and orbital projections (if available) for different file kinds.
 
 kpointsFrequencies(file)
     Extracts k-points and phonon frequencies from Quantum ESPRESSO phonon outputs.
@@ -60,6 +60,9 @@ _find_dyn_file(q_cryst, results_ph_path)
 
 _point_to_segment_distance(point, endpoint_a, endpoint_b)
     Compute the Euclidean distance from a point to a line segment in 3D.
+
+_OrbitalProjectionContainer:
+    Container for orbital-resolved projection matrices.
 
 Examples
 --------
@@ -104,20 +107,6 @@ __all__ = [
     "dyn_file",
     "dyn_q",
 ]
-
-
-class _OrbitalProjectionContainer:
-    def __init__(self):
-        # Nested dictionary to store projection matrices
-        self._data = {}
-
-    def add(self, ion, l, m, j, matrix):
-        """Store a matrix with the given quantum labels."""
-        self._data[(ion, l, m, j)] = matrix
-
-    def __call__(self, ion, l, m, j):
-        """Retrieve the matrix for a given set of labels."""
-        return self._data[(spin, l, m, ion)]
 
 
 def _filetype(file: str) -> str:
@@ -178,6 +167,124 @@ def _filetype(file: str) -> str:
                 filetype = "poscar"
                 break
     return filetype
+
+
+class _OrbitalProjectionContainer:
+    """
+    Container for orbital-resolved projection matrices.
+
+    This class stores and provides access to orbital projections
+    of wavefunctions or band structures, resolved by ion, orbital
+    angular momentum `l`, magnetic number `m`, and  magnetization `M`.
+    It supports flexible indexing and summation over
+    subsets of these quantum numbers using its `__call__` interface.
+
+    Attributes
+    ----------
+    _data : dict[tuple[int, int, int, int], np.ndarray]
+        Internal dictionary mapping (ion, l, m, M) → projection matrix.
+
+    Methods
+    -------
+    add(ion:, l, m, M, matrix)
+        Store a projection matrix for a specific orbital channel.
+    """
+
+    def __init__(self):
+        """
+        Initialize an empty orbital projection container.
+        """
+        self._data = {}
+
+    def add(self, ion: int, l: int, m: int, M: int, matrix: np.ndarray):
+        """
+        Store a projection matrix for a specific orbital channel.
+
+        Parameters
+        ----------
+        ion : int
+            Index of the ion the projection refers to.
+        l : int
+            Orbital angular momentum quantum number (e.g. 0 = s, 1 = p).
+        m : int
+            Magnetic quantum number (e.g. -l to +l).
+        M : int
+            Magnetization, with `0` being the total (absolute) magnetizatioon and `1,2,3`
+            corresponding to `x,y,z` directions.
+        matrix : np.ndarray
+            Projection matrix (k-points x bands).
+        """
+        self._data[(ion, l, m, M)] = matrix
+
+    def __call__(
+        self,
+        ion: int | range | tuple | list | slice = slice(None),
+        l: int | range | tuple | list | slice = slice(None),
+        m: int | range | tuple | list | slice = slice(None),
+        M: int | range | tuple | list | slice = 0,
+    ):
+        """
+        Return the sum of all projection matrices matching the given quantum numbers.
+
+        This method enables flexible access to stored orbital projections, allowing summation
+        over multiple ions, angular momentum states, or total angular momenta. Arguments can
+        be specific integers, lists, ranges, or slices to match subsets of the data.
+
+        Parameters
+        ----------
+        ion : int or list or range or slice, optional
+            Ion index or indices. Defaults to `slice(None)` to match all ions.
+        l : int or list or range or slice, optional
+            Orbital angular momentum quantum number(s). Defaults to `slice(None)`.
+        m : int or list or range or slice, optional
+            Magnetic quantum number(s). Defaults to `slice(None)`.
+        M : int or list or range or slice, optional
+            Magnetization, with `0` being the total (absolute) magnetizatioon and `1,2,3`
+            corresponding to `x,y,z` directions.
+
+        Returns
+        -------
+        np.ndarray
+            Sum of all projection matrices that match the query.
+
+        Raises
+        ------
+        KeyError
+            If no entries match the given quantum numbers.
+
+        Examples
+        --------
+        proj(0, 1, 0, 1)                    # Single matrix for ion=0, l=1, m=0, M=1
+        proj([0, 1, 2], 1, 0, 1)            # Sum over ions 0, 1, 2 for given l, m, M
+        proj(slice(None), 1, 0, 1)          # Sum over all ions
+        proj(0, [0, 1], 0, 1)               # Sum over l=0 and l=1
+        proj(0, 1, 0, range(2))             # Sum over M=0 and M=1
+        """
+        query = (ion, l, m, M)
+
+        def match(val, key):
+            if isinstance(val, slice):
+                return True
+            elif isinstance(val, (list, tuple, set, range)):
+                return key in val
+            else:
+                return key == val
+
+        # Try direct match first
+        if all(not isinstance(q, (list, tuple, set, range, slice)) for q in query):
+            return self._data[query]
+
+        # Sum all matching matrices
+        selected = [
+            mat
+            for key, mat in self._data.items()
+            if all(match(q, k) for q, k in zip(query, key))
+        ]
+
+        if not selected:
+            raise KeyError(f"No projection matches query: {query}")
+
+        return sum(selected)
 
 
 def electron_num(file: str) -> int:
@@ -620,17 +727,18 @@ def kpath(file: str, labels: bool = True) -> SimpleNamespace | np.ndarray:
 
 def kpointsEnergies(file: str) -> SimpleNamespace:
     """
-    Grep the kpoints, energies and kpoint-weights for different file kinds.
+    Grep the kpoints, energies, kpoint-weights  and orbital projections
+    (if available) for different file kinds.
 
     Energies are given in eV and kpoints in reciprocal crystal units.
     Currently supports:
     - QuantumEspresso: qe_scf_out.
-    - VASP: OUTCAR, EIGENVAL.
+    - VASP: OUTCAR, EIGENVAL, PROCAR.
 
     Parameters
     ----------
     file : str
-        File from which to extract the spectrum.
+        File from which to extract the quantities.
 
     Returns
     -------
@@ -642,6 +750,8 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
             List of k-points.
         - weights : np.ndarray
             List of kpoint-weights.
+        - projections : _OrbitalProjectionContainer
+            Container for orbital-resolved projection matrices.
 
     Raises
     ------
@@ -652,6 +762,7 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
     filetype = _filetype(file)
     READ_energies = READ_kpoints = RELAX_calc = RELAXED = False
     KPOINTS, ENERGIES, WEIGHTS, E, PROJ = [], [], [], [], []
+    PROJECTIONS = None
     with open(file, "r") as lines:
         if filetype == "qe_scf_out":
             for line in lines:
@@ -738,10 +849,7 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
                                 break
         elif filetype == "procar":
             PROJ = []
-            for i, line in enumerate(lines):
-                if i < 30:
-                    # print(line)
-                    pass
+            for line in lines:
                 if "k-points" in line:
                     l = line.split()
                     num_points = int(l[3])
@@ -751,7 +859,6 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
                     numbers = [float(x) for x in re.findall(r"[-+]?\d*\.\d+|\d+", line)]
                     k = numbers[1:4]
                     w = numbers[-1]
-                    print(k)
                     KPOINTS.append(k)
                     WEIGHTS.append(w)
                 elif "energy" in line:
@@ -762,13 +869,26 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
                 elif "tot" not in line and len(line.split()) == 11:
                     proj = [float(x) for x in line.split()[1:-1]]
                     PROJ.append(proj)
+
+            PROJ = np.array(PROJ)
+            M = round(PROJ.shape[0] / (np.prod(np.shape(ENERGIES)) * num_ions))
+            PROJECTIONS = _OrbitalProjectionContainer()
+            for i in range(num_ions):
+                for l in range(3):
+                    for m in range(-l, l + 1):
+                        for mag in range(M):
+                            C = l + l * l + m
+                            matrix = PROJ[i + num_ions * mag :: num_ions * M, C].reshape(
+                                np.shape(ENERGIES)
+                            )
+                            PROJECTIONS.add(i, l, m, mag, matrix)
         else:
             raise NotImplementedError("Unsupported filetype")
     return SimpleNamespace(
         energies=np.array(ENERGIES) * ureg("eV"),
         kpoints=np.array(KPOINTS) * (ureg._2pi / ureg.crystal),
         weights=np.array(WEIGHTS),
-        projections=np.array(PROJ),
+        projections=PROJECTIONS,
     )
 
 

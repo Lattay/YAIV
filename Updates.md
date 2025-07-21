@@ -17,6 +17,7 @@
 ### `grep`
 - New `dyn_file` function for parsing a QE `.dyn` file and extracting vibrational data such as q-point, lattice vectors, phonon frequencies, etc.
 - New `dyn_q` function for locating and reading a `.dyn*` file for a specific q-point. Returns the full 3N×3N dynamical matrix.
+- Now `kpointsEnergies` also greps the orbital resolved projections of Bloch states if available (`PROCAR` files supported).
 
 ### `spectrum`
 - Added `DOS` class.
