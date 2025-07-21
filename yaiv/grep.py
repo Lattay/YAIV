@@ -760,7 +760,7 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
     """
 
     filetype = _filetype(file)
-    READ_energies = READ_kpoints = RELAX_calc = RELAXED = False
+    READ_energies = READ_kpoints = RELAX_calc = RELAXED = OCCUPATIONS = False
     KPOINTS, ENERGIES, WEIGHTS, E, PROJ = [], [], [], [], []
     PROJECTIONS = None
     with open(file, "r") as lines:
@@ -789,12 +789,19 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
                     WEIGHTS.append(w)
                     if len(WEIGHTS) == num_points:
                         READ_kpoints = False
-                elif READ_energies and line.strip() and "k =" not in line:
-                    for e in re.findall(r"[-+]?\d*\.\d+|\d+", line):
-                        E.append(float(e))
-                    if len(E) == num_bands:
-                        ENERGIES.append(E)
-                        E = []
+                elif READ_energies:
+                    if line.lstrip().startswith("k"):
+                        OCCUPATIONS = False
+                    elif OCCUPATIONS:
+                        pass
+                    elif line.strip() != "":
+                        print(line)
+                        for e in re.findall(r"[-+]?\d*\.\d+|\d+", line):
+                            E.append(float(e))
+                        if len(E) == num_bands:
+                            ENERGIES.append(E)
+                            E = []
+                            OCCUPATIONS = True
             # Recover crystal units
             lat = grep.lattice(file)
             lat = lat / np.linalg.norm(lat[0])
@@ -869,7 +876,7 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
                     proj = [float(x) for x in line.split()[1:-1]]
                     PROJ.append(proj)
 
-            #Save projections into the proper container
+            # Save projections into the proper container
             PROJ = np.array(PROJ)
             M = round(PROJ.shape[0] / (np.prod(np.shape(ENERGIES)) * num_ions))
             PROJECTIONS = _OrbitalProjectionContainer()
@@ -878,9 +885,9 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
                     for m in range(-l, l + 1):
                         for mag in range(M):
                             C = l + l * l + m
-                            matrix = PROJ[i + num_ions * mag :: num_ions * M, C].reshape(
-                                np.shape(ENERGIES)
-                            )
+                            matrix = PROJ[
+                                i + num_ions * mag :: num_ions * M, C
+                            ].reshape(np.shape(ENERGIES))
                             PROJECTIONS.add(i, l, m, mag, matrix)
         else:
             raise NotImplementedError("Unsupported filetype")
