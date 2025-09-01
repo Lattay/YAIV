@@ -173,8 +173,8 @@ class _OrbitalProjectionContainer:
     This class stores and provides access to orbital projections
     of wavefunctions or band structures, resolved by ion, orbital
     angular momentum `l`, magnetic number `m`, and  magnetization `M`.
-    It supports flexible indexing and summation over
-    subsets of these quantum numbers using its `__call__` interface.
+    It supports flexible indexing and summation over subsets of
+    these quantum numbers using its `__call__` interface.
 
     Attributes
     ----------
