@@ -52,6 +52,9 @@ Private Utilities
 _expand_zone_border(q_point)
     Returns a q-point and its ±1-shifted equivalents along each reciprocal direction.
 
+_point_to_segment_distance(point, endpoint_a, endpoint_b)
+    Compute the Euclidean distance from a point to a line segment in 3D.
+
 See Also
 --------
 yaiv.grep             : File parsing functions that uses these utilities.

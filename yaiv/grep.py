@@ -61,9 +61,6 @@ _OrbitalProjectionContainer:
 _find_dyn_file(q_cryst, results_ph_path)
     Internal helper that searches `.dyn*` files matching the specified q-point.
 
-_point_to_segment_distance(point, endpoint_a, endpoint_b)
-    Compute the Euclidean distance from a point to a line segment in 3D.
-
 Examples
 --------
 >>> from yaiv grep import grep
