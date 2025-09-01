@@ -46,9 +46,12 @@ def _check_unit_consistency(quantities: Sequence[Any], names: Sequence[str] = No
     TypeError
         If the list contains a mix of unitful and unitless variables.
     """
-    has_units = [isinstance(x, ureg.Quantity) or x is None for x in quantities]
-
-    if len(set(has_units)) != 1:
+    has_units = [
+        isinstance(x, ureg.Quantity) if x is not None else x for x in quantities
+    ]
+    S = set(has_units)
+    S.discard(None)
+    if len(S) != 1:
         if names is not None:
             print("Units check failed for:", names)
         print("Units status:", has_units)
