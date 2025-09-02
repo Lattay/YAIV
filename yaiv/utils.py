@@ -133,7 +133,7 @@ def invQ(matrix: np.ndarray | ureg.Quantity) -> np.ndarray | ureg.Quantity:
         return np.linalg.inv(matrix)
 
 
-def reciprocal_basis(lattice: np.ndarray | ureg.Quantity) -> np.ndarray:
+def reciprocal_basis(lattice: np.ndarray | ureg.Quantity) -> ureg.Quantity:
     """
     Compute reciprocal lattice vectors (rows) from a direct lattice basis.
 
@@ -144,7 +144,7 @@ def reciprocal_basis(lattice: np.ndarray | ureg.Quantity) -> np.ndarray:
 
     Returns
     -------
-    K_vec : np.ndarray
+    K_vec : ureg.Quantity
         Reciprocal lattice vectors in rows, with units of 2π / [input_units].
     """
     K_vec = (invQ(lattice) * ureg._2pi).transpose()  # reciprocal vectors in rows
