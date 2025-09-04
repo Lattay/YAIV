@@ -2,7 +2,7 @@
 
 ## ✅ General Improvements
 
-- Improved and expanded documentation across the entire codebase.
+- Improved and expanded documentation across the entire code.
 
 ---
 
