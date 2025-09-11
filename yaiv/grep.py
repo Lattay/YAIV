@@ -42,6 +42,7 @@ yaiv.utils    : Basis universal utilities
 import re
 import warnings
 from types import SimpleNamespace
+import xml.etree.ElementTree as ET
 
 import numpy as np
 from ase import io
@@ -123,6 +124,156 @@ def _filetype(file: str) -> str:
                 filetype = "qe_xml"
                 break
     return filetype
+
+
+class _Qe_xml:
+    """
+    Minimal reader for Quantum ESPRESSO XML output files.
+
+    Provides utilities to extract common physical quantities.
+
+    Notes
+    -----
+    - Units: numerical values in the XML are in Hartree atomic units unless
+      otherwise specified. Returned values are wrapped in `ureg.Quantity`.
+    """
+    def __init__(self, file):
+        """
+        Initialize a QE XML reader.
+
+        Parameters
+        ----------
+        file : str or Path
+            Path to the Quantum ESPRESSO XML file.
+
+        Raises
+        ------
+        NotImplementedError
+            If the file type is not recognized as a QE XML file.
+        """
+        if _filetype(file) == "qe_xml":
+            tree = ET.parse(file)
+            self.root = tree.getroot()
+        else:
+            raise NotImplementedError("Unsupported filetype")
+
+    def electron_num(self) -> int:
+        """
+        Greps the number of electrons.
+
+        Returns
+        -------
+        num_elec : int
+            Number of electrons.
+        """
+        elec = self.root.find(".//nelec")
+        return int(float(elec.text))
+
+    def lattice(self) -> np.ndarray:
+        """
+        Greps the lattice vectors.
+
+        Returns
+        -------
+        lattice : np.ndarray
+            3x3 array of lattice vectors with attached units (ureg.Quantity).
+        """
+        cell = self.root.find(".//cell")
+        lattice = []
+        for line in cell:
+            v = [float(x) for x in line.text.split()]
+            lattice += [v]
+        lattice = np.array(lattice) * ureg.bohr
+        return lattice
+
+    def fermi(self) -> float:
+        """
+        Greps the Fermi energy from a variety of filetypes.
+
+        Returns
+        -------
+        E_f : float
+            Fermi energy with attached units (ureg.Quantity).
+        """
+        fermi = self.root.find(".//fermi_energy")
+        return float(fermi.text) * ureg.hartree
+
+    def total_energy(self, decomposition: bool = False) -> float | SimpleNamespace:
+        """
+        Greps the total free energy or it's decomposition.
+
+        Parameters
+        ----------
+        decomposition : bool, optional
+            If True an energy decomposition is returned instead. Default is False.
+
+        Returns
+        -------
+        energy : float | SimpleNamespace
+            If decomposition is False a single float with the free energy is returned.
+            If decomposition is True a namespace with the following attributes is returned:
+                -  F            -> Total Free energy
+                - -TS           -> Smearing contribution
+                -  U (= F+TS)   -> Internal energy
+                    -  U_one_electron
+                    -  U_hartree
+                    -  U_exchange-correlational
+                    -  U_ewald
+        """
+        lines = self.root.find(".//total_energy")
+        etot = float(lines.find(".//etot").text) * ureg.hartree
+        eband = float(lines.find(".//eband").text) * ureg.hartree
+        ehart = float(lines.find(".//ehart").text) * ureg.hartree
+        vtxc = float(lines.find(".//vtxc").text) * ureg.hartree
+        etxc = float(lines.find(".//etxc").text) * ureg.hartree
+        ewald = float(lines.find(".//ewald").text) * ureg.hartree
+        demet = float(lines.find(".//demet").text) * ureg.hartree
+        energy = SimpleNamespace(
+            F=etot,
+            TS=demet,
+            U=etot - demet,
+            U_one_electron=etot - demet - ehart - etxc - ewald,
+            U_hartree=ehart,
+            U_xc=etxc,
+            U_ewald=ewald,
+        )
+        if decomposition:
+            return energy
+        else:
+            return energy.F
+
+    def kpointsEnergies(self) -> SimpleNamespace:
+        """
+        Grep the kpoints, energies and kpoint-weights.
+
+        Returns
+        -------
+        SimpleNamespace : SimpleNamespace
+            SimpleNamespace class with the following attributes:
+            - energies : np.ndarray
+                List of energies, each row corresponds to a particular k-point.
+            - kpoints : np.ndarray
+                List of k-points.
+            - weights : np.ndarray
+                List of kpoint-weights.
+        """
+        KPOINTS, WEIGHTS, ENERGIES = [], [], []
+        ks_energies = self.root.findall(".//ks_energies")
+        for elem in ks_energies:
+            # Get kpoint and weights
+            kpoint = elem.find(".//k_point")
+            w = float(kpoint.attrib["weight"])
+            k = [float(x) for x in kpoint.text.split()]
+            KPOINTS += [k]
+            WEIGHTS += [w]
+            # Get energies
+            E = [float(x) for x in elem.find(".//eigenvalues").text.split()]
+            ENERGIES += [E]
+        return SimpleNamespace(
+            energies=ENERGIES * ureg.hartree,
+            kpoints=KPOINTS * (ureg._2pi / ureg.alat),
+            weights=np.array(WEIGHTS),
+        )
 
 
 def electron_num(file: str) -> int:
