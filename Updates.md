@@ -18,10 +18,12 @@
 - New `dyn_file` function for parsing a QE `.dyn` file and extracting vibrational data such as q-point, lattice vectors, phonon frequencies, etc.
 - New `dyn_q` function for locating and reading a `.dyn*` file for a specific q-point. Returns the full 3N×3N dynamical matrix.
 - Now `kpointsEnergies` also greps the orbital resolved projections of Bloch states if available (`PROCAR` files supported).
+- Added support for QuantumEspresso `xml` files.
 
 ### `spectrum`
 - Added `DOS` class.
-- Now supports computation of the density of states with both Gaussian and MP smearing (any order).
+    - Supports computation of the density of states with both Gaussian and MP smearing (any order).
+    - Supports DOS integration and Fermi level calculation from the desired number of occupied states.
 
 ### `plot`
 - Added the option to highlight grid in the k-path for phonon bands.
