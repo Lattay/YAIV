@@ -99,6 +99,8 @@ if [[ "$proceed" == "yes" ]]; then
     git push private pip
     echo "Merge and push to pip branch completed with version $VERSION."
 else
+    git switch pip
+    git tag -a "v$VERSION" -m "Release version $VERSION"
     echo "Skipping merge from dev into pip."
 fi
 echo "======================================================================="
