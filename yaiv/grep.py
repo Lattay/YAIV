@@ -735,7 +735,7 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
 
     Energies are given in eV and kpoints in reciprocal crystal units.
     Currently supports:
-    - QuantumEspresso: qe_scf_out.
+    - QuantumEspresso: qe_scf_out, `.xml` files.
     - VASP: OUTCAR, EIGENVAL.
 
     Parameters
@@ -764,7 +764,9 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
     READ_energies = READ_kpoints = RELAX_calc = RELAXED = OCCUPATIONS = False
     KPOINTS = ENERGIES = WEIGHTS = E = None
     with open(file, "r") as lines:
-        if filetype == "qe_scf_out":
+        if filetype == "qe_xml":
+            return _Qe_xml(file).kpointsEnergies()
+        elif filetype == "qe_scf_out":
             for line in lines:
                 # Grep number of bands
                 if "number of Kohn-Sham" in line:
@@ -815,7 +817,8 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
             lat = grep.lattice(file)
             lat = lat / np.linalg.norm(lat[0])
             Klat = ut.reciprocal_basis(lat).magnitude
-            KPOINTS = ut.cartesian2cryst(KPOINTS, Klat)
+            KPOINTS = ut.cartesian2cryst(KPOINTS, Klat) * (ureg._2pi / ureg.crystal)
+            ENERGIES *= ENERGIES * ureg("eV")
 
         elif filetype == "eigenval":
             for i, line in enumerate(lines):
@@ -847,6 +850,8 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
                                 np.vstack([ENERGIES, E]) if ENERGIES is not None else E
                             )
                             E = None
+            KPOINTS *= ureg._2pi / ureg.crystal
+            ENERGIES *= ENERGIES * ureg("eV")
         elif filetype == "outcar":
             for line in lines:
                 if "NBANDS" in line:
@@ -885,11 +890,13 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
                             if len(ENERGIES) == num_points:
                                 break
                             E = None
+            KPOINTS *= ureg._2pi / ureg.crystal
+            ENERGIES *= ENERGIES * ureg("eV")
         else:
             raise NotImplementedError("Unsupported filetype")
     return SimpleNamespace(
-        energies=ENERGIES * ureg("eV"),
-        kpoints=KPOINTS * (ureg._2pi / ureg.crystal),
+        energies=ENERGIES,
+        kpoints=KPOINTS,
         weights=WEIGHTS,
     )
 
