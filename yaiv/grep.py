@@ -15,7 +15,7 @@ The functions in this module perform low-level parsing (i.e., grepping) of data 
 - Fermi level and reciprocal space paths
 
 Supported formats include:
-- Quantum ESPRESSO output/input: `pw.x`, `ph.x`, `bands.in`, `projwfc.x`, `matdyn.x`
+- Quantum ESPRESSO output/input: `pw.x`, `ph.x`, `bands.in`, `projwfc.x`, `matdyn.x`, `.xml`
 - VASP output: `OUTCAR`, `EIGENVAL`, `KPOINTS`, `PROCAR`
 
 This module is intended to feed high-level classes like `electronBands` and `phononBands`
@@ -118,6 +118,9 @@ def _filetype(file: str) -> str:
                 break
             elif ("direct" in line and "directory" not in line) or "cartesian" in line:
                 filetype = "poscar"
+                break
+            elif "espresso xml" in line:
+                filetype = "qe_xml"
                 break
     return filetype
 
