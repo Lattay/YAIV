@@ -137,6 +137,7 @@ class _Qe_xml:
     - Units: numerical values in the XML are in Hartree atomic units unless
       otherwise specified. Returned values are wrapped in `ureg.Quantity`.
     """
+
     def __init__(self, file):
         """
         Initialize a QE XML reader.
@@ -286,7 +287,7 @@ def electron_num(file: str) -> int:
     ----------
     file : str
         File from which to extract the electron number, it currently supports:
-        - QuantumEspresso pw.x output.
+        - QuantumEspresso `xml` or pw.x output.
         - VASP OUTCAR.
 
     Returns
@@ -308,6 +309,8 @@ def electron_num(file: str) -> int:
                 if "number of electrons" in line:
                     num_elec = int(float(line.split()[4]))
                     break
+        elif filetype == "qe_xml":
+            num_elec = _Qe_xml(file).electron_num()
         elif filetype == "outcar":
             for line in lines:
                 if "NELECT" in line:
@@ -334,13 +337,13 @@ def lattice(file: str, alat: bool = False) -> np.ndarray:
     file : str
         File from which to extract the lattice.
     alat : bool, optional
-        Whether to return lattice in internal units (alat). Default is False (return in Å).
+        Whether to return lattice in internal units (alat). Default is False.
 
     Returns
     -------
     lattice : np.ndarray
         3x3 array of lattice vectors with attached units (ureg.Quantity).
-        Units are either Å or 'alat', depending on the `alat` flag.
+        Units will be 'alat' if the `alat` flag is True.
 
     Raises
     ------
@@ -350,7 +353,13 @@ def lattice(file: str, alat: bool = False) -> np.ndarray:
     filetype = _filetype(file)
     READ = False
 
-    if filetype == "qe_ph_out":
+    if filetype == "qe_xml":
+        lattice = _Qe_xml(file).lattice()
+        if alat:
+            return lattice / np.linalg.norm(lattice[0]) * ureg.alat
+        else:
+            return lattice
+    elif filetype == "qe_ph_out":
         with open(file, "r") as lines:
             for line in lines:
                 if "lattice parameter" in line:
@@ -421,7 +430,7 @@ def fermi(file: str) -> float:
     Returns
     -------
     E_f : float
-        Fermi energy.
+        Fermi energy with attached units (ureg.Quantity).
 
     Raises
     ------
@@ -432,7 +441,9 @@ def fermi(file: str) -> float:
     """
     filetype = _filetype(file)
     with open(file, "r") as lines:
-        if filetype == "qe_scf_out":
+        if filetype == "qe_xml":
+            E_f = _Qe_xml(file).fermi()
+        elif filetype == "qe_scf_out":
             for line in reversed(list(lines)):
                 # If smearing is used
                 if "Fermi energy is" in line:
@@ -448,16 +459,17 @@ def fermi(file: str) -> float:
                     else:
                         E_f = float(line.split()[4])
                     break
+            E_f *= ureg("eV")
         elif filetype == "outcar":
             for line in reversed(list(lines)):
                 if "E-fermi" in line:
-                    E_f = float(line.split()[2])
+                    E_f = float(line.split()[2]) * ureg("eV")
                     break
         else:
             raise NotImplementedError("Unsupported filetype")
     if "E_f" not in locals():
         raise NameError("Fermi energy not found.")
-    return E_f * ureg("eV")
+    return E_f
 
 
 def total_energy(file: str, decomposition: bool = False) -> float | SimpleNamespace:
@@ -493,7 +505,9 @@ def total_energy(file: str, decomposition: bool = False) -> float | SimpleNamesp
     """
     filetype = _filetype(file)
     with open(file, "r") as lines:
-        if filetype == "qe_scf_out":
+        if filetype == "qe_xml":
+            energy = _Qe_xml(file).total_energy(decomposition)
+        elif filetype == "qe_scf_out":
             for line in reversed(list(lines)):
                 if "!" in line:
                     F = float(line.split()[4]) * ureg("Ry")
