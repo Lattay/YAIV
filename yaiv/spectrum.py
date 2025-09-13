@@ -88,6 +88,9 @@ class _Has_lattice:
         3x3 matrix of direct lattice vectors in [length] units.
     k_lattice : np.ndarray
         3x3 matrix of reciprocal lattice vectors in 2π[length]⁻¹ units.
+    alat : ureg.Quantity
+        `alat` factor for conversions, defined as the norm of the first
+        vector of the lattice.
     """
 
     def __init__(
@@ -117,14 +120,18 @@ class _Has_lattice:
     def lattice(self):
         return self._lattice
 
+    @property
+    def k_lattice(self):
+        return self._k_lattice
+
+    @property
+    def alat(self):
+        return np.linalg.norm(self.lattice[0]) / ureg.alat
+
     @lattice.setter
     def lattice(self, value):
         self._lattice = value
         self._k_lattice = ut.reciprocal_basis(value)
-
-    @property
-    def k_lattice(self):
-        return self._k_lattice
 
     @k_lattice.setter
     def k_lattice(self, value):
