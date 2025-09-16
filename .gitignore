@@ -4,6 +4,7 @@ build/
 dist/
 tmp/
 RESULTS/
+results*/
 *.swp
 *egg-info/
 .ipynb_check*
