@@ -965,7 +965,6 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
                     elif OCCUPATIONS:
                         pass
                     elif line.strip() != "":
-                        print(line)
                         for e in re.findall(r"[-+]?\d*\.\d+|\d+", line):
                             E.append(float(e))
                         if len(E) == num_bands:
@@ -977,7 +976,7 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
             lat = lat / np.linalg.norm(lat[0])
             Klat = ut.reciprocal_basis(lat).magnitude
             KPOINTS = ut.cartesian2cryst(KPOINTS, Klat) * (ureg._2pi / ureg.crystal)
-            ENERGIES *= ENERGIES * ureg("eV")
+            ENERGIES *= ureg("eV")
 
         elif filetype == "eigenval":
             for i, line in enumerate(lines):
@@ -999,7 +998,7 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
                             ENERGIES.append(E)
                             E = []
             KPOINTS *= ureg._2pi / ureg.crystal
-            ENERGIES *= ENERGIES * ureg("eV")
+            ENERGIES *= ureg("eV")
         elif filetype == "outcar":
             for line in lines:
                 if "NBANDS" in line:
@@ -1028,7 +1027,7 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
                             if len(ENERGIES) == num_points:
                                 break
             KPOINTS *= ureg._2pi / ureg.crystal
-            ENERGIES *= ENERGIES * ureg("eV")
+            ENERGIES *= ureg("eV")
         elif filetype == "procar":
             for line in lines:
                 if "k-points" in line:
@@ -1051,7 +1050,7 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
                     proj = [float(x) for x in line.split()[1:-1]]
                     PROJ.append(proj)
             KPOINTS *= ureg._2pi / ureg.crystal
-            ENERGIES *= ENERGIES * ureg("eV")
+            ENERGIES *= ureg("eV")
             # Save projections into the proper container
             PROJ = np.array(PROJ)
             M = round(PROJ.shape[0] / (np.prod(np.shape(ENERGIES)) * num_ions))
@@ -1068,8 +1067,8 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
         else:
             raise NotImplementedError("Unsupported filetype")
     return SimpleNamespace(
-        energies=np.array(ENERGIES),
-        kpoints=np.array(KPOINTS),
+        energies=ENERGIES,
+        kpoints=KPOINTS,
         weights=np.array(WEIGHTS),
         projections=PROJECTIONS,
     )
