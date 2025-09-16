@@ -174,39 +174,33 @@ def cartesian2cryst(
     TypeError
         If the input units are not compatible with the basis units (i.e., their ratio is not dimensionless).
     """
+    _check_unit_consistency([cartesian_coord, cryst_basis], ["coordinates", "basis"])
 
-    if isinstance(cartesian_coord, ureg.Quantity) and not isinstance(
+    inv = invQ(cryst_basis)
+    crystal_coord = cartesian_coord @ inv
+    if isinstance(cartesian_coord, ureg.Quantity) and isinstance(
         cryst_basis, ureg.Quantity
     ):
-        raise TypeError(
-            "Input and basis units are not compatible. Provide both with or without units."
-        )
-    else:
-        inv = invQ(cryst_basis)
-        crystal_coord = cartesian_coord @ inv
-        if isinstance(cartesian_coord, ureg.Quantity) and isinstance(
-            cryst_basis, ureg.Quantity
-        ):
-            if not crystal_coord.dimensionless:
-                raise TypeError(
-                    "Input and basis units are not compatible for coordinate transformation"
-                )
-            in_units = cartesian_coord.units
-            if in_units.dimensionality in [
-                ureg.meter.dimensionality,
-                ureg.alat.dimensionality,
-            ]:
-                crystal_coord = crystal_coord * (ureg.crystal)
+        if not crystal_coord.dimensionless:
+            raise TypeError(
+                "Input and basis units are not compatible for coordinate transformation"
+            )
+        in_units = cartesian_coord.units
+        if in_units.dimensionality in [
+            ureg.meter.dimensionality,
+            ureg.alat.dimensionality,
+        ]:
+            crystal_coord = crystal_coord * (ureg.crystal)
 
-            elif in_units.dimensionality in [
-                1 / ureg.meter.dimensionality,
-                1 / ureg.alat.dimensionality,
-            ]:
-                crystal_coord = crystal_coord * (ureg._2pi / ureg.crystal)
-            else:
-                raise TypeError(
-                    "Input units must have dimensionality of [length] or [1/length]"
-                )
+        elif in_units.dimensionality in [
+            1 / ureg.meter.dimensionality,
+            1 / ureg.alat.dimensionality,
+        ]:
+            crystal_coord = crystal_coord * (ureg._2pi / ureg.crystal)
+        else:
+            raise TypeError(
+                "Input units must have dimensionality of [length] or [1/length]"
+            )
 
     return crystal_coord
 
@@ -234,23 +228,18 @@ def cryst2cartesian(
     TypeError
         If the input units are not correct (i.e., not providing crystal units).
     """
-    if isinstance(crystal_coord, ureg.Quantity) and not isinstance(
+    _check_unit_consistency([crystal_coord, cryst_basis], ["coordinates", "basis"])
+
+    if isinstance(crystal_coord, ureg.Quantity) and isinstance(
         cryst_basis, ureg.Quantity
     ):
-        raise TypeError(
-            "Input and basis units are not compatible. Provide both with or without units."
-        )
-    else:
-        if isinstance(crystal_coord, ureg.Quantity) and isinstance(
-            cryst_basis, ureg.Quantity
-        ):
-            if crystal_coord.dimensionality == ureg.crystal.dimensionality:
-                crystal_coord = crystal_coord * (1 / ureg.crystal)
-            elif crystal_coord.dimensionality == 1 / ureg.crystal.dimensionality:
-                crystal_coord = crystal_coord * (ureg.crystal / ureg._2pi)
-            else:
-                raise TypeError("Input units are not crystal units.")
-        cartesian_coord = crystal_coord @ cryst_basis
+        if crystal_coord.dimensionality == ureg.crystal.dimensionality:
+            crystal_coord = crystal_coord * (1 / ureg.crystal)
+        elif crystal_coord.dimensionality == 1 / ureg.crystal.dimensionality:
+            crystal_coord = crystal_coord * (ureg.crystal / ureg._2pi)
+        else:
+            raise TypeError("Input units are not crystal units.")
+    cartesian_coord = crystal_coord @ cryst_basis
 
     return cartesian_coord
 
@@ -273,10 +262,11 @@ def cartesian2voigt(xyz: np.ndarray | ureg.Quantity) -> np.ndarray | ureg.Quanti
     np.ndarray | ureg.Quantity
         A 1D array of length 6 in Voigt notation. If the input had units, they are preserved.
     """
-    voigt = np.array([xyz[0, 0], xyz[1, 1], xyz[2, 2], xyz[1, 2], xyz[0, 2], xyz[0, 1]])
     if isinstance(xyz, ureg.Quantity):
-        voigt = voigt * xyz.units
-    return voigt
+        units = xyz.units
+        xyz = xyz.magnitude
+    voigt = np.array([xyz[0, 0], xyz[1, 1], xyz[2, 2], xyz[1, 2], xyz[0, 2], xyz[0, 1]])
+    return voigt * units
 
 
 def voigt2cartesian(voigt: np.ndarray | ureg.Quantity) -> np.ndarray | ureg.Quantity:
@@ -297,6 +287,9 @@ def voigt2cartesian(voigt: np.ndarray | ureg.Quantity) -> np.ndarray | ureg.Quan
     np.ndarray | ureg.Quantity
         A 3x3 symmetric tensor in Cartesian matrix notation. If the input had units, they are preserved.
     """
+    if isinstance(voigt, ureg.Quantity):
+        units = voigt.units
+        voigt = voigt.magnitude
     xyz = np.array(
         [
             [voigt[0], voigt[5], voigt[4]],
@@ -304,9 +297,7 @@ def voigt2cartesian(voigt: np.ndarray | ureg.Quantity) -> np.ndarray | ureg.Quan
             [voigt[4], voigt[3], voigt[2]],
         ]
     )
-    if isinstance(voigt, ureg.Quantity):
-        xyz = xyz * voigt.units
-    return xyz
+    return xyz * units
 
 
 def grid_generator(grid: list[int], periodic: bool = False) -> np.ndarray:
@@ -532,7 +523,7 @@ def _expand_zone_border(
     Returns
     -------
     q_points : np.ndarray | pint.Quantity
-        A (3N+1, 3)-shaped array containing the original q-point and its ±1-shifted images
+        A (27*N, 3)-shaped array containing the original q-point and its ±1-shifted images
         along the three reciprocal directions. Units are preserved if input had units.
 
     Raises
