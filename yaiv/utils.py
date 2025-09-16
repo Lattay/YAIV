@@ -287,6 +287,7 @@ def voigt2cartesian(voigt: np.ndarray | ureg.Quantity) -> np.ndarray | ureg.Quan
     np.ndarray | ureg.Quantity
         A 3x3 symmetric tensor in Cartesian matrix notation. If the input had units, they are preserved.
     """
+    units = 1
     if isinstance(voigt, ureg.Quantity):
         units = voigt.units
         voigt = voigt.magnitude

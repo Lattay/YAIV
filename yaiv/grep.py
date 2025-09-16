@@ -38,7 +38,7 @@ stress_tensor(file)
 kpath(file, labels=True)
     Extracts the k-point path in reciprocal space, optionally with high-symmetry labels.
 
-kpointsEnergies(file)
+pointsEnergies(file)
     Greps the k-points, energies, kpoint-weights  and orbital projections (if available) for different file kinds.
 
 kpointsFrequencies(file)
@@ -576,6 +576,10 @@ def lattice(file: str, alat: bool = False) -> ureg.Quantity:
         else:
             return (lattice * ALAT).to("angstrom")
 
+    elif filetype == "qe_proj_out":
+        raise NotImplementedError(
+            "Unsupported filetype: ASE is not handling it correctly"
+        )
     else:
         # Fallback to ASE
         try:
@@ -1285,7 +1289,7 @@ def _find_dyn_file(q_cryst: np.ndarray | ureg.Quantity, results_ph_path: str) ->
     k_basis = ut.reciprocal_basis(lattice)
 
     # Scan all .dyn* files (excluding matdyn if present)
-    dyn_files = glob.glob(results_ph_path + "*.dyn*")
+    dyn_files = glob.glob(results_ph_path + "/*.dyn*")
     dyn_files = [f for f in dyn_files if "results_matdyn" not in f]
 
     for file in dyn_files:

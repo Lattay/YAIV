@@ -206,10 +206,6 @@ def test_amplitude2order_parameter():
     #    # Units: length * sqrt(mass)
     #    assert q.check(ureg.angstrom * np.sqrt(ureg.kilogram))
     #    assert_allclose(q.magnitude, expected)
-    warnings.warn(
-        "TODO: Implement test_amplitude2order_parameter",
-        UserWarning,
-    )
     pytest.xfail("TODO: Implement test for amplitude2order_parameter")
 
 
