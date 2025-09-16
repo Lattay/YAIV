@@ -50,23 +50,6 @@ FILES = [
 IDS = [f for f, _ in FILES]
 
 
-@pytest.fixture(scope="session")
-def data_dir():
-    d = Path(__file__).parent / "data"
-    if not d.exists():
-        pytest.skip("tests/data folder not found", allow_module_level=True)
-    return d
-
-
-@pytest.fixture
-def require():
-    def _require(path, reason=None):
-        if not path.exists():
-            pytest.skip(reason or f"Missing test data: {path}")
-
-    return _require
-
-
 @pytest.mark.parametrize("fname, kind", FILES, ids=IDS)
 def test_filetype_detection(data_dir, require, fname, kind):
     f = data_dir / fname
@@ -75,7 +58,7 @@ def test_filetype_detection(data_dir, require, fname, kind):
 
 
 @pytest.mark.parametrize("fname, kind", FILES, ids=IDS)
-def test_electron_num_all(data_dir, require, fname, kind):
+def test_electron_num(data_dir, require, fname, kind):
     f = data_dir / fname
     require(f, f"Missing test data: {fname}")
 
@@ -89,7 +72,7 @@ def test_electron_num_all(data_dir, require, fname, kind):
 
 
 @pytest.mark.parametrize("fname, kind", FILES, ids=IDS)
-def test_lattice_all(data_dir, require, fname, kind):
+def test_lattice(data_dir, require, fname, kind):
     f = data_dir / fname
     require(f, f"Missing test data: {fname}")
 
@@ -103,7 +86,7 @@ def test_lattice_all(data_dir, require, fname, kind):
 
 
 @pytest.mark.parametrize("fname, kind", FILES, ids=IDS)
-def test_fermi_all(data_dir, require, fname, kind):
+def test_fermi(data_dir, require, fname, kind):
     f = data_dir / fname
     require(f, f"Missing test data: {fname}")
 
@@ -117,7 +100,7 @@ def test_fermi_all(data_dir, require, fname, kind):
 
 
 @pytest.mark.parametrize("fname, kind", FILES, ids=IDS)
-def test_total_energy_all(data_dir, require, fname, kind):
+def test_total_energy(data_dir, require, fname, kind):
     f = data_dir / fname
     require(f, f"Missing test data: {fname}")
 
@@ -137,7 +120,7 @@ def test_total_energy_all(data_dir, require, fname, kind):
 
 
 @pytest.mark.parametrize("fname, kind", FILES, ids=IDS)
-def test_stress_tensor_all(data_dir, require, fname, kind):
+def test_stress_tensor(data_dir, require, fname, kind):
     f = data_dir / fname
     require(f, f"Missing test data: {fname}")
 
@@ -152,7 +135,7 @@ def test_stress_tensor_all(data_dir, require, fname, kind):
 
 
 @pytest.mark.parametrize("fname, kind", FILES, ids=IDS)
-def test_kpath_all(data_dir, require, fname, kind):
+def test_kpath(data_dir, require, fname, kind):
     f = data_dir / fname
     require(f, f"Missing test data: {fname}")
 
@@ -171,7 +154,7 @@ def test_kpath_all(data_dir, require, fname, kind):
 
 
 @pytest.mark.parametrize("fname, kind", FILES, ids=IDS)
-def test_kpointsEnergies_all(data_dir, require, fname, kind):
+def test_kpointsEnergies(data_dir, require, fname, kind):
     f = data_dir / fname
     require(f, f"Missing test data: {fname}")
 
@@ -192,7 +175,7 @@ def test_kpointsEnergies_all(data_dir, require, fname, kind):
 
 
 @pytest.mark.parametrize("fname, kind", FILES, ids=IDS)
-def test_kpointsFrequencies_all(data_dir, require, fname, kind):
+def test_kpointsFrequencies(data_dir, require, fname, kind):
     f = data_dir / fname
     require(f, f"Missing test data: {fname}")
 
@@ -208,7 +191,7 @@ def test_kpointsFrequencies_all(data_dir, require, fname, kind):
 
 
 @pytest.mark.parametrize("fname, kind", FILES, ids=IDS)
-def test_dyn_file_all(data_dir, require, fname, kind):
+def test_dyn_file(data_dir, require, fname, kind):
     f = data_dir / fname
     require(f, f"Missing test data: {fname}")
 

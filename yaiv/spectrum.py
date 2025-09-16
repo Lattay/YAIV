@@ -659,7 +659,7 @@ class Spectrum(_Has_lattice, _Has_kpath):
 
         norm = plt.Normalize(P.vmin, P.vmax)
         # Plotting band by band
-        points = np.array([P.x, P.eigen[:, P.band_indices[0]]]).T.reshape(-1, 1, 2)
+        points = np.array([P.x.magnitude, P.eigen.magnitude[:, P.band_indices[0]]]).T.reshape(-1, 1, 2)
         segments = np.concatenate([points[:-1], points[1:]], axis=1)
         lc = LineCollection(
             segments,
@@ -671,7 +671,7 @@ class Spectrum(_Has_lattice, _Has_kpath):
         lc.set_linewidth(linewidth)
         line = P.ax.add_collection(lc)
         for i in P.band_indices[1:]:
-            points = np.array([P.x, P.eigen[:, P.band_indices[i]]]).T.reshape(-1, 1, 2)
+            points = np.array([P.x.magnitude, P.eigen.magnitude[:, P.band_indices[i]]]).T.reshape(-1, 1, 2)
             segments = np.concatenate([points[:-1], points[1:]], axis=1)
             lc = LineCollection(
                 segments,
