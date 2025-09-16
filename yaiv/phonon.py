@@ -1080,6 +1080,3 @@ class BOES:
         else:
             energies = [X.magnitude for X in energies] * energies[0].units
         self.energies = energies
-
-    def _plot_energy_landscape(self):
-        pass
