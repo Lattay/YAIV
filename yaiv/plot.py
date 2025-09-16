@@ -142,6 +142,8 @@ def get_HSP_ticks(
         hsp_coords = ut.cryst2cartesian(hsp_coords, k_lattice).magnitude
         if grid is not None:
             grid = ut.cryst2cartesian(grid, k_lattice).magnitude
+    else:
+        hsp_coords = hsp_coords.magnitude
 
     # Ticks positions
     x_coord, grid_coord = [0.0], []
