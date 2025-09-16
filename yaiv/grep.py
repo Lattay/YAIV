@@ -818,7 +818,7 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
             lat = lat / np.linalg.norm(lat[0])
             Klat = ut.reciprocal_basis(lat).magnitude
             KPOINTS = ut.cartesian2cryst(KPOINTS, Klat) * (ureg._2pi / ureg.crystal)
-            ENERGIES *= ENERGIES * ureg("eV")
+            ENERGIES *= ureg("eV")
 
         elif filetype == "eigenval":
             for i, line in enumerate(lines):
@@ -851,7 +851,7 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
                             )
                             E = None
             KPOINTS *= ureg._2pi / ureg.crystal
-            ENERGIES *= ENERGIES * ureg("eV")
+            ENERGIES *= ureg("eV")
         elif filetype == "outcar":
             for line in lines:
                 if "NBANDS" in line:
@@ -891,7 +891,7 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
                                 break
                             E = None
             KPOINTS *= ureg._2pi / ureg.crystal
-            ENERGIES *= ENERGIES * ureg("eV")
+            ENERGIES *= ureg("eV")
         else:
             raise NotImplementedError("Unsupported filetype")
     return SimpleNamespace(
