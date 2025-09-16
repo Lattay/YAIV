@@ -467,7 +467,7 @@ def ase2spglib(crystal_ase: Atoms) -> tuple:
         - positions : (N, 3) array of scaled atomic positions (fractional)
         - numbers : (N,) array of atomic numbers
     """
-    lattice = np.array(crystal_ase.get_cell())
+    lattice = np.asarray(crystal_ase.get_cell()).copy()
     positions = crystal_ase.get_scaled_positions()
     numbers = crystal_ase.get_atomic_numbers()
     spglib_crystal = (lattice, positions, numbers)
