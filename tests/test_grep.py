@@ -160,8 +160,12 @@ def test_kpointsEnergies(data_dir, require, fname, kind):
 
     if kind in SUPPORTED_KPTS_E:
         data = grep.kpointsEnergies(str(f))
-        assert hasattr(data.energies, "units")
-        assert hasattr(data.kpoints, "units")
+        assert data.energies.check("eV")
+        assert (
+            data.kpoints.check("1/ang")
+            or data.kpoints.check("1/crystal")
+            or data.kpoints.check("1/alat")
+        )
         assert data.weights.ndim == 1
         assert data.energies.magnitude.ndim == 2
         assert data.kpoints.magnitude.ndim == 2
