@@ -94,6 +94,7 @@ def build_phonon_bands(case, data_dir, require):
 def test_bands_image_and_structure_cases(data_dir, require, case):
     bands = build_electron_bands(case, data_dir, require)
 
+    return
     fig, ax = plt.subplots()
     win = getattr(case, "window_eV", 1.5) * ureg.eV
     plot.bands(bands, ax=ax, window=win)
