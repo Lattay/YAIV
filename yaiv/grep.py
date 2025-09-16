@@ -186,7 +186,7 @@ class _OrbitalProjectionContainer:
     Attributes
     ----------
     _data : dict[tuple[int, int, int, int], np.ndarray]
-        Internal dictionary mapping (ion, l, m, M) → projection matrix.
+        Internal dictionary mapping (ion, l, m, M) → projection matrix (kpts,nbnds).
 
     Methods
     -------
@@ -219,6 +219,15 @@ class _OrbitalProjectionContainer:
             Projection matrix (k-points x bands).
         """
         self._data[(ion, l, m, M)] = matrix
+
+    def __repr__(self) -> str:
+        keys = np.array(tuple(self._data.keys()), dtype=int)
+        ions = np.max(keys[:, 0]) + 1
+        l = [int(x) for x in (set(keys[:, 1]))]
+        M = np.max(keys[:, 3])
+        if M > 0:
+            M = f"[0-{M}]"
+        return f"_OrbitalProjectionContainer(ions={ions}, l={l}, m=[-l,l], M={M})"
 
     def __call__(
         self,
