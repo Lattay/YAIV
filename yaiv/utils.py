@@ -32,9 +32,6 @@ voigt2cartesian(voigt)
 grid_generator(grid, periodic=False)
     Generates a uniform D-dimensional grid in either periodic or bounded mode.
 
-_normal_dist(x, mean=0, sd=0.1, A=1)
-    Computes the value of a normalized Gaussian distribution.
-
 methpax_delta(x, mean=0.0, smearing=0.1, order=1, A=1.0)
     Evaluates the Methfessel–Paxton delta approximation up to a given order.
 
@@ -49,6 +46,9 @@ cumulative_integral(X, Y)
 
 Private Utilities
 -----------------
+_normal_dist(x, mean=0, sd=0.1, A=1)
+    Computes the value of a normalized Gaussian distribution.
+
 _expand_zone_border(q_point)
     Returns a q-point and its ±1-shifted equivalents along each reciprocal direction.
 
