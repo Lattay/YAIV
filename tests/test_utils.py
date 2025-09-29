@@ -191,22 +191,23 @@ def test_expand_zone_border_shapes_and_units():
 
 
 def test_amplitude2order_parameter():
-    #    # Two atoms, simple displacements
-    #    amps = np.array([0.05, 0.10]) * ureg.angstrom  # length units
-    #    masses = np.array([1.0, 4.0]) * ureg.kilogram  # mass units
-    #    disp0 = np.array([[1.0, 0.0, 0.0], [0.0, 2.0, 0.0]])  # norms: 1 and 2
-    #    disp1 = np.array([[0.0, 1.0, 0.0], [0.0, 0.0, 3.0]])  # norms: 1 and 3
-    #    # NN_i = sum_j M_j * ||ε_ij||^2
-    #    # For disp0: 1*1^2 + 4*2^2 = 1 + 16 = 17
-    #    # For disp1: 1*1^2 + 4*3^2 = 1 + 36 = 37
-    #    expected = np.array([amps.magnitude[0] * np.sqrt(17), amps.magnitude[1] * np.sqrt(37)])
-    #
-    #    q = amplitude2order_parameter(amps, masses, [disp0, disp1])
-    #    assert isinstance(q, ureg.Quantity)
-    #    # Units: length * sqrt(mass)
-    #    assert q.check(ureg.angstrom * np.sqrt(ureg.kilogram))
-    #    assert_allclose(q.magnitude, expected)
-    pytest.xfail("TODO: Implement test for amplitude2order_parameter")
+    # Two atoms, simple displacements
+    amps = np.array([0.05, 0.10]) * ureg.angstrom  # length units
+    masses = np.array([1.0, 4.0]) * ureg.kilogram  # mass units
+    disp0 = np.array([[1.0, 0.0, 0.0], [0.0, 2.0, 0.0]])  # norms: 1 and 2
+    disp1 = np.array([[0.0, 1.0, 0.0], [0.0, 0.0, 3.0]])  # norms: 1 and 3
+    # NN_i = sum_j M_j * ||ε_ij||^2
+    # For disp0: 1*1^2 + 4*2^2 = 1 + 16 = 17
+    # For disp1: 1*1^2 + 4*3^2 = 1 + 36 = 37
+    expected = np.array(
+        [amps.magnitude[0] * np.sqrt(17), amps.magnitude[1] * np.sqrt(37)]
+    )
+
+    q = ut.amplitude2order_parameter(amps, masses, [disp0, disp1])
+    assert isinstance(q, ureg.Quantity)
+    # Units: length * sqrt(mass)
+    assert q.check("angstrom * kilogram^0.5")
+    assert_allclose(q.magnitude, expected)
 
 
 def test_cumulative_integral_input_validation():
@@ -250,4 +251,6 @@ def test_point_to_segment_distance():
     # Point nearest to endpoint A
     P_near_A = np.array([-1.0, 1.0, 0.0])
     # The closest point on the segment is A (0,0,0), distance sqrt(2)
-    assert_allclose(ut._point_to_segment_distance(P_near_A, A, B), np.sqrt(2.0), atol=1e-12)
+    assert_allclose(
+        ut._point_to_segment_distance(P_near_A, A, B), np.sqrt(2.0), atol=1e-12
+    )
