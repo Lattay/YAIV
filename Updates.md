@@ -3,6 +3,7 @@
 ## ✅ General Improvements
 
 - Improved and expanded documentation across the entire code.
+- Added `tests`.
 
 ---
 
