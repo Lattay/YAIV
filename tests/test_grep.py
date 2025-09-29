@@ -216,7 +216,6 @@ def test_dyn_file(data_dir, require, fname, kind):
 def test_dyn_q_on_results_folder(data_dir):
     results_dir = data_dir / "qe" / "results"
     q_cryst = np.array([0.0, 0.0, 0.0])
-    print(str(results_dir))
     system = grep.dyn_q(q_cryst, str(results_dir), qe_format=True)
     n_ions = len(system.elements)
     assert system.q.check(ureg._2pi / ureg.crystal)
