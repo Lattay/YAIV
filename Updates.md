@@ -3,6 +3,7 @@
 ## ✅ General Improvements
 
 - Improved and expanded documentation across the entire code.
+- New `phonon` module with phonon handling utilities.
 - Added `tests`.
 
 ---
