@@ -590,7 +590,7 @@ def kernel_density_on_grid(
     # Handle units
     quantities = [x, center, x_window, sigma]
     names = ["x", "center", "x_window", "sigma"]
-    ut._check_unit_consistency(quantities, names)
+    _check_unit_consistency(quantities, names)
 
     # If unitful, convert all to common unit
     if isinstance(x, ureg.Quantity):
@@ -656,9 +656,9 @@ def kernel_density_on_grid(
         w_loc = w_flat[start:stop]
 
         if order == 0:
-            K = ut._normal_dist(x_loc, mean=X, sd=sigma)
+            K = _normal_dist(x_loc, mean=X, sd=sigma)
         else:
-            K = ut.methpax_delta(x_loc, mean=X, smearing=sigma, order=order)
+            K = methpax_delta(x_loc, mean=X, smearing=sigma, order=order)
 
         density[i] = np.sum(K * v_loc * w_loc)
 
