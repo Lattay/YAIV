@@ -4,7 +4,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.collections import PathCollection, LineCollection
 
-from yaiv.spectrum import Spectrum, ElectronBands, PhononBands, DOS
+from yaiv.spectrum import Spectrum, ElectronBands, PhononBands, Density
 from yaiv.defaults.config import ureg
 from yaiv import utils as ut
 from yaiv import grep
@@ -116,16 +116,16 @@ def test_ElectronBands_dos_compute_and_integrate(data_dir, require):
     bands = ElectronBands(str(f))
 
     # Compute DOS with default args
-    bands.get_DOS(precision=5)
+    bands.get_DOS(cutoff_sigmas=5)
     assert bands.DOS is not None
-    assert hasattr(bands.DOS, "vgrid") and hasattr(bands.DOS, "DOS")
+    assert hasattr(bands.DOS, "grid") and hasattr(bands.DOS, "density")
     # Units: vgrid ~ energy units; DOS ~ 1/energy
-    assert bands.DOS.vgrid.check(ureg.eV)
-    assert bands.DOS.DOS.check(1 / ureg.eV)
-    assert bands.DOS.vgrid.shape == bands.DOS.DOS.shape
+    assert bands.DOS.grid.check(ureg.eV)
+    assert bands.DOS.density.check(1 / ureg.eV)
+    assert bands.DOS.grid.shape == bands.DOS.density.shape
 
     # Integrate full DOS range
-    val, err = bands.DOS.integrate(limit=bands.DOS.vgrid[-1] * 1.1)
+    val, err = bands.DOS.integrate(limit=bands.DOS.grid[-1] * 1.1)
     assert np.isclose(val, bands.eigenvalues.shape[1])
 
     # Plot DOS (smoke)
@@ -162,8 +162,8 @@ def test_PhononBands_plot_and_dos(data_dir, require):
 
     # DOS compute + plot (phonon DOS often plotted, use defaults)
     ph.get_DOS()
-    assert ph.DOS.vgrid.check(ureg.c / ureg.cm)
-    assert ph.DOS.DOS.check(1 / (ureg.c / ureg.cm))
+    assert ph.DOS.grid.check(ureg.c / ureg.cm)
+    assert ph.DOS.density.check(1 / (ureg.c / ureg.cm))
 
     ax2 = ph.DOS.plot(color="C3")
     assert ax2 is not None
@@ -200,14 +200,9 @@ def test_dos_integrate_occ_states_inverse():
     # Synthetic DOS: a Gaussian centered at 0 with unit area
     x = np.linspace(-2.0, 2.0, 2001) * ureg.eV
     y = ut._normal_dist(x.magnitude, mean=0, sd=0.2, A=1) / ureg.eV
-    #    y = (
-    #        (1.0 / (0.1 * np.sqrt(2 * np.pi)))
-    #        * np.exp(-0.5 * (x.magnitude / 0.1) ** 2)
-    #        / ureg.eV
-    #    )
-    d = DOS(DOS=y, vgrid=x)
+    d = Density(density=y, grid=x)
 
     # Target: half the area ~ 0.5 -> energy near 0
-    e, err = d.integrate(occ_states=0.5)
+    e, err = d.integrate(amount=0.5)
     assert e.check(ureg.eV)
     assert np.isclose(0, e.magnitude)

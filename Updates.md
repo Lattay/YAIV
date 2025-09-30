@@ -15,6 +15,7 @@
 - Added `analyze_distribution` function.
 - Added `amplitude2order_parameter` to convert displacement amplitudes into proper order parameters with [length × sqrt(mass)] units.
 - Added `cumulative_integral`, which computes the cumulative integral of a function defined by discrete x and y values.
+- Added `kernel_density_on_grid`, that computes a kernel-broadened density on a grid.
 
 ### `grep`
 - New `dyn_file` function for parsing a QE `.dyn` file and extracting vibrational data such as q-point, lattice vectors, phonon frequencies, etc.
@@ -23,9 +24,9 @@
 - Added support for QuantumEspresso `xml` files.
 
 ### `spectrum`
-- Added `DOS` class.
-    - Supports computation of the density of states with both Gaussian and MP smearing (any order).
-    - Supports DOS integration and Fermi level calculation from the desired number of occupied states.
+- Added `Density` class.
+    - Supports computation of the density with both Gaussian and MP smearing (any order).
+    - Supports density integration and upper integral limit calculation from the desired total integral.
 
 ### `plot`
 - Added the option to highlight grid in the k-path for phonon bands.

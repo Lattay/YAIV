@@ -481,7 +481,7 @@ def DOS(
     smearing: float | ureg.Quantity = None,
     steps: int = None,
     order: int = 0,
-    precision: float = 3.0,
+    cutoff_sigmas: float = 3.0,
     switchXY: bool = False,
     fill: bool = True,
     alpha: float = pdft.alpha,
@@ -508,7 +508,7 @@ def DOS(
         Number of grid points for DOS sampling. Default is 4 * (window_size/smearing).
     order : int, optional
         Order of the Methfessel-Paxton expansion. Default is 0, which recovers a Gaussian smearing.
-    precision : float, optional
+    cutoff_sigmas : float, optional
         Number of smearing widths to use for truncation (e.g., 3 means ±3σ).
     switchXY : bool, optional
         Whether to plot the DOS along the x-axis (horizontal plot). Default is False.
@@ -547,7 +547,7 @@ def DOS(
             smearing=smearing,
             steps=steps,
             order=order,
-            precision=precision,
+            cutoff_sigmas=cutoff_sigmas,
         )
         ax = S.DOS.plot(
             ax,
@@ -578,7 +578,7 @@ def DOS(
                 smearing=smearing,
                 steps=steps,
                 order=order,
-                precision=precision,
+                cutoff_sigmas=cutoff_sigmas,
             )
             ax = S.DOS.plot(
                 ax,
@@ -599,6 +599,18 @@ def DOS(
             ax.axhline(y=0, color=pdft.fermi_c, linewidth=pdft.fermi_w)
         else:
             ax.axvline(x=0, color=pdft.fermi_c, linewidth=pdft.fermi_w)
+    # Labels
+    if switchXY:
+        if isinstance(S.DOS.density, ureg.Quantity):
+            ax.set_xlabel(f"DOS ({S.DOS.density.units})")
+        else:
+            ax.set_xlabel("DOS")
+    else:
+        if isinstance(S.DOS.density, ureg.Quantity):
+            ax.set_ylabel(f"DOS ({S.DOS.density.units})")
+        else:
+            ax.set_ylabel("DOS")
+
     plt.tight_layout()
     return ax
 

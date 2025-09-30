@@ -172,6 +172,141 @@ def test_analyze_distribution_zero_norm_raise():
         ut.analyze_distribution(X, Y)
 
 
+def test_kernel_density_normalization_gaussian():
+    """
+    For Gaussian kernel (order=0), the integral over the density should equal
+    sum_k w_k * sum_b values[k,b]. With values=1 and weights summing to 1,
+    this equals the number of bands.
+    """
+    nk, nb = 4, 3
+    # Simple energies spread around 0
+    x = np.array(
+        [
+            [-0.20, 0.00, 0.15],
+            [-0.10, 0.05, 0.25],
+            [0.00, 0.10, 0.30],
+            [0.05, 0.20, 0.40],
+        ]
+    )
+    assert x.shape == (nk, nb)
+    values = np.ones_like(x)
+    weights = np.ones(nk) / nk  # sum(weights) = 1
+
+    # Choose a window around the energies, and small sigma for reasonable resolution
+    center = 0.0
+    x_window = 1.0
+    sigma = 0.05
+    steps = 2000
+
+    out = ut.kernel_density_on_grid(
+        x=x,
+        values=values,
+        weights=weights,
+        center=center,
+        x_window=x_window,
+        sigma=sigma,
+        steps=steps,
+        order=0,  # Gaussian
+        cutoff_sigmas=5.0,
+    )
+    # Integral of density over grid should be nb (sum_b values) since sum_k w_k = 1
+    integral = np.trapezoid(out.density, out.grid)
+    assert_allclose(integral, nb, rtol=5e-3, atol=5e-3)
+
+
+def test_kernel_density_units():
+    """
+    With unitful inputs: grid should have x units; density should have units values/x.
+    """
+    nk, nb = 2, 2
+    x = np.array([[0.0, 0.1], [0.2, 0.3]]) * ureg.eV
+    values = np.ones_like(x)  # dimensionless "states"
+    weights = np.array([0.5, 0.5])
+
+    out = ut.kernel_density_on_grid(
+        x=x,
+        values=values,
+        weights=weights,
+        center=0.0 * ureg.eV,
+        x_window=0.5 * ureg.eV,
+        sigma=0.05 * ureg.eV,
+        steps=1000,
+        order=0,
+    )
+    # Grid units should be eV
+    assert hasattr(out.grid, "units")
+    assert out.grid.check(ureg.eV)
+    # Density units should be 1/eV
+    assert hasattr(out.density, "units")
+    assert out.density.check(1 / ureg.eV)
+
+
+def test_kernel_density_shape_errors():
+    """
+    Mismatched shapes should raise ValueError.
+    """
+    nk, nb = 3, 2
+    x = np.random.rand(nk, nb)
+    values_bad = np.random.rand(nk, nb + 1)  # wrong shape
+    weights_bad = np.ones(nk + 1) / (nk + 1)  # wrong length
+
+    with pytest.raises(ValueError):
+        ut.kernel_density_on_grid(x=x, values=values_bad)
+
+    with pytest.raises(ValueError):
+        ut.kernel_density_on_grid(x=x, values=np.ones_like(x), weights=weights_bad)
+
+
+def test_kernel_density_mp_order_1_normalization():
+    """
+    For MP kernel with order=1, the integral should still approximate sum_k w_k * sum_b values,
+    provided the window and cutoff resolve the kernel tails well.
+    """
+    nk, nb = 3, 2
+    x = np.array(
+        [
+            [-0.15, 0.05],
+            [0.00, 0.10],
+            [0.20, 0.30],
+        ]
+    )
+    values = np.ones_like(x)
+    weights = np.ones(nk) / nk
+
+    out = ut.kernel_density_on_grid(
+        x=x,
+        values=values,
+        weights=weights,
+        center=0.0,
+        x_window=1.0,
+        sigma=0.06,
+        steps=2000,
+        order=1,  # Methfessel–Paxton order 1
+        cutoff_sigmas=5.0,
+    )
+    integral = np.trapezoid(out.density, out.grid)
+    assert_allclose(integral, nb, rtol=1e-2, atol=1e-2)
+
+
+def test_kernel_density_window_and_steps_defaults():
+    """
+    If x_window and steps are None, the function should still produce a sensible grid and density.
+    """
+    nk, nb = 2, 2
+    x = np.array([[0.0, 0.1], [0.2, 0.3]])
+    out = ut.kernel_density_on_grid(
+        x=x, values=None, weights=None, sigma=None, steps=None, order=0
+    )
+    # Basic sanity checks
+    assert isinstance(out.grid, np.ndarray) or hasattr(out.grid, "magnitude")
+    assert isinstance(out.density, np.ndarray) or hasattr(out.density, "magnitude")
+    # density and grid lengths must match
+    if isinstance(out.grid, np.ndarray):
+        assert out.grid.shape == out.density.shape
+    else:
+        assert out.grid.magnitude.shape == out.density.magnitude.shape
+
+
 def test_expand_zone_border_shapes_and_units():
     q = np.array([[0.5, 0.0, 0.0], [0, 0, 0]]) * ureg.meter
     with pytest.raises(TypeError):
