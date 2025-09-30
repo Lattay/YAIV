@@ -11,30 +11,28 @@
     ·
     <a href="https://github.com/mgamigo/YAIV/issues">Request Feature</a>
     <br />
-	___
+    -->
+    <br />
+    ___
     <br />
     <a href="https://github.com/mgamigo/YAIV/tree/main/Tutorial"><strong>Explore the tutorials:</strong></a>
     <br />
-    <a href="https://github.com/mgamigo/YAIV/blob/main/Tutorial/Plot_module.ipynb">Plotting</a>
+    <a href="https://github.com/mgamigo/YAIV/blob/main/Tutorial/grep.ipynb">Grepping</a>
     ·
-    <a href="https://github.com/mgamigo/YAIV/blob/main/Tutorial/Convergence_module.ipynb">Convergence</a>  
+    <a href="https://github.com/mgamigo/YAIV/blob/main/Tutorial/spectrum.ipynb">Spectrum</a>  
     ·
-    <a href="https://github.com/mgamigo/YAIV/blob/main/Tutorial/Utils_module.ipynb">Utilities</a>
-    -->
+    <a href="https://github.com/mgamigo/YAIV/blob/main/Tutorial/plot.ipynb">Plotting</a>
   </p>
 </div>
 
 
-
 <!-- TABLE OF CONTENTS -->
+<!--
 <details>
   <summary>Table of Contents</summary>
   <ol>
     <li>
       <a href="#about-the-project">About The Project</a>
-      <ul>
-        <li><a href="#why">Why?</a></li>
-      </ul>
     </li>
     <li><a href="#installation">Installation</a></li>
     <li>
@@ -49,6 +47,7 @@
     <li><a href="#roadmap">Roadmap</a></li>
   </ol>
 </details>
+-->
 
 <!-- ABOUT THE PROJECT -->
 ## About The Project
