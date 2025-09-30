@@ -1,0 +1,12 @@
+
+&INPUTPH
+  prefix='Si',
+  recover=.true.
+  outdir='/u/51/gutierm2/unix/Software/YAIV/Tutorial/data/qe/tmp/',
+  fildyn='Si.dyn',
+  ldisp=.true.,
+  tr2_ph=1e-5
+  alpha_mix=0.5,
+  verbosity='high'
+  nq1=2, nq2=2, nq3=2,
+ /

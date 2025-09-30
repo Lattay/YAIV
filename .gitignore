@@ -3,10 +3,10 @@
 build/
 dist/
 tmp/
-RESULTS/
-results*/
 *.swp
 *egg-info/
 .ipynb_check*
 __pycache__/
 install.log
+tests/data
+*/dev/Tutorial
