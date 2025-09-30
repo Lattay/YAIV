@@ -35,8 +35,11 @@ grid_generator(grid, periodic=False)
 methpax_delta(x, mean=0.0, smearing=0.1, order=1, A=1.0)
     Evaluates the Methfessel–Paxton delta approximation up to a given order.
 
-analyze_distribution(X, Y)
+analyze_distribution(x, y)
     Computes the mean, std, skewness, kurtosis and normalization of a distribution defined over `X`.
+
+def kernel_density_on_grid(x,values)
+    Compute a kernel-broadened density on a grid from samples located at `x`.
 
 amplitude2order_parameter(amplitudes, masses, displacements)
     Convert displacement amplitudes into proper order parameters with [length × sqrt(mass)] units.
@@ -80,6 +83,7 @@ __all__ = [
     "grid_generator",
     "methpax_delta",
     "analyze_distribution",
+    "kernel_density_on_grid",
     "amplitude2order_parameter",
     "cumulative_integral",
 ]
@@ -502,6 +506,167 @@ def analyze_distribution(X, Y):
         kurtosis=kurtosis,
         norm=norm,
     )
+
+
+def kernel_density_on_grid(
+    x: np.ndarray | ureg.Quantity,
+    values: np.ndarray | ureg.Quantity = None,
+    weights: np.ndarray | None = None,
+    center: float | ureg.Quantity | None = None,
+    x_window: float | list[float] | ureg.Quantity | None = None,
+    sigma: float | ureg.Quantity | None = None,
+    steps: int | None = None,
+    order: int = 0,
+    cutoff_sigmas: float = 3.0,
+) -> SimpleNamespace:
+    """
+    Compute a kernel-broadened density on a grid from samples located at `x`.
+
+    This implements a DOS-like convolution:
+        density(X) = sum_i values_i * K_sigma(X - x_i) * w_k(i)
+    where K is either a Gaussian (order=0) or a Methfessel–Paxton kernel (order>=0).
+
+    Parameters
+    ----------
+    x : np.ndarray | ureg.Quantity
+        Sample locations (e.g., energies). If unitful, all other related inputs
+        (center, x_window, sigma) must be compatible with `x` units. Shape (nkpts, nbnds)
+    values : np.ndarray | ureg.Quantity, optional
+        Amplitudes per sample (e.g., projections). Defaults to ones, producing a DOS.
+        Shape (nkpts, nbnds)
+    weights : np.ndarray, optional
+        k-point weights that sum to 1. If None, uniform weights are used: 1/nkpts.
+    center : float | ureg.Quantity, optional
+        Center of the window (e.g., Fermi level). Defaults to 0.
+    x_window : float | list[float] | ureg.Quantity, optional
+        Window for the output grid. If a float, interpreted as symmetric [center - w, center + w].
+        If a list/array, interpreted as [xmin, xmax] around `center`.
+        If None, inferred from min/max(x) expanded by `sigma` and `cutoff_sigmas`.
+    sigma : float | ureg.Quantity, optional
+        Kernel width. Defaults to (window_size / 200). (smearing)
+    steps : int, optional
+        Number of grid points. Defaults to int(4 * (window_size / sigma)), with a minimum of 128.
+    order : int, optional
+        Order of the Methfessel-Paxton kernel. Default is 0, which recovers a Gaussian kernel.
+    cutoff_sigmas : float, optional
+        Truncate kernel support to [-cutoff_sigmas * sigma, +cutoff_sigmas * sigma]
+        when summing contributions. Default 3.0.
+
+    Returns
+    -------
+    SimpleNamespace
+        grid : np.ndarray | ureg.Quantity
+            The output grid in the units of `x`.
+        density : np.ndarray | ureg.Quantity
+            The computed density at each grid point. Units are (values units) / (x units).
+
+    Raises
+    ------
+    ValueError
+        If shapes are inconsistent (e.g., weights length not equal to nk, or values shape
+        does not match `x`).
+    TypeError
+        If unit consistency is violated among unitful inputs.
+    """
+    # Default values: DOS
+    if values is None:
+        values = np.ones_like(x)
+
+    # Shapes
+    if x.ndim != 2:
+        raise ValueError("`x` must be a 2D array of shape (nk, nb).")
+    nk, nb = x.shape
+    if values.shape != x.shape:
+        raise ValueError("`values` must have the same shape as `x` (nk, nb).")
+    if weights is None:
+        w = np.ones(nk, dtype=float) / nk
+    else:
+        w = np.asarray(weights, dtype=float)
+    if w.shape[0] != nk:
+        raise ValueError(
+            "`weights` must have shape (nk,) matching the number of k-points."
+        )
+
+    # Handle units
+    quantities = [x, center, x_window, sigma]
+    names = ["x", "center", "x_window", "sigma"]
+    ut._check_unit_consistency(quantities, names)
+
+    # If unitful, convert all to common unit
+    if isinstance(x, ureg.Quantity):
+        x_units = x.units
+        x, center, x_window, sigma = [
+            x.to(x_units).magnitude if isinstance(x, ureg.Quantity) else x
+            for x in quantities
+        ]
+    else:
+        x_units = 1
+    if isinstance(values, ureg.Quantity):
+        val_units = values.units
+        values = np.asarray(values.magnitude)
+    else:
+        val_units = 1
+
+    # Determine computing center, window, sigma and steps
+    x_min = x.min()
+    x_max = x.max()
+    center = 0 if center is None else center
+    if x_window is None:
+        x_min = x.min()
+        x_max = x.max()
+    elif isinstance(x_window, (float, int)):
+        x_min, x_max = np.array([-x_window, x_window]) + center
+    else:
+        x_min, x_max = np.asarray(x_window) + center
+    window_size = x_max - x_min
+    if sigma is None:
+        sigma = window_size / 200.0
+    if steps is None:
+        # Ensure at least some reasonable resolution
+        steps = max(int(4.0 * (window_size / sigma)), 128)
+    # If window was None, expand by cutoff beyond data range
+    if x_window is None:
+        x_min = x_min - sigma * (cutoff_sigmas + 1)
+        x_max = x_max + sigma * (cutoff_sigmas + 1)
+
+    grid = np.linspace(x_min, x_max, steps)
+
+    # Flatten samples and align weights across bands
+    x_flat = x.flatten()
+    v_flat = values.flatten()
+    w_flat = np.repeat(w, nb)
+
+    # Sort by x for efficient windowing with searchsorted
+    sort_idx = np.argsort(x_flat)
+    x_flat = x_flat[sort_idx]
+    v_flat = v_flat[sort_idx]
+    w_flat = w_flat[sort_idx]
+
+    density = np.zeros_like(grid, dtype=float)
+
+    # Loop over grid points and accumulate contributions within cutoff window
+    for i, X in enumerate(grid):
+        left = X - cutoff_sigmas * sigma
+        right = X + cutoff_sigmas * sigma
+        start = np.searchsorted(x_flat, left, side="left")
+        stop = np.searchsorted(x_flat, right, side="right")
+
+        x_loc = x_flat[start:stop]
+        v_loc = v_flat[start:stop]
+        w_loc = w_flat[start:stop]
+
+        if order == 0:
+            K = ut._normal_dist(x_loc, mean=X, sd=sigma)
+        else:
+            K = ut.methpax_delta(x_loc, mean=X, smearing=sigma, order=order)
+
+        density[i] = np.sum(K * v_loc * w_loc)
+
+    # Units of the density: (values units) / (x units)
+    grid_out = grid * x_units
+    density_out = density * val_units / x_units
+
+    return SimpleNamespace(grid=grid_out, density=density_out)
 
 
 def _expand_zone_border(
