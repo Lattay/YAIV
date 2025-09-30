@@ -38,7 +38,7 @@ stress_tensor(file)
 kpath(file, labels=True)
     Extracts the k-point path in reciprocal space, optionally with high-symmetry labels.
 
-pointsEnergies(file)
+kpointsEnergies(file)
     Greps the k-points, energies, kpoint-weights  and orbital projections (if available) for different file kinds.
 
 kpointsFrequencies(file)

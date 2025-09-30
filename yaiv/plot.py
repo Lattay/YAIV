@@ -122,7 +122,7 @@ def get_HSP_ticks(
         path_array = kpath
         label_list = None
     if grid is not None:
-        grid = ut.grid_generator(grid, periodic=True)
+        grid = ut.grid_generator(grid, periodic=True) * ureg('_2pi/crystal')
         grid = ut._expand_zone_border(grid)
 
     # Handle units
