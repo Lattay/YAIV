@@ -76,7 +76,7 @@ if [[ "$proceed" == "yes" ]]; then
     # Switch to pip branch
     git switch pip
     # Merge changes from dev into pip, excluding yaiv/dev
-    git checkout dev -- . ':!yaiv/dev'
+    git checkout dev -- . ':!yaiv/dev' ':!tests/dev'
     git status
 
     # Verify the differences (should only be yaiv/dev)
