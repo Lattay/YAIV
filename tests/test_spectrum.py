@@ -24,10 +24,10 @@ FILES = [
     ("qe/results/Si.proj.pwo", "qe_proj_out"),
     ("qe/results/Si.xml", "qe_xml"),
     ("vasp/RESULTS/PROCAR", "procar"),
-    ("vasp/RESULTS/OUTCAR", "outcar"),
-    ("vasp/RESULTS/EIGENVAL", "eigenval"),
-    ("vasp/RESULTS/KPATH", "kpath"),
-    ("vasp/RESULTS/POSCAR", "poscar"),
+    ("vasp/RESULTS/OUTCAR_BS", "outcar"),
+    ("vasp/RESULTS/EIGENVAL_BS", "eigenval"),
+    ("vasp/KPATH", "kpath"),
+    ("vasp/POSCAR", "poscar"),
 ]
 IDS = [f for f, _ in FILES]
 
