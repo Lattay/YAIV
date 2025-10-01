@@ -26,9 +26,13 @@ import matplotlib.pyplot as plt
 ureg = pint.UnitRegistry()
 ureg.setup_matplotlib(True)
 ureg.load_definitions(files("yaiv") / "defaults/extra_units.txt")
+pint.set_application_registry(ureg)
 
 # === Misc defaults ===
-defaults = SimpleNamespace(symprec=1e-5)  # Default symmetry precision
+defaults = SimpleNamespace(
+    symprec=1e-5,  # Default symmetry precision
+    CDW_amplitude=0.5 * ureg.ang,  # Default CDW amplitude
+)
 
 # === Plotting defaults ===
 
@@ -40,6 +44,8 @@ plot_defaults = SimpleNamespace(
     vline_c="gray",  # Vertical high-symmetry lines color
     vline_s="--",  # Vertical high-symmetry lines style
     fermi_c="black",  # Fermi line color
+    grid_c="tab:pink",  # Vertical grid lines color
+    grid_w=1.2,  # Vertical grid lines with
     fermi_w=0.4,  # Fermi line width
     valence_c="tab:blue",  # Valence bands color
     conduction_c="tab:red",  # Conduction bands color
@@ -62,7 +68,7 @@ plot_defaults = SimpleNamespace(
 
 # Optional: override matplotlib rcParams directly if desired
 matplotlib.rcParams["axes.prop_cycle"] = plt.cycler(color=plot_defaults.color_cycle)
-matplotlib.rcParams['image.cmap'] = 'plasma'
+matplotlib.rcParams["image.cmap"] = "plasma"
 # matplotlib.rcParams["lines.linewidth"] = plot_defaults.linewidth
 # matplotlib.rcParams["font.size"] = plot_defaults.font_size
 # matplotlib.rcParams["axes.labelsize"] = plot_defaults.label_size
@@ -70,3 +76,27 @@ matplotlib.rcParams['image.cmap'] = 'plasma'
 # matplotlib.rcParams["ytick.labelsize"] = plot_defaults.tick_size
 # matplotlib.rcParams["axes.linewidth"] = plot_defaults.axis_linewidth
 # matplotlib.rcParams["figure.dpi"] = plot_defaults.dpi
+
+# === Quantum Espresso input_data defaults ===
+qe_defaults = SimpleNamespace(
+    input_data={
+        "calculation": "scf",
+        "restart_mode": "from_scratch",
+        "pseudo_dir": "$PSEUDO_DIR",
+        "outdir": "./tmp",
+        "verbosity": "high",
+        "tstress": True,
+        "tprnfor": True,
+        "noncolin": True,
+        "lspinorb": True,
+        "ibrav": 0,
+        "ecutwfc": 60,
+        "ecutrho": 600,
+        "occupations": "smearing",
+        "smearing": "mp",
+        "degauss": 0.02,
+        "conv_thr": 1e-10,
+        "mixing_beta": 0.7,
+    },
+    kpts=(10, 10, 10),
+)

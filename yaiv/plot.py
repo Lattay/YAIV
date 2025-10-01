@@ -16,6 +16,37 @@ The visualizations are based on `matplotlib`, and include options for:
 - Detecting and patching discontinuities in the k-path
 - Annotating high-symmetry points from KPOINTS or bands.in
 
+Functions
+---------
+get_HSP_ticks(kpath, k_lattice=None)
+    Computes tick positions and LaTeX labels for high-symmetry points along a k-path.
+
+kpath(ax, kpath, k_lattice=None)
+    Plots vertical lines and labels at high-symmetry points in a matplotlib Axes.
+
+bands(electronBands, ax=None, ...)
+    Plots the electronic band structure for one or multiple systems.
+
+phonons(phononBands, ax=None, ...)
+    Plots the phonon band structure for one or multiple systems.
+
+DOS(spectra, ax=None, ...)
+    Plots the density of states (DOS) for a single or multiple eigenvalue spectra.
+
+bandsDOS(electronBands, fig=None, axes=None, ...)
+    Plots a band structure and its corresponding DOS side-by-side.
+
+phononDOS(phononBands, fig=None, axes=None, ...)
+    Plots a phonon band structure and its corresponding DOS side-by-side.
+
+Private Utilities
+-----------------
+_compare_spectra(spectra, ax, ...)
+    Internal utility to overlay multiple spectra on the same Axes with legends and formatting.
+
+_spectra_DOS(spectra, plot_func, ...)
+    Internal helper to produce spectrum + DOS panels for electronic or vibrational bands.
+
 Examples
 --------
 >>> from yaiv.spectrum import ElectronBands
@@ -55,10 +86,13 @@ __all__ = [
 
 
 def get_HSP_ticks(
-    kpath: SimpleNamespace | np.ndarray, k_lattice: np.ndarray = None
+    kpath: SimpleNamespace | np.ndarray,
+    k_lattice: np.ndarray = None,
+    grid: list[int] = None,
 ) -> SimpleNamespace:
     """
     Compute tick positions and labels for high-symmetry points (HSPs) along a k-path.
+    And optionally also the ticks for the grid points that lie in the path.
 
     Parameters
     ----------
@@ -67,15 +101,19 @@ def get_HSP_ticks(
     k_lattice : np.ndarray, optional
         3x3 matrix of reciprocal lattice vectors in rows (optional).
         If provided, the high-symmetry points are converted from crystal to Cartesian coordinates.
+    grid : list[int], optional
+        Γ centred grid to show in the path.
 
     Returns
     -------
     ticks : SimpleNamespace
         Object with the following attributes:
-        - x_coord : np.ndarray
+        - ticks : np.ndarray
             Normalized cumulative distance for each high-symmetry point.
         - labels : list of str or None
             Corresponding labels for the ticks, or None if not available.
+        - grid : np.ndarray
+            Normalized cumulative distance for each grid point in the k-path.
     """
     if isinstance(kpath, SimpleNamespace):
         path_array = kpath.path
@@ -83,27 +121,61 @@ def get_HSP_ticks(
     else:
         path_array = kpath
         label_list = None
+    if grid is not None:
+        grid = ut.grid_generator(grid, periodic=True) * ureg('_2pi/crystal')
+        grid = ut._expand_zone_border(grid)
 
+    # Handle units
+    quantities, names = [path_array, k_lattice], ["kpath", "k_lattice"]
+    ut._check_unit_consistency(quantities, names)
     if isinstance(path_array, ureg.Quantity):
+        units = path_array.units
         path_array = path_array.magnitude
+    else:
+        units = 1
 
     segment_counts = [int(n) for n in path_array[:, -1]]
-    hsp_coords = path_array[:, :3]
+    hsp_coords = path_array[:, :3] * units
 
     # Convert to Cartesian coordinates if lattice is provided
     if k_lattice is not None:
         hsp_coords = ut.cryst2cartesian(hsp_coords, k_lattice).magnitude
+        if grid is not None:
+            grid = ut.cryst2cartesian(grid, k_lattice).magnitude
+    else:
+        hsp_coords = hsp_coords.magnitude
 
-    delta_k = np.diff(hsp_coords, axis=0)
-    segment_lengths = np.linalg.norm(delta_k, axis=1)
-
-    x_coord = [0.0]
-    for i, length in enumerate(segment_lengths):
-        if segment_counts[i] != 1:
+    # Ticks positions
+    x_coord, grid_coord = [0.0], []
+    for i, s in enumerate(segment_counts):
+        if s != 1:
+            length = np.linalg.norm(hsp_coords[i + 1] - hsp_coords[i])
             x_coord.append(x_coord[-1] + length)
-
+            if grid is not None:
+                for g in grid:
+                    seg_distance = ut._point_to_segment_distance(
+                        g, hsp_coords[i], hsp_coords[i + 1]
+                    )
+                    if np.around(seg_distance, decimals=3) == 0:
+                        if (
+                            np.around(np.linalg.norm(g - hsp_coords[i]), decimals=3)
+                            == 0
+                        ):
+                            grid_coord.append(x_coord[-2])
+                        elif (
+                            np.around(
+                                np.linalg.norm(g - [hsp_coords[i + 1]]), decimals=3
+                            )
+                            == 0
+                        ):
+                            grid_coord.append(x_coord[-1])
+                        else:
+                            lenght = np.linalg.norm(g - hsp_coords[i])
+                            grid_coord.append(x_coord[-2] + lenght)
     x_coord = np.array(x_coord)
-    x_coord /= x_coord[-1]  # Normalize to [0, 1]
+    # Normalize to [0, 1]
+    grid_coord /= x_coord[-1]
+    x_coord /= x_coord[-1]
 
     # Merge labels at discontinuities (where N=1)
     if label_list is not None:
@@ -117,7 +189,7 @@ def get_HSP_ticks(
                 merged_labels.append(latex_label)
     else:
         merged_labels = None
-    ticks = SimpleNamespace(ticks=x_coord, labels=merged_labels)
+    ticks = SimpleNamespace(ticks=x_coord, labels=merged_labels, grid=grid_coord)
     return ticks
 
 
@@ -125,9 +197,11 @@ def kpath(
     ax: Axes,
     kpath: SimpleNamespace | np.ndarray,
     k_lattice: np.ndarray = None,
+    grid: list[int] = None,
 ):
     """
-    Plots the high-symmetry points (HSPs) along a k-path in a given ax.
+    Plots the high-symmetry points (HSPs) along a k-path in a given ax. And optionally,
+    also the ticks for the grid points that lie in the path.
 
     Parameters
     ----------
@@ -138,13 +212,22 @@ def kpath(
     k_lattice : np.ndarray, optional
         3x3 matrix of reciprocal lattice vectors in rows (optional).
         If provided, the high-symmetry points are converted from crystal to Cartesian coordinates.
+    grid : list[int], optional
+        Γ centred grid to show in the path.
     """
-    ticks = get_HSP_ticks(kpath, k_lattice)
+    ticks = get_HSP_ticks(kpath, k_lattice, grid)
     for tick in ticks.ticks:
         ax.axvline(
             tick,
             color=pdft.vline_c,
             linewidth=pdft.vline_w,
+            linestyle=pdft.vline_s,
+        )
+    for tick in ticks.grid:
+        ax.axvline(
+            tick,
+            color=pdft.grid_c,
+            linewidth=pdft.grid_w,
             linestyle=pdft.vline_s,
         )
     if ticks.labels is not None:
@@ -160,6 +243,7 @@ def _compare_spectra(
     patched: bool = True,
     colors: list[str] = None,
     labels: list[str] = None,
+    grid: list[list[int]] = None,
     **kwargs,
 ) -> Axes:
     """
@@ -178,6 +262,8 @@ def _compare_spectra(
         Colors to use when plotting multiple bands.
     labels : list[str], optional
         Labels to assign to each band in multi-plot case.
+    grid : list[list[int]], optional
+        Γ centred grids to show in the path.
     **kwargs : dict
         Additional keyword arguments passed to `plot()`.
 
@@ -188,6 +274,10 @@ def _compare_spectra(
     """
 
     cycle_iter = iter(pdft.color_cycle)
+    if len(np.shape(grid)) == 2 and np.shape(grid)[0] == len(spectra):
+        GRID = True
+    else:
+        GRID = False
     for i, S in enumerate(spectra):
         color = (
             colors[i] if colors is not None and i < len(colors) else next(cycle_iter)
@@ -204,6 +294,15 @@ def _compare_spectra(
             label=label,
             **kwargs,
         )
+        if GRID:
+            ticks = get_HSP_ticks(spectra[-1].kpath, spectra[-1].k_lattice, grid[i])
+            for tick in ticks.grid:
+                ax.axvline(
+                    tick,
+                    color=color,
+                    linewidth=pdft.grid_w,
+                    linestyle=pdft.vline_s,
+                )
     ax.legend()
     return ax
 
@@ -250,12 +349,14 @@ def bands(
     if type(electronBands) is not list:
         band = electronBands
         indices = list(range(band.eigenvalues.shape[1]))
+        # For non-spin orbit weights might add up to 2.
+        valence_bands = round(band.electron_num / np.sum(band.weights))
         # plot valence bands
         ax = band.plot(
             ax=ax,
             shift=band.fermi,
             patched=patched,
-            bands=indices[: band.electron_num],
+            bands=indices[:valence_bands],
             color=user_color or pdft.valence_c,
             label=user_label,
             **kwargs,
@@ -265,7 +366,7 @@ def bands(
             ax=ax,
             shift=band.fermi,
             patched=patched,
-            bands=indices[band.electron_num :],
+            bands=indices[valence_bands:],
             color=user_color or pdft.conduction_c,
             **kwargs,
         )
@@ -300,6 +401,7 @@ def phonons(
     window: list[float] | float | ureg.Quantity = None,
     colors: list[str] = None,
     labels: list[str] = None,
+    grid: list[int] | list[list[int]] = None,
     **kwargs,
 ) -> Axes:
     """
@@ -319,6 +421,8 @@ def phonons(
         Colors to use when plotting multiple bands.
     labels : list of str, optional
         Labels to assign to each band in multi-plot case.
+    grid : list[int] | list[list[int]], optional
+        Γ centred grid (or grids) to show in the path.
     **kwargs : dict
         Additional keyword arguments passed to `plot()`.
 
@@ -342,11 +446,16 @@ def phonons(
             **kwargs,
         )
     else:
-        ax = _compare_spectra(phononBands, ax, patched, colors, labels, **kwargs)
+        ax = _compare_spectra(
+            phononBands, ax, patched, colors, labels, grid=grid, **kwargs
+        )
         band = phononBands[0]
 
     if band.kpath is not None:
-        kpath(ax, band.kpath, band.k_lattice)
+        if grid is None or len(np.shape(grid)) == 1:
+            kpath(ax, band.kpath, band.k_lattice, grid)
+        else:
+            kpath(ax, band.kpath, band.k_lattice)
 
     # Handle units and setup window
     if window is not None:
@@ -371,7 +480,8 @@ def DOS(
     window: float | list[float] | ureg.Quantity = None,
     smearing: float | ureg.Quantity = None,
     steps: int = None,
-    precision: float = 3.0,
+    order: int = 0,
+    cutoff_sigmas: float = 3.0,
     switchXY: bool = False,
     fill: bool = True,
     alpha: float = pdft.alpha,
@@ -396,7 +506,9 @@ def DOS(
         Gaussian smearing width in the same units as eigenvalues. Default is (window_size/200).
     steps : int, optional
         Number of grid points for DOS sampling. Default is 4 * (window_size/smearing).
-    precision : float, optional
+    order : int, optional
+        Order of the Methfessel-Paxton expansion. Default is 0, which recovers a Gaussian smearing.
+    cutoff_sigmas : float, optional
         Number of smearing widths to use for truncation (e.g., 3 means ±3σ).
     switchXY : bool, optional
         Whether to plot the DOS along the x-axis (horizontal plot). Default is False.
@@ -434,9 +546,10 @@ def DOS(
             window=window,
             smearing=smearing,
             steps=steps,
-            precision=precision,
+            order=order,
+            cutoff_sigmas=cutoff_sigmas,
         )
-        ax = S.plot_DOS(
+        ax = S.DOS.plot(
             ax,
             shift=getattr(S, "fermi", None),
             switchXY=switchXY,
@@ -464,9 +577,10 @@ def DOS(
                 window=window,
                 smearing=smearing,
                 steps=steps,
-                precision=precision,
+                order=order,
+                cutoff_sigmas=cutoff_sigmas,
             )
-            ax = S.plot_DOS(
+            ax = S.DOS.plot(
                 ax,
                 shift=getattr(S, "fermi", None),
                 switchXY=switchXY,
@@ -485,6 +599,18 @@ def DOS(
             ax.axhline(y=0, color=pdft.fermi_c, linewidth=pdft.fermi_w)
         else:
             ax.axvline(x=0, color=pdft.fermi_c, linewidth=pdft.fermi_w)
+    # Labels
+    if switchXY:
+        if isinstance(S.DOS.density, ureg.Quantity):
+            ax.set_xlabel(f"DOS ({S.DOS.density.units})")
+        else:
+            ax.set_xlabel("DOS")
+    else:
+        if isinstance(S.DOS.density, ureg.Quantity):
+            ax.set_ylabel(f"DOS ({S.DOS.density.units})")
+        else:
+            ax.set_ylabel("DOS")
+
     plt.tight_layout()
     return ax
 
@@ -498,6 +624,7 @@ def _spectra_DOS(
     window: float | list[float] | ureg.Quantity = None,
     colors: list[str] = None,
     labels: list[str] = None,
+    grid: list[int] | list[list[int]] = None,
     **kwargs,
 ) -> tuple[Axes, Axes]:
     """
@@ -521,6 +648,8 @@ def _spectra_DOS(
         Colors to use when plotting multiple bands.
     labels : list of str, optional
         Labels to assign to each band in multi-plot case.
+    grid : list[int] | list[list[int]], optional
+        Γ centred grid (or grids) to show in the path.
     **kwargs
         Additional keyword arguments passed to `plot_func()` and `DOS()`.
 
@@ -548,17 +677,32 @@ def _spectra_DOS(
     user_color = kwargs.pop("color", None)
     user_label = kwargs.pop("label", None)
 
-    plot_func(
-        spectra,
-        ax=ax,
-        patched=patched,
-        window=window,
-        colors=colors,
-        labels=labels,
-        color=user_color,
-        label=user_label,
-        **kwargs,
-    )
+    if grid is None:
+        plot_func(
+            spectra,
+            ax=ax,
+            patched=patched,
+            window=window,
+            colors=colors,
+            labels=labels,
+            color=user_color,
+            label=user_label,
+            **kwargs,
+        )
+    else:
+        plot_func(
+            spectra,
+            ax=ax,
+            patched=patched,
+            window=window,
+            colors=colors,
+            labels=labels,
+            color=user_color,
+            label=user_label,
+            grid=grid,
+            **kwargs,
+        )
+
     DOS(
         spectra,
         ax=ax_DOS,
@@ -645,6 +789,7 @@ def phononsDOS(
     window: list[float] | float | ureg.Quantity = None,
     colors: list[str] = None,
     labels: list[str] = None,
+    grid: list[int] | list[list[int]] = None,
     **kwargs,
 ) -> tuple[Axes, Axes]:
     """
@@ -666,6 +811,8 @@ def phononsDOS(
         Colors to use when plotting multiple bands.
     labels : list of str, optional
         Labels to assign to each band in multi-plot case.
+    grid : list[int] | list[list[int]], optional
+        Γ centred grid (or grids) to show in the path.
     **kwargs
         Additional keyword arguments passed to `plot()`.
 
@@ -686,6 +833,7 @@ def phononsDOS(
         window=window,
         colors=colors,
         labels=labels,
+        grid=grid,
         **kwargs,
     )
     ax.autoscale(), ax.set_xlim([0, 1])

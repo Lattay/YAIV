@@ -9,6 +9,40 @@ k-points. It also supports reciprocal lattice handling and coordinate transforma
 The classes in this module can be used independently or as output containers from
 grepping functions.
 
+Classes
+-------
+Spectrum
+    General container for k-resolved eigenvalue spectra (e.g., bands, phonons).
+    Supports plotting, DOS calculation, and band visualizations.
+    Provides:
+    - get_DOS(...): Computes the density of states via Gaussian or Methfessel–Paxton smearing.
+    - plot(...): Plots the band structure along a cumulative k-path.
+    - plot_fat(...): Fat-band style scatter plot for visualizing weights/projections over bands.
+    - plot_color(...): Color-gradient line plot for weights/projections over bands.
+
+ElectronBands
+    Specialized `Spectrum` subclass for electronic band structures extracted from files.
+    Adds Fermi level, number of electrons, and automatic parsing.
+
+PhononBands
+    Specialized `Spectrum` subclass for phonon spectra extracted from files.
+
+Density
+    General container for a scalar density defined on a 1D grid.
+    Provides:
+    - integrate(): Computes the integral of the density or finds the intagration limit corresponding to certain integral value.
+    - plot(): Plots the density curve with optional fill and orientation options.
+
+Private Utilities
+-----------------
+_Has_lattice
+    Mixin that adds lattice handling capabilities.
+
+_Has_kpath
+    Mixin that adds support for k-path functionalities.
+    Provides:
+    - get_1Dkpath(self, patched=True): Provides a one dimensional Kpath
+
 Examples
 --------
 >>> from yaiv.spectrum import ElectronBands
@@ -32,6 +66,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.collections import PathCollection, LineCollection
+from scipy import interpolate, integrate
 
 from yaiv.defaults.config import ureg
 from yaiv.defaults.config import plot_defaults as pdft
@@ -39,18 +74,13 @@ from yaiv import utils as ut
 from yaiv import grep as grep
 
 
-__all__ = ["Spectrum" "ElectronBands", "PhononBands"]
+__all__ = ["Spectrum" "ElectronBands", "PhononBands", "Density"]
 
 
-class _has_lattice:
+class _Has_lattice:
     """
     Mixin that provides lattice-related functionality:
-    loading a lattice, computing its reciprocal basis, and transforming k-points.
-
-    Parameters
-    ----------
-    lattice : np.ndarray, optional
-        3x3 matrix of direct lattice vectors in [length] units.
+    loading a lattice, computing its reciprocal basis, and keeping them syncd.
 
     Attributes
     ----------
@@ -58,9 +88,26 @@ class _has_lattice:
         3x3 matrix of direct lattice vectors in [length] units.
     k_lattice : np.ndarray
         3x3 matrix of reciprocal lattice vectors in 2π[length]⁻¹ units.
+    alat : ureg.Quantity
+        `alat` factor for conversions, defined as the norm of the first
+        vector of the lattice.
     """
 
-    def __init__(self, lattice: np.ndarray = None, k_lattice: np.ndarray = None):
+    def __init__(
+        self,
+        lattice: np.ndarray | ureg.Quantity = None,
+        k_lattice: np.ndarray | ureg.Quantity = None,
+    ):
+        """
+        Initialize the _Has_lattice object from either the real or reciprocal space lattice.
+
+        Parameters
+        ----------
+        lattice : np.ndarray | ureg.Quantity
+            3x3 matrix of direct lattice vectors in [length] units.
+        k_lattice : np.ndarray | ureg.Quantity
+            3x3 matrix of reciprocal lattice vectors in [length]⁻¹ units.
+        """
         self._lattice = self._k_lattice = None
         if lattice is not None:
             self._lattice = lattice
@@ -73,14 +120,18 @@ class _has_lattice:
     def lattice(self):
         return self._lattice
 
+    @property
+    def k_lattice(self):
+        return self._k_lattice
+
+    @property
+    def alat(self):
+        return np.linalg.norm(self.lattice[0]) / ureg.alat
+
     @lattice.setter
     def lattice(self, value):
         self._lattice = value
         self._k_lattice = ut.reciprocal_basis(value)
-
-    @property
-    def k_lattice(self):
-        return self._k_lattice
 
     @k_lattice.setter
     def k_lattice(self, value):
@@ -88,18 +139,33 @@ class _has_lattice:
         self._lattice = ut.reciprocal_basis(value)
 
 
-class _has_kpath:
+class _Has_kpath:
     """
-    Mixin that provides lattice-related functionality:
+    Mixin that provides kpath-related functionality:
 
     Attributes
     ----------
     kpath : SimpleNamespace | np.ndarray
         A namespace with attributes `path`(ndarray) and `labels`(list)
         or just a ndarray.
+
+    Methods
+    -------
+    get_1Dkpath()
+        Computes the 1D cumulative k-path from the k-point coordinates.
     """
 
     def __init__(self, kpath: SimpleNamespace | np.ndarray = None):
+        """
+        Initialize the _Has_kpath object from a SimpleNamespace as given by
+        `yaiv.grep.kpath`.
+
+        Parameters
+        ----------
+        kpath : SimpleNamespace | np.ndarray
+            A namespace with attributes `path`(ndarray) and `labels`(list)
+            or just a ndarray.
+        """
         self.kpath = kpath
 
     def get_1Dkpath(self, patched=True) -> np.ndarray:
@@ -114,7 +180,7 @@ class _has_kpath:
             plots (e.g., flat bands across high-symmetry points).
 
         Returns
-        ----------
+        -------
         kpath : np.ndarray
             The 1D cumulative k-path from the k-point coordinates.
         """
@@ -126,6 +192,10 @@ class _has_kpath:
             kpoints = self.kpoints
             if "crystal" in kpoints.units._units and self.k_lattice is not None:
                 kpoints = ut.cryst2cartesian(self.kpoints, self.k_lattice)
+                kpoints = kpoints.to("_2pi/ang")
+            if "alat" in kpoints.units._units and self.k_lattice is not None:
+                kpoints = kpoints / self.alat
+                kpoints = kpoints.to("_2pi/ang")
             units = kpoints.units
             kpts_val = kpoints.magnitude
         else:
@@ -143,51 +213,74 @@ class _has_kpath:
         return kpath * units
 
 
-class Spectrum(_has_lattice, _has_kpath):
+class Spectrum(_Has_lattice, _Has_kpath):
     """
     General class for storing the eigenvalues of a periodic operator over k-points.
 
     This can represent band structures, phonon spectra, or eigenvalues of other operators.
-
+    It is a subclass of `_Has_lattice` and `_Has_kpath` mixing classes.
 
     Attributes
     ----------
-    eigenvalues : np.ndarray, optional
+    eigenvalues : np.ndarray | ureg.Quantity, optional
         Array of shape (nkpts, neigs), e.g., energy or frequency values.
-    kpoints : np.ndarray, optional
+    kpoints : np.ndarray | ureg.Quantity, optional
         Array of shape (nkpts, 3) with k-points.
     weights : np.ndarray, optional
         Optional weights for each k-point.
-    lattice : np.ndarray, optional
-        3x3 matrix of direct lattice vectors in [length] units.
-    k_lattice : np.ndarray, optional
-        3x3 matrix of reciprocal lattice vectors in 2π[length]⁻¹ units.
-        Will be ignored when defining the spectrum if lattice is given.
-    kpath : SimpleNamespace | np.ndarray, optional
-        A namespace with attributes `path`(ndarray) and `labels`(list)
-        or just a ndarray.
-    DOS : SimpleNamespace, optional
-        - vgrid : np.ndarray | ureg.Quantity
+    DOS : DOS, optional
+        - vgrid : np.ndarray | pint.Quantity
             Array of shape (steps,) with the eigenvalue units.
         - DOS : np.ndarray
             Array of shape (steps,) with the corresponding DOS values.
+
+    Methods
+    -------
+    get_DOS(...)
+        Compute a density of states (DOS) for the set of eigenvalues.
+    def plot(...)
+        Plot the spectrum over a cumulative k-path.
+    def plot_fat(...)
+        Fat-band style plotting for weights over a cumulative k-path.
+    def plot_color(...)
+        Color gradient line-style for weights over a cumulative k-path.
     """
 
     def __init__(
         self,
-        eigenvalues: np.ndarray = None,
-        kpoints: np.ndarray = None,
+        eigenvalues: np.ndarray | ureg.Quantity = None,
+        kpoints: np.ndarray | ureg.Quantity = None,
         weights: list | np.ndarray = None,
-        lattice: np.ndarray = None,
-        k_lattice: np.ndarray = None,
+        lattice: np.ndarray | ureg.Quantity = None,
+        k_lattice: np.ndarray | ureg.Quantity = None,
         kpath: SimpleNamespace | np.ndarray = None,
     ):
+        """
+        Initialize Spectrum object.
+
+        Parameters
+        ----------
+        eigenvalues : np.ndarray | ureg.Quantity, optional
+            Array of shape (nkpts, neigs), e.g., energy or frequency values.
+        kpoints : np.ndarray | ureg.Quantity, optional
+            Array of shape (nkpts, 3) with k-points.
+        weights : np.ndarray, optional
+            Optional weights for each k-point.
+        lattice : np.ndarray | ureg.Quantity, optional
+            3x3 matrix of direct lattice vectors in [length] units.
+        k_lattice : np.ndarray | ureg.Quantity, optional
+            3x3 matrix of reciprocal lattice vectors in 2π[length]⁻¹ units.
+            Will be ignored when defining the spectrum if lattice is given.
+        kpath : SimpleNamespace | np.ndarray, optional
+            A namespace with attributes `path`(ndarray) and `labels`(list)
+            or just a ndarray.
+        """
         self.eigenvalues = eigenvalues
         self.kpoints = kpoints
         self.weights = weights
-        _has_lattice.__init__(self, lattice, k_lattice)
-        _has_kpath.__init__(self, kpath)
-        self.DOS = None
+        _Has_lattice.__init__(self, lattice, k_lattice)
+        _Has_kpath.__init__(self, kpath)
+        self.DOS = Density()
 
     def get_DOS(
         self,
@@ -195,34 +288,39 @@ class Spectrum(_has_lattice, _has_kpath):
         window: float | list[float] | ureg.Quantity = None,
         smearing: float | ureg.Quantity = None,
         steps: int = None,
-        precision: float = 3.0,
+        order: int = 0,
+        cutoff_sigmas: float = 3.0,
     ):
         """
-        Compute a density of states (DOS) using Gaussian smearing.
+        Compute a density of states (DOS) using Gaussian or Methfessel-Paxton (MP)
+        smearing of any order.
 
-        This implementation uses a normal distribution to smear each eigenvalue
-        and returns the total DOS over an eigenvalue grid.
+        This implementation uses a MP delta function to smear each eigenvalue and
+        returns the total DOS over an eigenvalue grid. Since the default order is zero,
+        it defaults to using a Gaussian distribution.
 
         Parameters
         ----------
-        center : float | ureg.Quantity, optional
+        center : float | pint.Quantity, optional
             Center for the energy window (e.g., Fermi energy). Default is zero.
-        window : float | list[float] | ureg.Quantity, optional
+        window : float | list[float] | pint.Quantity, optional
             Value window for the DOS. If float, interpreted as symmetric [-window, window].
-            If list, used as [Vmin, Vmax]. If None, the eigenvalue range is used.
-        smearing : float | ureg.Quantity, optional
-            Gaussian smearing width in the same units as eigenvalues. Default is (window_size/200).
+            If list, used as [Vmin, Vmax]. If None, the eigenvalue range (± smearing * cutoff_sigmas) is used.
+        smearing : float | pint.Quantity, optional
+            Smearing width in the same unit dimension as eigenvalues. Default is (window_size/200).
         steps : int, optional
             Number of grid points for DOS sampling. Default is 4 * (window_size/smearing).
-        precision : float, optional
+        order : int, optional
+            Order of the Methfessel-Paxton expansion. Default is 0, which recovers a Gaussian smearing.
+        cutoff_sigmas : float, optional
             Number of smearing widths to use for truncation (e.g., 3 means ±3σ).
 
         Returns
         -------
-        self.DOS : SimpleNamespace
-            - vgrid : np.ndarray | ureg.Quantity
+        self.DOS : DOS
+            - vgrid : np.ndarray | pint.Quantity
                 Array of shape (steps,) with the eigenvalue units.
-            - DOS : np.ndarray | ureg.Quantity
+            - DOS : np.ndarray | pint.Quantity
                 Array of shape (steps,) with the computed DOS values.
 
         Raises
@@ -230,78 +328,17 @@ class Spectrum(_has_lattice, _has_kpath):
         ValueError
             If eigenvalues shape is incorrect or weights do not match.
         """
-        # Handle units
-        eigenvalues = self.eigenvalues
-        quantities = [eigenvalues, center, window, smearing]
-        names = ["eigenvalues", "center", "window", "smearing"]
-        ut._check_unit_consistency(quantities, names)
-        # If unitful, convert all to common unit
-        if isinstance(eigenvalues, ureg.Quantity):
-            units = eigenvalues.units
-            eigenvalues, center, window, smearing = [
-                x.to(units).magnitude if isinstance(x, ureg.Quantity) else x
-                for x in quantities
-            ]
-        else:
-            units = 1
-
-        if eigenvalues.ndim != 2:
-            raise ValueError(
-                "Eigenvalues must be a 2D array of shape (n_kpts, n_bands)"
-            )
-        n_kpts, n_bands = eigenvalues.shape
-        if self.weights is None:
-            self.weights = weights = (
-                np.ones(n_kpts) / n_kpts
-            )  # Weights that sum one (one state per band).
-        else:
-            weights = np.asarray(self.weights)
-        if weights.shape[0] != n_kpts:
-            raise ValueError("Weights must match the number of k-points")
-
-        # Determine computing center, window, smearing and steps
-        center = 0 if center is None else center
-        if window is None:
-            V_min, V_max = eigenvalues.min(), eigenvalues.max()
-        elif isinstance(window, (float, int)):
-            V_min, V_max = np.array([-window, window]) + center
-        else:
-            V_min, V_max = np.asarray(window) + center
-        window_size = V_max - V_min
-        if smearing is None:
-            smearing = window_size / 200
-        if steps is None:
-            steps = int(4 * (window_size / smearing))
-        if window is None:
-            V_min = V_min - smearing * precision
-            V_max = V_max + smearing * precision
-        V_grid = np.linspace(V_min, V_max, steps)
-
-        # Flatten eigenvalues and weights
-        flattened_eigs = eigenvalues.flatten()
-        flattened_weights = np.repeat(weights, n_bands)
-        # Order energies and weights
-        sort = np.argsort(flattened_eigs)
-        flattened_eigs = flattened_eigs[sort]
-        flattened_weights = flattened_weights[sort]
-
-        DOS = np.zeros_like(V_grid)
-
-        # DOS calculation (using the fact that eigenvalues are sorted)
-        for i, V in enumerate(V_grid):
-            for j, e in enumerate(flattened_eigs):
-                if e >= (V - precision * smearing):
-                    if DOS[i] == 0:
-                        truncated_eigs = flattened_eigs[j:]
-                        truncated_weights = flattened_weights[j:]
-                    DOS[i] = (
-                        DOS[i] + ut._normal_dist(e, V, smearing) * flattened_weights[j]
-                    )
-                if e >= (V + precision * smearing):
-                    flattened_eigs = truncated_eigs
-                    flattened_weights = truncated_weights
-                    break
-        self.DOS = SimpleNamespace(vgrid=V_grid * units, DOS=DOS * 1 / units)
+        self.DOS = Density.from_data(
+            x=self.eigenvalues,
+            values=None,
+            weights=self.weights,
+            center=center,
+            x_window=window,
+            sigma=smearing,
+            steps=steps,
+            order=order,
+            cutoff_sigmas=cutoff_sigmas,
+        )
 
     def _pre_plot(
         self=None,
@@ -378,7 +415,7 @@ class Spectrum(_has_lattice, _has_kpath):
         ----------
         ax : Axes, optional
             Axes to plot on. If None, a new figure and axes are created.
-        shift : float | ureg.Quantity, optional
+        shift : float | pint.Quantity, optional
             A constant shift applied to the eigenvalues (e.g., Fermi level).
             Default is zero.
         patched : bool, optional
@@ -423,7 +460,7 @@ class Spectrum(_has_lattice, _has_kpath):
 
         Parameters
         ----------
-        weights : np.ndarray, ureg.Quantity
+        weights : np.ndarray, pint.Quantity
             Array of shape (nkpts, neigs).
         window : list[float,float], optional
             Minimal and maximum values for the colormap of the weights.
@@ -434,7 +471,7 @@ class Spectrum(_has_lattice, _has_kpath):
             Whether the size of the dots should also change (linked to the window).
         alpha_change : bool, optional
             Whether the transparency (alpha) of the dots should also change (linked to the window).
-        shift : float | ureg.Quantity, optional
+        shift : float | pint.Quantity, optional
             A constant shift applied to the eigenvalues (e.g., Fermi level).
             Default is zero.
         patched : bool, optional
@@ -514,14 +551,14 @@ class Spectrum(_has_lattice, _has_kpath):
 
         Parameters
         ----------
-        weights : np.ndarray, ureg.Quantity
+        weights : np.ndarray, pint.Quantity
             Array of shape (nkpts, neigs).
         window : list[float,float], optional
             Minimal and maximum values for the colormap of the weights.
             Default is minimal of maximal values for the set of weights.
         ax : Axes, optional
             Axes to plot on. If None, a new figure and axes are created.
-        shift : float | ureg.Quantity, optional
+        shift : float | pint.Quantity, optional
             A constant shift applied to the eigenvalues (e.g., Fermi level).
             Default is zero.
         patched : bool, optional
@@ -548,7 +585,9 @@ class Spectrum(_has_lattice, _has_kpath):
 
         norm = plt.Normalize(P.vmin, P.vmax)
         # Plotting band by band
-        points = np.array([P.x, P.eigen[:, P.band_indices[0]]]).T.reshape(-1, 1, 2)
+        points = np.array(
+            [P.x.magnitude, P.eigen.magnitude[:, P.band_indices[0]]]
+        ).T.reshape(-1, 1, 2)
         segments = np.concatenate([points[:-1], points[1:]], axis=1)
         lc = LineCollection(
             segments,
@@ -560,7 +599,9 @@ class Spectrum(_has_lattice, _has_kpath):
         lc.set_linewidth(linewidth)
         line = P.ax.add_collection(lc)
         for i in P.band_indices[1:]:
-            points = np.array([P.x, P.eigen[:, P.band_indices[i]]]).T.reshape(-1, 1, 2)
+            points = np.array(
+                [P.x.magnitude, P.eigen.magnitude[:, P.band_indices[i]]]
+            ).T.reshape(-1, 1, 2)
             segments = np.concatenate([points[:-1], points[1:]], axis=1)
             lc = LineCollection(
                 segments,
@@ -575,91 +616,10 @@ class Spectrum(_has_lattice, _has_kpath):
         P.ax.set_xlim(0, 1)
         return P.ax, line
 
-    def plot_DOS(
-        self,
-        ax: Axes = None,
-        shift: float | ureg.Quantity = None,
-        switchXY: bool = False,
-        fill: bool = True,
-        alpha: float = pdft.alpha,
-        **kwargs,
-    ) -> Axes:
-        """
-        Plot the DOS over an eigenvalue-window.
-
-        Parameters
-        ----------
-        ax : Axes, optional
-            Axes to plot on. If None, a new figure and axes are created.
-        shift : float | ureg.Quantity, optional
-            A constant shift applied to the DOS (e.g., Fermi level).
-            Default is zero.
-        switchXY : bool, optional
-            Whether to plot the DOS along the x-axis (horizontal plot). Default is False.
-        fill : bool, optional
-            Whether to fill the area under the curve. Default is True.
-        alpha : float, optional
-            Opacity of the fill (0 = transparent, 1 = solid).
-        **kwargs : dict
-            Additional matplotlib arguments passed to `plot()`.
-
-        Returns
-        ----------
-        ax : Axes
-            The axes with the spectrum plot.
-        """
-        # Handle units
-        if self.DOS is None:
-            quantities = [self.eigenvalues, shift]
-            names = ["self.eigenvalues", "shift"]
-        else:
-            quantities = [self.DOS.vgrid, shift]
-            names = ["self.DOS.vgrid", "shift"]
-        ut._check_unit_consistency(quantities, names)
-
-        if ax is None:
-            fig, ax = plt.subplots()
-
-        if self.DOS is None:
-            self.get_DOS()
-        x = self.DOS.vgrid if shift is None else self.DOS.vgrid - shift
-        y = self.DOS.DOS
-
-        z_line = kwargs.pop("zorder", 2)  # allow overriding via kwargs
-        z_fill = z_line - 1  # ensure fill is below the line
-
-        if switchXY:
-            # DOS on x-axis, energy on y-axis
-            (line,) = ax.plot(y, x, zorder=z_line, **kwargs)
-            if fill:
-                ax.fill_betweenx(
-                    x, 0, y, alpha=alpha, color=line.get_color(), zorder=z_fill
-                )
-            ax.set_xlabel(f"DOS({y.units})")
-            ax.set_xlim(left=0)
-            ax.set_ylim(np.min(x), np.max(x))
-        else:
-            # Energy on x-axis, DOS on y-axis
-            (line,) = ax.plot(x, y, zorder=z_line, **kwargs)
-            if fill:
-                ax.fill_between(
-                    x, y, alpha=alpha, color=line.get_color(), zorder=z_fill
-                )
-            ax.set_ylabel(f"DOS({y.units})")
-            ax.set_xlim(np.min(x), np.max(x))
-            ax.set_ylim(bottom=0)
-
-        return ax
-
 
 class ElectronBands(Spectrum):
     """
-    Class for handling electronic bandstructures and spectrums.
-
-    Parameters
-    ----------
-    file : str
-        File from which to extract the bands.
+    Dressed `Spectrum` subclass for handling electronic bandstructures and spectrums.
 
     Attributes
     ----------
@@ -667,21 +627,19 @@ class ElectronBands(Spectrum):
         Path to the file containing electronic structure output.
     electron_num : int
         Total number of electrons in the system.
-    eigenvalues : np.ndarray
-        Array of shape (nkpts, neigs) with energy values.
-    kpoints : np.ndarray
-        Array of shape (nkpts, 3) with k-points.
-    weights : np.ndarray
-        Optional weights for each k-point.
-    lattice : np.ndarray
-        3x3 matrix of lattice vectors in [length] units.
-    k_lattice : np.ndarray
-        3x3 matrix of reciprocal lattice vectors in 2π[length]⁻¹ units.
     fermi : float
         Fermi energy (0 if not found).
     """
 
     def __init__(self, file: str = None):
+        """
+        Initialize ElectronBands object.
+
+        Parameters
+        ----------
+        file : str
+            File from which to extract the bands.
+        """
         if file is not None:
             self.filepath = file
             self.electron_num = grep.electron_num(self.filepath)
@@ -708,30 +666,23 @@ class ElectronBands(Spectrum):
 
 class PhononBands(Spectrum):
     """
-    Class for handling phonon bandstructures and spectrums.
-
-    Parameters
-    ----------
-    file : str
-        File from which to extract the spectrum.
+    Dressed `Spectrum` subclass for handling phonon bandstructures and spectrums.
 
     Attributes
     ----------
     filepath : str
         Path to the file containing phonon frequencies output.
-    eigenvalues : np.ndarray
-        Array of shape (nkpts, neigs) with frequency values.
-    kpoints : np.ndarray
-        Array of shape (nkpts, 3) with k-points.
-    weights : np.ndarray
-        Optional weights for each k-point.
-    lattice : np.ndarray
-        3x3 matrix of lattice vectors in [length] units.
-    k_lattice : np.ndarray
-        3x3 matrix of reciprocal lattice vectors in 2π[length]⁻¹ units.
     """
 
     def __init__(self, file: str = None):
+        """
+        Initialize PhononBands object.
+
+        Parameters
+        ----------
+        file : str
+            Path to the file containing phonon frequencies output.
+        """
         if file is not None:
             self.filepath = file
             try:
@@ -747,3 +698,286 @@ class PhononBands(Spectrum):
             )
         else:
             Spectrum.__init__(self)
+
+
+class Density:
+    """
+    General container for a scalar density defined on a 1D grid.
+
+    This class can represent any scalar density ρ(v) sampled on a grid v.
+
+    Attributes
+    ----------
+    density : np.ndarray | ureg.Quantity
+        Array of shape (N,) with the density values. Units typically are
+        something per unit of `grid` (e.g., states / energy).
+    grid : np.ndarray | ureg.Quantity
+        Array of shape (N,) with the grid values (e.g., energies).
+
+    Methods
+    -------
+    from_data(...)
+        Construct a Density by kernel-broadening samples located at `x`.
+        Supports Gaussian or Methfessel–Paxton kernels and returns an instance
+        with computed `.grid` and `.density`.
+    integrate(...)
+        - If `amount` is None: integrate density from grid[0] to `limit`.
+        - If `amount` is provided: find the grid value where the integral equals `amount`.
+    plot(...)
+        Plot the density against the grid with optional fill and axis switching.
+    """
+
+    def __init__(
+        self,
+        grid: np.ndarray | ureg.Quantity = None,
+        density: np.ndarray | ureg.Quantity = None,
+    ):
+        """
+        Initialize a Density object.
+
+        Parameters
+        ----------
+        grid : np.ndarray | pint.Quantity, optional
+            Array of shape (N,) with the grid values.
+        density : np.ndarray | pint.Quantity, optional
+            Array of shape (N,) with the density values.
+        """
+        self.density = density
+        self.grid = grid
+
+    @classmethod
+    def from_data(
+        cls,
+        x: np.ndarray | ureg.Quantity,
+        values: np.ndarray | ureg.Quantity = None,
+        weights: np.ndarray | None = None,
+        center: float | ureg.Quantity | None = None,
+        x_window: float | list[float] | ureg.Quantity | None = None,
+        sigma: float | ureg.Quantity | None = None,
+        steps: int | None = None,
+        order: int = 0,
+        cutoff_sigmas: float = 3.0,
+    ):
+        """
+        Initialize a kernel-broadened density on a grid from samples located at `x`.
+
+        This implements a DOS-like convolution:
+            density(X) = sum_i values_i * K_sigma(X - x_i) * w_k(i)
+        where K is either a Gaussian (order=0) or a Methfessel–Paxton kernel (order>=0).
+
+        Parameters
+        ----------
+        x : np.ndarray | ureg.Quantity
+            Sample locations (e.g., energies). If unitful, all other related inputs
+            (center, x_window, sigma) must be compatible with `x` units. Shape (nkpts, nbnds)
+        values : np.ndarray | ureg.Quantity, optional
+            Amplitudes per sample (e.g., projections). Defaults to ones, producing a DOS.
+            Shape (nkpts, nbnds)
+        weights : np.ndarray, optional
+            k-point weights that sum to 1. If None, uniform weights are used: 1/nkpts.
+        center : float | ureg.Quantity, optional
+            Center of the window (e.g., Fermi level). Defaults to 0.
+        x_window : float | list[float] | ureg.Quantity, optional
+            Window for the output grid. If a float, interpreted as symmetric [center - w, center + w].
+            If a list/array, interpreted as [xmin, xmax] around `center`.
+            If None, inferred from min/max(x) expanded by `sigma` and `cutoff_sigmas`.
+        sigma : float | ureg.Quantity, optional
+            Kernel width. Defaults to (window_size / 200). (smearing)
+        steps : int, optional
+            Number of grid points. Defaults to int(4 * (window_size / sigma)), with a minimum of 128.
+        order : int, optional
+            Order of the Methfessel-Paxton kernel. Default is 0, which recovers a Gaussian kernel.
+        cutoff_sigmas : float, optional
+            Truncate kernel support to [-cutoff_sigmas * sigma, +cutoff_sigmas * sigma]
+            when summing contributions. Default 3.0.
+
+        Notes
+        -----
+        It uses the utility `yaiv.utils.kernel_density_on_grid`.
+        """
+        data = ut.kernel_density_on_grid(
+            x=x,
+            values=values,
+            weights=weights,
+            center=center,
+            x_window=x_window,
+            sigma=sigma,
+            steps=steps,
+            order=order,
+            cutoff_sigmas=cutoff_sigmas,
+        )
+        return cls(grid=data.grid, density=data.density)
+
+    def integrate(
+        self,
+        limit: float | ureg.Quantity = None,
+        amount: float = None,
+    ) -> (float | ureg.Quantity, float | ureg.Quantity):
+        """
+        Integrate the density up to a given limit, or invert the integral.
+
+        Two use cases:
+        1) Plain integration:
+           Returns the integral of the density from grid[0] to `limit`.
+           If `limit` is None, integrates up to grid[-1].
+
+        2) Inverse problem:
+           If `amount` is provided, finds X* such that:
+                ∫_{grid[0]}^{X*} density(v) dv = amount
+           Returns (X*, error). This can fail if density has negative values
+           or is not well-behaved.
+
+        Parameters
+        ----------
+        limit : float | pint.Quantity, optional
+            Upper bound for the integration. If None, uses grid[-1].
+        amount : float, optional
+            Target integral value (dimensionless number in magnitude space).
+            If provided, the method returns the grid value X* where the integral
+            equals `amount` (within the integration error tolerance).
+
+        Returns
+        -------
+        (value, error) : tuple
+            - If `amount` is None: (integral, estimated_error).
+            - If `amount` is provided: (X_star, estimated_error).
+              Units are handled consistently with `grid`.
+
+        Raises
+        ------
+        RuntimeError
+            If the inverse integral does not converge to the requested amount
+            within 100 iterations.
+
+        Notes
+        -----
+        - Integration uses cubic interpolation and scipy.integrate.quad.
+        - The inverse integration (when `amount` is provided) uses a bisection-like search
+          and can fail if the density is not strictly non-negative or not well-behaved.
+        """
+        if limit is None:
+            limit = self.grid[-1]
+
+        # Unit consistency
+        quantities = [self.density, self.grid, limit]
+        names = ["density", "grid", "limit"]
+        ut._check_unit_consistency(quantities, names)
+
+        # Extract magnitudes for numeric work; track units to restore at the end
+        if isinstance(self.density, ureg.Quantity):
+            grid_units = self.grid.units
+            integral_units = self.density.units * grid_units
+            X = self.grid.magnitude
+            Y = (self.density / integral_units).to(1 / grid_units).magnitude
+            X_max = limit.to(grid_units).magnitude
+        else:
+            X = np.asarray(self.grid)
+            Y = np.asarray(self.density)
+            X_max = float(limit)
+            integral_units = grid_units = 1
+
+        # Interpolant of the density
+        f = interpolate.interp1d(X, Y, kind="cubic", fill_value=0.0, bounds_error=False)
+
+        if amount is None:
+            # Plain integration from X[0] to X_max
+            integral, error = integrate.quad(f, X[0], X_max, limit=100)
+            # Units: (density units) * (grid units) -> dimensionless if DOS
+            return integral * integral_units, error * integral_units
+        else:
+            # Inverse integral: find X* such that ∫ density = amount
+            X_low = X[0]
+            X_high = X[-1]
+            max_iter = 100
+
+            for _ in range(max_iter):
+                X_mid = 0.5 * (X_low + X_high)
+                integral, error = integrate.quad(f, X[0], X_mid, limit=100)
+                if abs(integral - amount) < error:
+                    # Converged
+                    return X_mid * grid_units, error * grid_units
+                if integral > amount:
+                    X_high = X_mid
+                else:
+                    X_low = X_mid
+            raise RuntimeError(
+                "Inverse integration did not converge within 100 iterations."
+            )
+
+    def plot(
+        self,
+        ax: Axes = None,
+        shift: float | ureg.Quantity = None,
+        switchXY: bool = False,
+        fill: bool = True,
+        alpha: float = pdft.alpha,
+        **kwargs,
+    ) -> Axes:
+        """
+        Plot the density against the grid.
+
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes, optional
+            Axes to plot on. If None, a new figure and axes are created.
+        shift : float | pint.Quantity, optional
+            A constant shift applied to the grid (e.g., Fermi level for DOS).
+        switchXY : bool, optional
+            If True, plot the density along the x-axis (horizontal plot).
+        fill : bool, optional
+            Whether to fill under the curve. Default True.
+        alpha : float, optional
+            Opacity of the fill between 0 and 1. Default from defaults or 0.4.
+        **kwargs : dict
+            Additional matplotlib arguments forwarded to `plot()`.
+
+        Returns
+        -------
+        ax : matplotlib.axes.Axes
+            The axes with the plot.
+        """
+        # Handle units
+        if self.density is None or self.grid is None:
+            raise ValueError("Both `density` and `grid` must be set to plot.")
+        quantities = [self.density, self.grid, shift]
+        names = ["density", "grid", "shift"]
+        ut._check_unit_consistency(quantities, names)
+
+        if ax is None:
+            fig, ax = plt.subplots()
+
+        # Apply optional shift on the grid
+        X = self.grid if shift is None else (self.grid - shift)
+        Y = self.density
+
+        # zorder defaults (allow override via kwargs)
+        z_line = kwargs.pop("zorder", 2)
+        z_fill = z_line - 1
+
+        if switchXY:
+            # density on x-axis, grid on y-axis
+            (line,) = ax.plot(Y, X, zorder=z_line, **kwargs)
+            if fill:
+                ax.fill_betweenx(
+                    X, 0 * Y, Y, alpha=alpha, color=line.get_color(), zorder=z_fill
+                )
+            ax.set_ylim(np.min(X), np.max(X))
+            ax.set_xlim(left=np.min(Y))
+            if isinstance(Y, ureg.Quantity):
+                ax.set_xlabel(f"density ({Y.units})")
+            else:
+                ax.set_xlabel("density")
+        else:
+            # grid on x-axis, density on y-axis
+            (line,) = ax.plot(X, Y, zorder=z_line, **kwargs)
+            if fill:
+                ax.fill_between(
+                    X, Y, alpha=alpha, color=line.get_color(), zorder=z_fill
+                )
+            ax.set_xlim(np.min(X), np.max(X))
+            ax.set_ylim(bottom=np.min(Y))
+            if isinstance(Y, ureg.Quantity):
+                ax.set_ylabel(f"density ({Y.units})")
+            else:
+                ax.set_ylabel("density")
+        return ax
