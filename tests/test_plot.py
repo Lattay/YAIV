@@ -40,6 +40,7 @@ PHONON_CASES = [
         name="qe_freq_matdyn",
         phonon="qe/results/Si.freq",  # required
         kpath="qe/results/matdyn.in",  # optional but provided here (for labels)
+        lattice="qe/results/Si.scf.pwo",
     ),
 ]
 
@@ -69,15 +70,21 @@ def build_electron_bands(case, data_dir, require):
 def build_phonon_bands(case, data_dir, require):
     p_ph = data_dir / case.phonon
     require(p_ph, f"Missing test data: {case.phonon}")
-    pb = PhononBands(str(p_ph))
+    phonons = PhononBands(str(p_ph))
 
     if getattr(case, "kpath", None):
         p_kpath = data_dir / case.kpath
         require(p_kpath, f"Missing kpath data: {case.kpath}")
         kp = grep.kpath(str(p_kpath), labels=True)
-        pb.kpath = kp
+        phonons.kpath = kp
 
-    return pb
+    # Optional lattice override
+    if getattr(case, "lattice", None):
+        p_lat = data_dir / case.lattice
+        require(p_lat, f"Missing lattice data: {case.lattice}")
+        L = grep.lattice(str(p_lat))
+        phonons.lattice = L  # Spectrum.lattice setter updates k_lattice
+    return phonons
 
 
 tolerance = 5
@@ -176,10 +183,10 @@ def test_bands_dos_panel_image_and_structure_cases(data_dir, require, case):
     style="default", tolerance=tolerance, savefig_kwargs={"bbox_inches": "tight"}
 )
 def test_phonon_bands_image_and_structure_cases(data_dir, require, case):
-    pb = build_phonon_bands(case, data_dir, require)
+    phonons = build_phonon_bands(case, data_dir, require)
 
     fig, ax = plt.subplots()
-    plot.phonons(pb, ax=ax, window=None)
+    plot.phonons(phonons, ax=ax, window=None)
 
     assert len(ax.get_lines()) >= 1
     x0, x1 = ax.get_xlim()
@@ -200,10 +207,10 @@ def test_phonon_bands_image_and_structure_cases(data_dir, require, case):
     style="default", tolerance=tolerance, savefig_kwargs={"bbox_inches": "tight"}
 )
 def test_phonon_dos_panel_image_and_structure_cases(data_dir, require, case):
-    pb = build_phonon_bands(case, data_dir, require)
+    phonons = build_phonon_bands(case, data_dir, require)
 
     fig = plt.figure(figsize=(6, 3))
-    ax_b, ax_d = plot.phononsDOS(pb, fig=fig, window=None)
+    ax_b, ax_d = plot.phononsDOS(phonons, fig=fig, window=None)
 
     assert len(ax_b.get_lines()) >= 1
     x0, x1 = ax_b.get_xlim()
