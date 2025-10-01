@@ -6,6 +6,58 @@ This module provides general-purpose utility functions that are used across vari
 and methods in the codebase. They are also intended to be reusable by the user for custom
 workflows, especially when combined with the data extraction tools.
 
+Functions
+---------
+_check_unit_consistency(quantities, names=None)
+    Verifies that a list of variables are either all unitful or all unitless. Raises `TypeError` if mixed.
+
+invQ(matrix)
+    Returns the inverse of a matrix, preserving units if present.
+
+reciprocal_basis(lattice)
+    Computes the reciprocal lattice vectors from a real-space lattice basis.
+
+cartesian2cryst(cartesian_coord, cryst_basis)
+    Transforms coordinates from Cartesian to crystal basis, with unit handling.
+
+cryst2cartesian(crystal_coord, cryst_basis)
+    Transforms coordinates from crystal to Cartesian basis, with unit handling.
+
+cartesian2voigt(xyz)
+    Converts a 3×3 symmetric tensor to 6-element Voigt notation.
+
+voigt2cartesian(voigt)
+    Converts a 6-element Voigt vector to a 3×3 symmetric tensor.
+
+grid_generator(grid, periodic=False)
+    Generates a uniform D-dimensional grid in either periodic or bounded mode.
+
+methpax_delta(x, mean=0.0, smearing=0.1, order=1, A=1.0)
+    Evaluates the Methfessel–Paxton delta approximation up to a given order.
+
+analyze_distribution(x, y)
+    Computes the mean, std, skewness, kurtosis and normalization of a distribution defined over `X`.
+
+def kernel_density_on_grid(x,values)
+    Compute a kernel-broadened density on a grid from samples located at `x`.
+
+amplitude2order_parameter(amplitudes, masses, displacements)
+    Convert displacement amplitudes into proper order parameters with [length × sqrt(mass)] units.
+
+cumulative_integral(X, Y)
+    Compute the cumulative integral of a function defined by discrete x and y values.
+
+Private Utilities
+-----------------
+_normal_dist(x, mean=0, sd=0.1, A=1)
+    Computes the value of a normalized Gaussian distribution.
+
+_expand_zone_border(q_point)
+    Returns a q-point and its ±1-shifted equivalents along each reciprocal direction.
+
+_point_to_segment_distance(point, endpoint_a, endpoint_b)
+    Compute the Euclidean distance from a point to a line segment in 3D.
+
 See Also
 --------
 yaiv.grep             : File parsing functions that uses these utilities.
@@ -16,6 +68,8 @@ from types import SimpleNamespace
 from typing import Sequence, Any
 
 import numpy as np
+from scipy.special import factorial, hermite
+from scipy import integrate
 
 from yaiv.defaults.config import ureg
 
@@ -27,6 +81,11 @@ __all__ = [
     "cartesian2voigt",
     "voigt2cartesian",
     "grid_generator",
+    "methpax_delta",
+    "analyze_distribution",
+    "kernel_density_on_grid",
+    "amplitude2order_parameter",
+    "cumulative_integral",
 ]
 
 
@@ -78,7 +137,7 @@ def invQ(matrix: np.ndarray | ureg.Quantity) -> np.ndarray | ureg.Quantity:
         return np.linalg.inv(matrix)
 
 
-def reciprocal_basis(lattice: np.ndarray | ureg.Quantity) -> np.ndarray:
+def reciprocal_basis(lattice: np.ndarray | ureg.Quantity) -> ureg.Quantity:
     """
     Compute reciprocal lattice vectors (rows) from a direct lattice basis.
 
@@ -89,7 +148,7 @@ def reciprocal_basis(lattice: np.ndarray | ureg.Quantity) -> np.ndarray:
 
     Returns
     -------
-    K_vec : np.ndarray
+    K_vec : ureg.Quantity
         Reciprocal lattice vectors in rows, with units of 2π / [input_units].
     """
     K_vec = (invQ(lattice) * ureg._2pi).transpose()  # reciprocal vectors in rows
@@ -119,39 +178,33 @@ def cartesian2cryst(
     TypeError
         If the input units are not compatible with the basis units (i.e., their ratio is not dimensionless).
     """
+    _check_unit_consistency([cartesian_coord, cryst_basis], ["coordinates", "basis"])
 
-    if isinstance(cartesian_coord, ureg.Quantity) and not isinstance(
+    inv = invQ(cryst_basis)
+    crystal_coord = cartesian_coord @ inv
+    if isinstance(cartesian_coord, ureg.Quantity) and isinstance(
         cryst_basis, ureg.Quantity
     ):
-        raise TypeError(
-            "Input and basis units are not compatible. Provide both with or without units."
-        )
-    else:
-        inv = invQ(cryst_basis)
-        crystal_coord = cartesian_coord @ inv
-        if isinstance(cartesian_coord, ureg.Quantity) and isinstance(
-            cryst_basis, ureg.Quantity
-        ):
-            if not crystal_coord.dimensionless:
-                raise TypeError(
-                    "Input and basis units are not compatible for coordinate transformation"
-                )
-            in_units = cartesian_coord.units
-            if in_units.dimensionality in [
-                ureg.meter.dimensionality,
-                ureg.alat.dimensionality,
-            ]:
-                crystal_coord = crystal_coord * (ureg.crystal)
+        if not crystal_coord.dimensionless:
+            raise TypeError(
+                "Input and basis units are not compatible for coordinate transformation"
+            )
+        in_units = cartesian_coord.units
+        if in_units.dimensionality in [
+            ureg.meter.dimensionality,
+            ureg.alat.dimensionality,
+        ]:
+            crystal_coord = crystal_coord * (ureg.crystal)
 
-            elif in_units.dimensionality in [
-                1 / ureg.meter.dimensionality,
-                1 / ureg.alat.dimensionality,
-            ]:
-                crystal_coord = crystal_coord * (ureg._2pi / ureg.crystal)
-            else:
-                raise TypeError(
-                    "Input units must have dimensionality of [length] or [1/length]"
-                )
+        elif in_units.dimensionality in [
+            1 / ureg.meter.dimensionality,
+            1 / ureg.alat.dimensionality,
+        ]:
+            crystal_coord = crystal_coord * (ureg._2pi / ureg.crystal)
+        else:
+            raise TypeError(
+                "Input units must have dimensionality of [length] or [1/length]"
+            )
 
     return crystal_coord
 
@@ -179,23 +232,18 @@ def cryst2cartesian(
     TypeError
         If the input units are not correct (i.e., not providing crystal units).
     """
-    if isinstance(crystal_coord, ureg.Quantity) and not isinstance(
+    _check_unit_consistency([crystal_coord, cryst_basis], ["coordinates", "basis"])
+
+    if isinstance(crystal_coord, ureg.Quantity) and isinstance(
         cryst_basis, ureg.Quantity
     ):
-        raise TypeError(
-            "Input and basis units are not compatible. Provide both with or without units."
-        )
-    else:
-        if isinstance(crystal_coord, ureg.Quantity) and isinstance(
-            cryst_basis, ureg.Quantity
-        ):
-            if crystal_coord.dimensionality == ureg.crystal.dimensionality:
-                crystal_coord = crystal_coord * (1 / ureg.crystal)
-            elif crystal_coord.dimensionality == 1 / ureg.crystal.dimensionality:
-                crystal_coord = crystal_coord * (ureg.crystal / ureg._2pi)
-            else:
-                raise TypeError("Input units are not crystal units.")
-        cartesian_coord = crystal_coord @ cryst_basis
+        if crystal_coord.dimensionality == ureg.crystal.dimensionality:
+            crystal_coord = crystal_coord * (1 / ureg.crystal)
+        elif crystal_coord.dimensionality == 1 / ureg.crystal.dimensionality:
+            crystal_coord = crystal_coord * (ureg.crystal / ureg._2pi)
+        else:
+            raise TypeError("Input units are not crystal units.")
+    cartesian_coord = crystal_coord @ cryst_basis
 
     return cartesian_coord
 
@@ -218,10 +266,11 @@ def cartesian2voigt(xyz: np.ndarray | ureg.Quantity) -> np.ndarray | ureg.Quanti
     np.ndarray | ureg.Quantity
         A 1D array of length 6 in Voigt notation. If the input had units, they are preserved.
     """
-    voigt = np.array([xyz[0, 0], xyz[1, 1], xyz[2, 2], xyz[1, 2], xyz[0, 2], xyz[0, 1]])
     if isinstance(xyz, ureg.Quantity):
-        voigt = voigt * xyz.units
-    return voigt
+        units = xyz.units
+        xyz = xyz.magnitude
+    voigt = np.array([xyz[0, 0], xyz[1, 1], xyz[2, 2], xyz[1, 2], xyz[0, 2], xyz[0, 1]])
+    return voigt * units
 
 
 def voigt2cartesian(voigt: np.ndarray | ureg.Quantity) -> np.ndarray | ureg.Quantity:
@@ -242,6 +291,10 @@ def voigt2cartesian(voigt: np.ndarray | ureg.Quantity) -> np.ndarray | ureg.Quan
     np.ndarray | ureg.Quantity
         A 3x3 symmetric tensor in Cartesian matrix notation. If the input had units, they are preserved.
     """
+    units = 1
+    if isinstance(voigt, ureg.Quantity):
+        units = voigt.units
+        voigt = voigt.magnitude
     xyz = np.array(
         [
             [voigt[0], voigt[5], voigt[4]],
@@ -249,9 +302,7 @@ def voigt2cartesian(voigt: np.ndarray | ureg.Quantity) -> np.ndarray | ureg.Quan
             [voigt[4], voigt[3], voigt[2]],
         ]
     )
-    if isinstance(voigt, ureg.Quantity):
-        xyz = xyz * voigt.units
-    return xyz
+    return xyz * units
 
 
 def grid_generator(grid: list[int], periodic: bool = False) -> np.ndarray:
@@ -307,7 +358,7 @@ def grid_generator(grid: list[int], periodic: bool = False) -> np.ndarray:
     return coords
 
 
-def _normal_dist(x, mean, sd, A=1):
+def _normal_dist(x, mean=0, sd=0.1, A=1):
     """
     Evaluate a normalized Gaussian (normal) distribution.
 
@@ -337,6 +388,287 @@ def _normal_dist(x, mean, sd, A=1):
     return y
 
 
+def methpax_delta(
+    x: float, mean: float = 0.0, smearing: float = 0.1, order: int = 1, A: float = 1.0
+) -> float:
+    """
+    Methfessel-Paxton (MP) approximation to the delta fuction δ(x).
+
+    The MP impulse function generalizes a Gaussian by adding Hermite polynomial
+    corrections to improve convergence in electronic structure integrations.
+
+    For order = 0, the function reduces to a normalized Gaussian:
+        A / (σ√(2π)) * exp(-0.5 * ((x - μ) / σ)^2)
+
+    Parameters
+    ----------
+    x : float
+        Point(s) at which to evaluate the smearing function.
+    mean : float, optional
+        Center (mean) of the distribution. Default is 0.
+    smearing : float, optional
+        Smearing width, directly related to the standard deviation (σ) in the Gaussian case,
+        being [smearing = (σ√2)]. Default is 0.1.
+    order : int, optional
+        Order of the Methfessel-Paxton expansion. Order 0 recovers a Gaussian.
+    A : float, optional
+        Amplitude factor. If A=1, the result integrates to unity. Default is 1.
+
+    Returns
+    -------
+    y : float
+        Value(s) of the MP-smearing function evaluated at x.
+    """
+
+    def A_n(n):
+        return (-1) ** n / (factorial(n) * (4**n) * np.sqrt(np.pi))
+
+    x_scaled = (x - mean) / (smearing)
+
+    y = 0
+    for n in range(order + 1):
+        coeff = A_n(n)
+        H = hermite(2 * n)(x_scaled)  # Evaluate the Hermite polynomial
+        y += coeff * H * np.exp(-(x_scaled**2))
+
+    normalization = A / smearing  # Restores scale in physical units
+    return normalization * y
+
+
+def analyze_distribution(X, Y):
+    """
+    Analyze the statistical properties of a function defined over a domain.
+
+    Parameters
+    ----------
+    X : array_like
+        1D array representing the domain (e.g., energy, position).
+    Y : array_like
+        1D array representing the function values over X (e.g., DOS, intensity).
+        Does not need to be normalized; normalization is handled internally.
+
+    Returns
+    -------
+    stats : SimpleNamespace
+        Object containing:
+            - mean : float
+                First moment (average) of the distribution.
+            - variance : float
+                Second central moment (spread squared).
+            - std : float
+                Standard deviation (spread of the function).
+            - skewness : float
+                Third standardized moment (asymmetry).
+                Skewness > 0: tail on the right; < 0: tail on the left.
+            - kurtosis : float
+                Fourth standardized moment (peakedness, excess).
+                Kurtosis > 3: sharper than Gaussian; < 3: flatter.
+            - norm : float
+                Area under the curve (integral of Y over X).
+
+    Raises
+    ------
+    ValueError
+        If the integral (normalization) of Y is zero. This means the function has
+        no area under the curve, and statistical quantities become ill-defined.
+    """
+    # Ensure arrays
+    X = np.asarray(X)
+    Y = np.asarray(Y)
+
+    # Compute differential element
+    dx = np.gradient(X)
+
+    # Normalization factor
+    norm = np.sum(Y * dx)
+
+    # Avoid division by zero
+    if norm == 0:
+        raise ValueError("Integral (normalization) of Y is zero.")
+
+    # Mean
+    mean = np.sum(X * Y * dx) / norm
+
+    # Central moments
+    x_shifted = X - mean
+    variance = np.sum((x_shifted) ** 2 * Y * dx) / norm
+    std = np.sqrt(variance)
+
+    # Higher moments
+    skewness = np.sum((x_shifted) ** 3 * Y * dx) / (norm * std**3)
+    kurtosis = np.sum((x_shifted) ** 4 * Y * dx) / (norm * std**4)
+
+    return SimpleNamespace(
+        mean=mean,
+        variance=variance,
+        std=std,
+        skewness=skewness,
+        kurtosis=kurtosis,
+        norm=norm,
+    )
+
+
+def kernel_density_on_grid(
+    x: np.ndarray | ureg.Quantity,
+    values: np.ndarray | ureg.Quantity = None,
+    weights: np.ndarray | None = None,
+    center: float | ureg.Quantity | None = None,
+    x_window: float | list[float] | ureg.Quantity | None = None,
+    sigma: float | ureg.Quantity | None = None,
+    steps: int | None = None,
+    order: int = 0,
+    cutoff_sigmas: float = 3.0,
+) -> SimpleNamespace:
+    """
+    Compute a kernel-broadened density on a grid from samples located at `x`.
+
+    This implements a DOS-like convolution:
+        density(X) = sum_i values_i * K_sigma(X - x_i) * w_k(i)
+    where K is either a Gaussian (order=0) or a Methfessel–Paxton kernel (order>=0).
+
+    Parameters
+    ----------
+    x : np.ndarray | ureg.Quantity
+        Sample locations (e.g., energies). If unitful, all other related inputs
+        (center, x_window, sigma) must be compatible with `x` units. Shape (nkpts, nbnds)
+    values : np.ndarray | ureg.Quantity, optional
+        Amplitudes per sample (e.g., projections). Defaults to ones, producing a DOS.
+        Shape (nkpts, nbnds)
+    weights : np.ndarray, optional
+        k-point weights that sum to 1. If None, uniform weights are used: 1/nkpts.
+    center : float | ureg.Quantity, optional
+        Center of the window (e.g., Fermi level). Defaults to 0.
+    x_window : float | list[float] | ureg.Quantity, optional
+        Window for the output grid. If a float, interpreted as symmetric [center - w, center + w].
+        If a list/array, interpreted as [xmin, xmax] around `center`.
+        If None, inferred from min/max(x) expanded by `sigma` and `cutoff_sigmas`.
+    sigma : float | ureg.Quantity, optional
+        Kernel width. Defaults to (window_size / 200). (smearing)
+    steps : int, optional
+        Number of grid points. Defaults to int(4 * (window_size / sigma)), with a minimum of 128.
+    order : int, optional
+        Order of the Methfessel-Paxton kernel. Default is 0, which recovers a Gaussian kernel.
+    cutoff_sigmas : float, optional
+        Truncate kernel support to [-cutoff_sigmas * sigma, +cutoff_sigmas * sigma]
+        when summing contributions. Default 3.0.
+
+    Returns
+    -------
+    SimpleNamespace
+        grid : np.ndarray | ureg.Quantity
+            The output grid in the units of `x`.
+        density : np.ndarray | ureg.Quantity
+            The computed density at each grid point. Units are (values units) / (x units).
+
+    Raises
+    ------
+    ValueError
+        If shapes are inconsistent (e.g., weights length not equal to nk, or values shape
+        does not match `x`).
+    TypeError
+        If unit consistency is violated among unitful inputs.
+    """
+    # Default values: DOS
+    if values is None:
+        values = np.ones_like(x)
+
+    # Shapes
+    if x.ndim != 2:
+        raise ValueError("`x` must be a 2D array of shape (nk, nb).")
+    nk, nb = x.shape
+    if values.shape != x.shape:
+        raise ValueError("`values` must have the same shape as `x` (nk, nb).")
+    if weights is None:
+        w = np.ones(nk, dtype=float) / nk
+    else:
+        w = np.asarray(weights, dtype=float)
+    if w.shape[0] != nk:
+        raise ValueError(
+            "`weights` must have shape (nk,) matching the number of k-points."
+        )
+
+    # Handle units
+    quantities = [x, center, x_window, sigma]
+    names = ["x", "center", "x_window", "sigma"]
+    _check_unit_consistency(quantities, names)
+
+    # If unitful, convert all to common unit
+    if isinstance(x, ureg.Quantity):
+        x_units = x.units
+        x, center, x_window, sigma = [
+            x.to(x_units).magnitude if isinstance(x, ureg.Quantity) else x
+            for x in quantities
+        ]
+    else:
+        x_units = 1
+    if isinstance(values, ureg.Quantity):
+        val_units = values.units
+        values = np.asarray(values.magnitude)
+    else:
+        val_units = 1
+
+    # Determine computing center, window, sigma and steps
+    x_min = x.min()
+    x_max = x.max()
+    center = 0 if center is None else center
+    if x_window is None:
+        x_min = x.min()
+        x_max = x.max()
+    elif isinstance(x_window, (float, int)):
+        x_min, x_max = np.array([-x_window, x_window]) + center
+    else:
+        x_min, x_max = np.asarray(x_window) + center
+    window_size = x_max - x_min
+    if sigma is None:
+        sigma = window_size / 200.0
+    if steps is None:
+        # Ensure at least some reasonable resolution
+        steps = max(int(4.0 * (window_size / sigma)), 128)
+    # If window was None, expand by cutoff beyond data range
+    if x_window is None:
+        x_min = x_min - sigma * (cutoff_sigmas + 1)
+        x_max = x_max + sigma * (cutoff_sigmas + 1)
+
+    grid = np.linspace(x_min, x_max, steps)
+
+    # Flatten samples and align weights across bands
+    x_flat = x.flatten()
+    v_flat = values.flatten()
+    w_flat = np.repeat(w, nb)
+
+    # Sort by x for efficient windowing with searchsorted
+    sort_idx = np.argsort(x_flat)
+    x_flat = x_flat[sort_idx]
+    v_flat = v_flat[sort_idx]
+    w_flat = w_flat[sort_idx]
+
+    density = np.zeros_like(grid, dtype=float)
+
+    # Loop over grid points and accumulate contributions within cutoff window
+    for i, X in enumerate(grid):
+        left = X - cutoff_sigmas * sigma
+        right = X + cutoff_sigmas * sigma
+        start = np.searchsorted(x_flat, left, side="left")
+        stop = np.searchsorted(x_flat, right, side="right")
+
+        x_loc = x_flat[start:stop]
+        v_loc = v_flat[start:stop]
+        w_loc = w_flat[start:stop]
+
+        if order == 0:
+            K = _normal_dist(x_loc, mean=X, sd=sigma)
+        else:
+            K = methpax_delta(x_loc, mean=X, smearing=sigma, order=order)
+
+        density[i] = np.sum(K * v_loc * w_loc)
+
+    # Units of the density: (values units) / (x units)
+    grid_out = grid * x_units
+    density_out = density * val_units / x_units
+
+    return SimpleNamespace(grid=grid_out, density=density_out)
+
+
 def _expand_zone_border(
     q_point: ureg.Quantity | np.ndarray,
 ) -> ureg.Quantity | np.ndarray:
@@ -351,12 +683,13 @@ def _expand_zone_border(
     Parameters
     ----------
     q_point : pint.Quantity | np.ndarray
-        A 3-element q-point in fractional (crystal) coordinates.
+        A 3-element q-point in fractional (crystal) coordinates. Or a np.ndarray of shape(N,3) with N
+        q-points.
 
     Returns
     -------
     q_points : np.ndarray | pint.Quantity
-        A (3N+1, 3)-shaped array containing the original q-point and its ±1-shifted images
+        A (27*N, 3)-shaped array containing the original q-point and its ±1-shifted images
         along the three reciprocal directions. Units are preserved if input had units.
 
     Raises
@@ -379,17 +712,159 @@ def _expand_zone_border(
         q_point = np.array(q_point)
         units = 1
 
-    output = [q_point]
+    if len(q_point.shape) == 1:
+        output = np.array([q_point])
+    else:
+        output = np.array(q_point)
     for i in range(3):
         new_points = []
         for point in output:
-            point = np.array(point)
             for delta in [-1, 1]:
                 shifted = point.copy()
                 shifted[i] += delta
                 new_points.append(shifted)
-        output.extend(new_points)
-
-    output = np.array(output)
+        output = np.vstack([output, new_points])
 
     return output * units
+
+
+def amplitude2order_parameter(
+    amplitudes: ureg.Quantity | list[complex],
+    masses: ureg.Quantity | list[float],
+    displacements: list[np.ndarray],
+) -> ureg.Quantity:
+    """
+    Convert amplitudes of normalized displacements into proper order parameters with mass scaling.
+
+    Given phonon mode amplitudes applied to mass-normalized displacement vectors, this function
+    returns the associated order parameters with physical units of length × sqrt(mass). The relation used is:
+
+        q_s = A × sqrt(Σ_i M_i |ε_i^s|²)
+
+    Parameters
+    ----------
+    amplitudes : ureg.Quantity or list[complex]
+        Scalar amplitudes for each phonon distortion mode (with units of length or dimensionless).
+
+    masses : ureg.Quantity or list[float]
+        Atomic masses (usually in 2m_e units), one per atom in the unit cell.
+
+    displacements : list[np.ndarray]
+        Normalized displacement vectors for each mode. Each element has shape (N_atoms, 3)
+        and is assumed to be mass-normalized (as in QE output).
+
+    Returns
+    -------
+    ureg.Quantity
+        Order parameters with units of length × sqrt(mass), one per mode.
+    """
+    # Strip units
+    units = 1
+    if isinstance(amplitudes, ureg.Quantity):
+        units *= amplitudes.units
+        amplitudes = amplitudes.magnitude
+    if isinstance(masses, ureg.Quantity):
+        units *= np.sqrt(1 * masses.units)
+        masses = masses.magnitude
+
+    # Formats amplitudes and displacements as np.ndarrays
+    if isinstance(amplitudes, int | float | complex):
+        amplitudes = np.array([amplitudes])
+    else:
+        amplitudes = np.array(amplitudes)
+    if not isinstance(displacements, list):
+        displacements = [displacements]
+
+    # QE normalization constant: sum_i M_i * |ε_i|^2
+    if len(amplitudes.shape) == 2:
+        NN = [0] * amplitudes.shape[1]
+    else:
+        NN = [0] * len(amplitudes)
+
+    for i in range(len(NN)):
+        for j in range(len(masses)):
+            NN[i] += masses[j] * (np.linalg.norm(displacements[i][j])) ** 2
+
+    order_parameter = amplitudes * np.sqrt(NN)
+    return order_parameter * units
+
+
+def cumulative_integral(x: np.ndarray, y: np.ndarray):
+    """
+    Compute the cumulative integral of a function defined by discrete x and y values
+    (handles pint units).
+
+    Parameters
+    ----------
+    x : np.ndarray | ureg.Quantity
+        1D array of x-values (must be increasing).
+    y : np.ndarray | ureg.Quantity
+        1D array of y-values evaluated at the x-points.
+
+    Returns
+    -------
+    I : ndarray
+        1D array of cumulative integral values at each x, starting from zero.
+
+    Notes
+    -----
+    It uses scipy's cumulative_trapezoid method.
+    """
+    units = 1
+    if isinstance(x, ureg.Quantity):
+        units *= x.units
+        x = x.magnitude
+    if isinstance(y, ureg.Quantity):
+        units *= y.units
+        y = y.magnitude
+
+    if x.ndim != 1 or y.ndim != 1:
+        raise ValueError("x and y must be one-dimensional arrays.")
+    if x.shape != y.shape:
+        raise ValueError("x and y must have the same shape.")
+    if not np.all(np.diff(x) > 0):
+        raise ValueError("x values must be strictly increasing.")
+
+    Y = np.hstack([0, integrate.cumulative_trapezoid(y, x)])
+    return Y * units
+
+
+def _point_to_segment_distance(
+    point: np.ndarray, endpoint_a: np.ndarray, endpoint_b: np.ndarray
+) -> float:
+    """
+    Compute the Euclidean distance from a point to a line segment in 3D.
+
+    The function returns the shortest distance from `point` to the line segment
+    defined by the endpoints `endpoint_a` and `endpoint_b`. All inputs must be
+    3-element numpy arrays representing Cartesian coordinates.
+
+    Parameters
+    ----------
+    point : np.ndarray
+        Cartesian coordinates of the point (shape: (3,)).
+    endpoint_a : np.ndarray
+        Cartesian coordinates of the first segment endpoint (shape: (3,)).
+    endpoint_b : np.ndarray
+        Cartesian coordinates of the second segment endpoint (shape: (3,)).
+
+    Returns
+    -------
+    float
+        The shortest distance from the point to the segment.
+    """
+    # Tangent vector of the segment, normalized
+    segment_vec = endpoint_b - endpoint_a
+    segment_dir = segment_vec / np.linalg.norm(segment_vec)
+
+    # Signed projections onto the line extension
+    dist_a = np.dot(endpoint_a - point, segment_dir)
+    dist_b = np.dot(point - endpoint_b, segment_dir)
+
+    # Clamp to segment endpoints if projection is outside
+    parallel_dist = max(dist_a, dist_b, 0)
+
+    # Orthogonal (perpendicular) component
+    perpendicular_vec = np.cross(point - endpoint_a, segment_dir)
+
+    return np.hypot(parallel_dist, np.linalg.norm(perpendicular_vec))

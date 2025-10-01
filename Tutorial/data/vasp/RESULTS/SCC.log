@@ -1,0 +1,50 @@
+ running    1 mpi-ranks, on    1 nodes
+ distrk:  each k-point on    1 cores,    1 groups
+ distr:  one band on    1 cores,    1 groups
+ vasp.6.4.1 05Apr23 (build Apr 28 2025 17:05:42) complex                         
+ POSCAR found type information on POSCAR Si
+ POSCAR found :  1 types and       2 ions
+ -----------------------------------------------------------------------------
+|                                                                             |
+|           W    W    AA    RRRRR   N    N  II  N    N   GGGG   !!!           |
+|           W    W   A  A   R    R  NN   N  II  NN   N  G    G  !!!           |
+|           W    W  A    A  R    R  N N  N  II  N N  N  G       !!!           |
+|           W WW W  AAAAAA  RRRRR   N  N N  II  N  N N  G  GGG   !            |
+|           WW  WW  A    A  R   R   N   NN  II  N   NN  G    G                |
+|           W    W  A    A  R    R  N    N  II  N    N   GGGG   !!!           |
+|                                                                             |
+|     You use a magnetic or noncollinear calculation, but did not specify     |
+|     the initial magnetic moment with the MAGMOM tag. Note that a            |
+|     default of 1 will be used for all atoms. This ferromagnetic setup       |
+|     may break the symmetry of the crystal, in particular it may rule        |
+|     out finding an antiferromagnetic solution. Thence, we recommend         |
+|     setting the initial magnetic moment manually or verifying carefully     |
+|     that this magnetic setup is desired.                                    |
+|                                                                             |
+ -----------------------------------------------------------------------------
+
+ scaLAPACK will be used
+ LDA part: xc-table for Pade appr. of Perdew
+ POSCAR, INCAR and KPOINTS ok, starting setup
+ FFT: planning ... GRIDC
+ FFT: planning ... GRID_SOFT
+ FFT: planning ... GRID
+ WAVECAR not read
+ entering main loop
+       N       E                     dE             d eps       ncg     rms          rms(c)
+DAV:   1     0.156517079969E+01    0.15652E+01   -0.98536E+02   152   0.193E+02
+DAV:   2    -0.686289167960E+01   -0.84281E+01   -0.77621E+01   210   0.547E+01
+DAV:   3    -0.705448454360E+01   -0.19159E+00   -0.19052E+00   168   0.708E+00
+DAV:   4    -0.705503883426E+01   -0.55429E-03   -0.55419E-03   192   0.457E-01
+DAV:   5    -0.705504159116E+01   -0.27569E-05   -0.27567E-05   174   0.281E-02    0.106E+01
+DAV:   6    -0.817866771764E+01   -0.11236E+01   -0.13412E-01   176   0.217E+00    0.670E+00
+DAV:   7    -0.805337871030E+01    0.12529E+00   -0.16993E-01   162   0.266E+00    0.323E+00
+DAV:   8    -0.805001857504E+01    0.33601E-02   -0.64059E-02   166   0.154E+00    0.707E-01
+DAV:   9    -0.804908867815E+01    0.92990E-03   -0.25262E-03   152   0.292E-01    0.198E-01
+DAV:  10    -0.805049944480E+01   -0.14108E-02   -0.10419E-03   152   0.203E-01    0.117E-01
+DAV:  11    -0.805091028226E+01   -0.41084E-03   -0.53396E-04   150   0.150E-01    0.259E-02
+DAV:  12    -0.805093408998E+01   -0.23808E-04   -0.30006E-05   170   0.364E-02    0.152E-02
+DAV:  13    -0.805094875656E+01   -0.14667E-04   -0.12368E-05   152   0.228E-02    0.507E-03
+DAV:  14    -0.805094959410E+01   -0.83754E-06   -0.87778E-07   130   0.622E-03
+   1 F= -.80509496E+01 E0= -.80509496E+01  d E =-.107535E-14  mag=    -0.0000    -0.0000    -0.0000
+ writing wavefunctions

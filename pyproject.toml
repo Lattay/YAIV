@@ -15,6 +15,7 @@ dependencies = [
     "pint",
     "ase",
     "spglib",
+    "scipy",
 ]
 requires-python = ">=3.6"
 classifiers = [

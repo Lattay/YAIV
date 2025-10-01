@@ -26,6 +26,7 @@ setuptools.setup(
         "pint",
         "ase",
         "spglib",
+        "scipy",
     ],
     classifiers=[
         "Programming Language :: Python :: 3",

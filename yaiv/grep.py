@@ -18,18 +18,61 @@ Supported formats include:
 - Quantum ESPRESSO output/input: `pw.x`, `ph.x`, `bands.in`, `projwfc.x`, `matdyn.x`, `.xml`
 - VASP output: `OUTCAR`, `EIGENVAL`, `KPOINTS`, `PROCAR`
 
-This module is intended to feed high-level classes like `electronBands` and `phononBands`
-by providing clean NumPy arrays or `spectrum` objects with physical units.
+Functions
+---------
+electron_num(file)
+    Greps the number of electrons from a QE or VASP output file.
+
+lattice(file, alat=False)
+    Extracts the lattice vectors from outputs. Optionally in internal units (alat).
+
+fermi(file)
+    Extracts the Fermi energy from an output file.
+
+total_energy(file, decomposition=False)
+    Extracts the total free energy, optionally returning its internal decomposition (QE).
+
+stress_tensor(file)
+    Extracts the total stress tensor from a QE or VASP output file.
+
+kpath(file, labels=True)
+    Extracts the k-point path in reciprocal space, optionally with high-symmetry labels.
+
+kpointsEnergies(file)
+    Greps the k-points, energies, kpoint-weights  and orbital projections (if available) for different file kinds.
+
+kpointsFrequencies(file)
+    Extracts k-points and phonon frequencies from Quantum ESPRESSO phonon outputs.
+
+dyn_file(file)
+    Reads a QE `.dyn` file and returns vibrational data (q-point (2π/Å), lattice (Å), frequencies, ...)
+
+dyn_q(q_cryst, results_ph_path, qe_format=True)
+    Locates and reads `.dyn*` file for a given q-point, returning the full dynamical matrix (3Nx3N).
+
+Private Utilities
+-----------------
+_filetype(file)
+    Heuristically determines the type of simulation output file (QE, VASP, etc.).
+
+_OrbitalProjectionContainer:
+    Container for orbital-resolved projection matrices.
+
+class _Qe_xml:
+    Minimal reader for Quantum ESPRESSO XML output files.
+
+_find_dyn_file(q_cryst, results_ph_path)
+    Internal helper that searches `.dyn*` files matching the specified q-point.
 
 Examples
 --------
->>> from yaiv.grep import kpointsEnergies
->>> spectrum = kpointsEnergies("OUTCAR")
+>>> from yaiv grep import grep
+>>> spectrum = grep.kpointsEnergies("OUTCAR")
 >>> spectrum.eigenvalues.shape
 (100, 32)
 
->>> from yaiv.grep import lattice
->>> a = lattice("qe.out")
+>>> from yaiv grep import grep
+>>> a = grep.lattice("qe.out")
 >>> a.shape
 (3, 3)
 
@@ -41,6 +84,7 @@ yaiv.utils    : Basis universal utilities
 
 import re
 import warnings
+import glob
 from types import SimpleNamespace
 import xml.etree.ElementTree as ET
 
@@ -50,6 +94,7 @@ from ase import io
 from yaiv.defaults.config import ureg
 from yaiv import utils as ut
 from yaiv import grep
+from yaiv import phonon as ph
 
 __all__ = [
     "electron_num",
@@ -60,6 +105,8 @@ __all__ = [
     "kpath",
     "kpointsEnergies",
     "kpointsFrequencies",
+    "dyn_file",
+    "dyn_q",
 ]
 
 
@@ -124,6 +171,133 @@ def _filetype(file: str) -> str:
                 filetype = "qe_xml"
                 break
     return filetype
+
+
+class _OrbitalProjectionContainer:
+    """
+    Container for orbital-resolved projection matrices.
+
+    This class stores and provides access to orbital projections
+    of wavefunctions or band structures, resolved by ion, orbital
+    angular momentum `l`, magnetic number `m`, and  magnetization `M`.
+    It supports flexible indexing and summation over subsets of
+    these quantum numbers using its `__call__` interface.
+
+    Attributes
+    ----------
+    _data : dict[tuple[int, int, int, int], np.ndarray]
+        Internal dictionary mapping (ion, l, m, M) → projection matrix (kpts,nbnds).
+
+    Methods
+    -------
+    add(ion:, l, m, M, matrix)
+        Store a projection matrix for a specific orbital channel.
+    """
+
+    def __init__(self):
+        """
+        Initialize an empty orbital projection container.
+        """
+        self._data = {}
+
+    def add(self, ion: int, l: int, m: int, M: int, matrix: np.ndarray):
+        """
+        Store a projection matrix for a specific orbital channel.
+
+        Parameters
+        ----------
+        ion : int
+            Index of the ion the projection refers to.
+        l : int
+            Orbital angular momentum quantum number (e.g. 0 = s, 1 = p).
+        m : int
+            Magnetic quantum number (e.g. -l to +l).
+        M : int
+            Magnetization, with `0` being the total (absolute) magnetizatioon and `1,2,3`
+            corresponding to `x,y,z` directions.
+        matrix : np.ndarray
+            Projection matrix (k-points x bands).
+        """
+        self._data[(ion, l, m, M)] = matrix
+
+    def __repr__(self) -> str:
+        keys = np.array(tuple(self._data.keys()), dtype=int)
+        ions = np.max(keys[:, 0]) + 1
+        l = [int(x) for x in (set(keys[:, 1]))]
+        M = np.max(keys[:, 3])
+        if M > 0:
+            M = f"[0-{M}]"
+        return f"_OrbitalProjectionContainer(ions={ions}, l={l}, m=[-l,l], M={M})"
+
+    def __call__(
+        self,
+        ion: int | range | tuple | list | slice = slice(None),
+        l: int | range | tuple | list | slice = slice(None),
+        m: int | range | tuple | list | slice = slice(None),
+        M: int | range | tuple | list | slice = 0,
+    ):
+        """
+        Return the sum of all projection matrices matching the given quantum numbers.
+
+        This method enables flexible access to stored orbital projections, allowing summation
+        over multiple ions, angular momentum states, or total angular momenta. Arguments can
+        be specific integers, lists, ranges, or slices to match subsets of the data.
+
+        Parameters
+        ----------
+        ion : int or list or range or slice, optional
+            Ion index or indices. Defaults to `slice(None)` to match all ions.
+        l : int or list or range or slice, optional
+            Orbital angular momentum quantum number(s). Defaults to `slice(None)`.
+        m : int or list or range or slice, optional
+            Magnetic quantum number(s). Defaults to `slice(None)`.
+        M : int or list or range or slice, optional
+            Magnetization, with `0` being the total (absolute) magnetizatioon and `1,2,3`
+            corresponding to `x,y,z` directions.
+
+        Returns
+        -------
+        np.ndarray
+            Sum of all projection matrices that match the query.
+
+        Raises
+        ------
+        KeyError
+            If no entries match the given quantum numbers.
+
+        Examples
+        --------
+        proj(0, 1, 0, 1)                    # Single matrix for ion=0, l=1, m=0, M=1
+        proj([0, 1, 2], 1, 0, 1)            # Sum over ions 0, 1, 2 for given l, m, M
+        proj(slice(None), 1, 0, 1)          # Sum over all ions
+        proj(0, [0, 1], 0, 1)               # Sum over l=0 and l=1
+        proj(0, 1, 0, range(2))             # Sum over M=0 and M=1
+        """
+        query = (ion, l, m, M)
+
+        def match(val, key):
+            if isinstance(val, slice):
+                return True
+            elif isinstance(val, (list, tuple, set, range)):
+                return key in val
+            else:
+                return key == val
+
+        # Try direct match first
+        if all(not isinstance(q, (list, tuple, set, range, slice)) for q in query):
+            return self._data[query]
+
+        # Sum all matching matrices
+        selected = [
+            mat
+            for key, mat in self._data.items()
+            if all(match(q, k) for q, k in zip(query, key))
+        ]
+
+        if not selected:
+            raise KeyError(f"No projection matches query: {query}")
+
+        return sum(selected)
 
 
 class _Qe_xml:
@@ -328,7 +502,7 @@ def electron_num(file: str) -> int:
     return num_elec
 
 
-def lattice(file: str, alat: bool = False) -> np.ndarray:
+def lattice(file: str, alat: bool = False) -> ureg.Quantity:
     """
     Greps the lattice vectors from various outputs.
 
@@ -402,6 +576,10 @@ def lattice(file: str, alat: bool = False) -> np.ndarray:
         else:
             return (lattice * ALAT).to("angstrom")
 
+    elif filetype == "qe_proj_out":
+        raise NotImplementedError(
+            "Unsupported filetype: ASE is not handling it correctly"
+        )
     else:
         # Fallback to ASE
         try:
@@ -573,17 +751,18 @@ def stress_tensor(file: str) -> np.ndarray:
     """
     filetype = _filetype(file)
     READ = False
+    stress = []
     with open(file, "r") as lines:
         if filetype == "qe_scf_out":
             for line in lines:
                 if READ == True:
                     vec = np.array([float(x) for x in line.split()[:3]])
-                    stress = np.vstack([stress, vec]) if "stress" in locals() else vec
-                    if stress.shape == (3, 3):
+                    stress.append(vec)
+                    if np.shape(stress) == (3, 3):
                         break
                 elif re.search("total.*stress", line):
                     READ = True
-            stress = stress * (ureg("Ry") / ureg("bohr") ** 3).to("kbar")
+            stress = np.array(stress) * (ureg("Ry") / ureg("bohr") ** 3).to("kbar")
         elif filetype == "outcar":
             for line in lines:
                 if "in kB" in line:
@@ -639,7 +818,7 @@ def kpath(file: str, labels: bool = True) -> SimpleNamespace | np.ndarray:
     """
 
     def read_qe_path(line_iter):
-        kpath = k_names = N = None
+        kpath, k_names, N = [], [], None
         for line in line_iter:
             if N is None:
                 N = int(line.split()[0])
@@ -653,17 +832,15 @@ def kpath(file: str, labels: bool = True) -> SimpleNamespace | np.ndarray:
                     kpoint = line
                 # Grep K point
                 kpoint = [float(x) for x in kpoint.split()]
-                kpath = np.vstack([kpath, kpoint]) if kpath is not None else [kpoint]
+                kpath.append(kpoint)
                 # Grep K point label
                 if labels:
                     new_name = label.split()[0]
-                    k_names = (
-                        k_names + [new_name] if k_names is not None else [new_name]
-                    )
+                    k_names.append(new_name)
                 # Check if path is complete
                 if len(kpath) == N:
                     break
-        return kpath, k_names
+        return np.array(kpath), k_names
 
     filetype = _filetype(file)
     READ = EVEN = False
@@ -731,17 +908,18 @@ def kpath(file: str, labels: bool = True) -> SimpleNamespace | np.ndarray:
 
 def kpointsEnergies(file: str) -> SimpleNamespace:
     """
-    Grep the kpoints, energies and kpoint-weights for different file kinds.
+    Grep the kpoints, energies, kpoint-weights  and orbital projections
+    (if available) for different file kinds.
 
     Energies are given in eV and kpoints in reciprocal crystal units.
     Currently supports:
     - QuantumEspresso: qe_scf_out, `.xml` files.
-    - VASP: OUTCAR, EIGENVAL.
+    - VASP: OUTCAR, EIGENVAL, PROCAR.
 
     Parameters
     ----------
     file : str
-        File from which to extract the spectrum.
+        File from which to extract the quantities.
 
     Returns
     -------
@@ -753,6 +931,8 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
             List of k-points.
         - weights : np.ndarray
             List of kpoint-weights.
+        - projections : _OrbitalProjectionContainer
+            Container for orbital-resolved projection matrices. (only for PROCAR)
 
     Raises
     ------
@@ -762,7 +942,8 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
 
     filetype = _filetype(file)
     READ_energies = READ_kpoints = RELAX_calc = RELAXED = OCCUPATIONS = False
-    KPOINTS = ENERGIES = WEIGHTS = E = None
+    KPOINTS, ENERGIES, WEIGHTS, E, PROJ = [], [], [], [], []
+    PROJECTIONS = None
     with open(file, "r") as lines:
         if filetype == "qe_xml":
             return _Qe_xml(file).kpointsEnergies()
@@ -787,16 +968,8 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
                 elif READ_kpoints:
                     k = [float(x) for x in line.split("(")[2].split(")")[0].split()]
                     w = float(line.split()[-1])
-                    KPOINTS = (
-                        np.vstack([KPOINTS, k])
-                        if KPOINTS is not None
-                        else np.array([k])
-                    )
-                    WEIGHTS = (
-                        np.hstack([WEIGHTS, w])
-                        if WEIGHTS is not None
-                        else np.array([w])
-                    )
+                    KPOINTS.append(k)
+                    WEIGHTS.append(w)
                     if len(WEIGHTS) == num_points:
                         READ_kpoints = False
                 elif READ_energies:
@@ -805,13 +978,11 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
                     elif OCCUPATIONS:
                         pass
                     elif line.strip() != "":
-                        e = [float(x) for x in re.findall(r"[-+]?\d*\.\d+|\d+", line)]
-                        E = np.hstack([E, e]) if E is not None else e
+                        for e in re.findall(r"[-+]?\d*\.\d+|\d+", line):
+                            E.append(float(e))
                         if len(E) == num_bands:
-                            ENERGIES = (
-                                np.vstack([ENERGIES, E]) if ENERGIES is not None else E
-                            )
-                            E = None
+                            ENERGIES.append(E)
+                            E = []
                             OCCUPATIONS = True
             # Recover crystal units
             lat = grep.lattice(file)
@@ -831,32 +1002,21 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
                     if len(l) == 4:
                         k = [float(x) for x in l[:3]]
                         w = float(l[-1])
-                        KPOINTS = (
-                            np.vstack([KPOINTS, k])
-                            if KPOINTS is not None
-                            else np.array([k])
-                        )
-                        WEIGHTS = (
-                            np.hstack([WEIGHTS, w])
-                            if WEIGHTS is not None
-                            else np.array([w])
-                        )
+                        KPOINTS.append(k)
+                        WEIGHTS.append(w)
                     # Energy line
                     elif len(l) == 3:
-                        e = float(l[1])
-                        E = np.hstack([E, e]) if E is not None else [e]
+                        E.append(float(l[1]))
                         if len(E) == num_bands:
-                            ENERGIES = (
-                                np.vstack([ENERGIES, E]) if ENERGIES is not None else E
-                            )
-                            E = None
+                            ENERGIES.append(E)
+                            E = []
             KPOINTS *= ureg._2pi / ureg.crystal
             ENERGIES *= ureg("eV")
         elif filetype == "outcar":
             for line in lines:
                 if "NBANDS" in line:
                     num_bands = int(line.split()[-1])
-                elif "Coordinates" in line and KPOINTS is None:
+                elif "Coordinates" in line and len(KPOINTS) == 0:
                     READ_kpoints = True
                 elif "band No." in line:
                     READ_energies = True
@@ -865,39 +1025,65 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
                     if len(l) != 0:
                         k = [float(x) for x in l[:3]]
                         w = float(l[-1])
-                        KPOINTS = (
-                            np.vstack([KPOINTS, k])
-                            if KPOINTS is not None
-                            else np.array([k])
-                        )
-                        WEIGHTS = (
-                            np.hstack([WEIGHTS, w])
-                            if WEIGHTS is not None
-                            else np.array([w])
-                        )
+                        KPOINTS.append(k)
+                        WEIGHTS.append(w)
                     else:
                         num_points = len(KPOINTS)
                         READ_kpoints = False
                 elif READ_energies:
                     l = line.split()
                     if len(l) == 3:
-                        e = float(l[1])
-                        E = np.hstack([E, e]) if E is not None else [e]
+                        E.append(float(l[1]))
                         if len(E) == num_bands:
-                            ENERGIES = (
-                                np.vstack([ENERGIES, E]) if ENERGIES is not None else E
-                            )
+                            ENERGIES.append(E)
+                            E = []
                             if len(ENERGIES) == num_points:
                                 break
-                            E = None
             KPOINTS *= ureg._2pi / ureg.crystal
             ENERGIES *= ureg("eV")
+        elif filetype == "procar":
+            for line in lines:
+                if "k-points" in line:
+                    l = line.split()
+                    num_points = int(l[3])
+                    num_bands = int(l[7])
+                    num_ions = int(l[-1])
+                elif "k-point" in line:
+                    numbers = [float(x) for x in re.findall(r"[-+]?\d*\.\d+|\d+", line)]
+                    k = numbers[1:4]
+                    w = numbers[-1]
+                    KPOINTS.append(k)
+                    WEIGHTS.append(w)
+                elif "energy" in line:
+                    E.append(float(line.split()[4]))
+                    if len(E) == num_bands:
+                        ENERGIES.append(E)
+                        E = []
+                elif "tot" not in line and len(line.split()) == 11:
+                    proj = [float(x) for x in line.split()[1:-1]]
+                    PROJ.append(proj)
+            KPOINTS *= ureg._2pi / ureg.crystal
+            ENERGIES *= ureg("eV")
+            # Save projections into the proper container
+            PROJ = np.array(PROJ)
+            M = round(PROJ.shape[0] / (np.prod(np.shape(ENERGIES)) * num_ions))
+            PROJECTIONS = _OrbitalProjectionContainer()
+            for i in range(num_ions):
+                for l in range(3):
+                    for m in range(-l, l + 1):
+                        for mag in range(M):
+                            C = l + l * l + m
+                            matrix = PROJ[
+                                i + num_ions * mag :: num_ions * M, C
+                            ].reshape(np.shape(ENERGIES))
+                            PROJECTIONS.add(i, l, m, mag, matrix)
         else:
             raise NotImplementedError("Unsupported filetype")
     return SimpleNamespace(
         energies=ENERGIES,
         kpoints=KPOINTS,
-        weights=WEIGHTS,
+        weights=np.array(WEIGHTS),
+        projections=PROJECTIONS,
     )
 
 
@@ -930,31 +1116,306 @@ def kpointsFrequencies(file: str) -> SimpleNamespace:
     """
 
     filetype = _filetype(file)
-    KPOINTS = FREQS = F = None
+    KPOINTS, FREQS, F = [], [], []
     READ_freqs = False
     with open(file, "r") as lines:
         if filetype == "qe_freq_out":
             for line in lines:
                 l = line.split()
                 if "nbnd" in line:
-                    num_bands, num_points = int(l[2][:-1]), int(l[-2])
+                    num_bands = int(l[2][:-1])
+                    num_points = int(line.split("nks=")[-1][:-2])
                 elif len(l) == 3:
                     k = [float(x) for x in l]
-                    KPOINTS = (
-                        np.vstack([KPOINTS, k])
-                        if KPOINTS is not None
-                        else np.array([k])
-                    )
+                    KPOINTS.append(k)
                     READ_freqs = True
                 elif READ_freqs:
-                    f = [float(x) for x in l]
-                    F = np.hstack([F, f]) if F is not None else f
+                    for f in l:
+                        F.append(float(f))
                     if len(F) == num_bands:
-                        FREQS = np.vstack([FREQS, F]) if FREQS is not None else F
-                        F = None
+                        FREQS.append(F)
+                        F = []
         else:
             raise NotImplementedError("Unsupported filetype")
     # Give proper units
-    FREQS = FREQS * ureg("c") / ureg("cm")
-    KPOINTS = KPOINTS * (ureg("_2pi") / ureg("alat"))
+    FREQS = np.array(FREQS) * ureg("c") / ureg("cm")
+    KPOINTS = np.array(KPOINTS) * (ureg("_2pi") / ureg("alat"))
     return SimpleNamespace(frequencies=FREQS, kpoints=KPOINTS)
+
+
+def dyn_file(file: str) -> SimpleNamespace:
+    """
+    Parse a dynamical matrix file and extract phonon mode information.
+
+    This function extracts:
+    - the lattice vectors,
+    - the atomic species and their masses,
+    - the atom types and positions,
+    - the q-point at which the phonon modes are computed,
+    - the phonon frequencies (in cm⁻¹),
+    - and the polarization vectors (phonon eigenvectors).
+
+    Parameters
+    ----------
+    file : str
+        Path to the dynamical matrix file (e.g. QE `.dyn` or `.dynmat` file).
+
+    Returns
+    -------
+    SimpleNamespace
+        A container with the following fields:
+        - q : ureg.Quantity, shape (3,)
+            The q-point in where the calculation was performed.
+        - lattice : ureg.Quantity, shape (3, 3)
+            The lattice vectors of the unit cell.
+        - freqs : ureg.Quantity, shape (n_modes,)
+            Array of vibrational frequencies (in cm⁻¹).
+        - displacements : np.ndarray, shape(n_modes,n_atoms,3)
+            An (n_modes, n_atoms, 3) array of complex normalized displacement vectors for each mode.
+        - positions : ureg.Quantity, shape (n_atoms, 3)
+            Atomic positions.
+        - elements : list of str
+            Chemical symbol for each atom.
+        - masses : ureg.Quantity, shape (n_atoms,)
+            Atomic mass in atomic units for each atom.
+
+    Raises
+    ------
+    NotImplementedError:
+        The function is not currently implemeted for the provided filetype.
+    """
+    filetype = grep._filetype(file)
+    if filetype != "qe_dyn":
+        raise NotImplementedError("Unsupported filetype")
+    lattice = grep.lattice(file)
+    n_atoms = n_types = freqs = vec = alat = None
+    vec, freqs = [], []
+    species = []
+    atoms = []
+    displacements = []
+    read_modes = False
+    with open(file, "r") as lines:
+        for line in lines:
+            l = line.split()
+            if n_atoms is None and len(l) == 9:
+                # Get number of species and atoms
+                l = line.split()
+                n_types, n_atoms = int(l[0]), int(l[1])
+                alat = float(l[3]) * ureg("bohr")
+            elif n_types != 0 and len(l) == 4:
+                # Get species
+                new = [int(l[0]), l[1][1:], float(l[-1])]
+                species.append(new)
+                n_types -= 1
+            elif n_atoms != 0 and len(l) == 5:
+                # Get atomic positions
+                new = [int(l[1])] + [float(x) for x in l[2:]]
+                atoms.append(new)
+                n_atoms -= 1
+            elif "Diagonalizing" in line:
+                read_modes = True
+            elif read_modes:
+                # Read modes
+                if "q = (" in line:
+                    q_point = np.array([float(x) for x in l[3:6]])
+                elif "freq" in line:
+                    freqs.append(float(l[-2]))
+                elif len(l) == 8:
+                    nums = l[1:-1]
+                    new = [
+                        complex(float(nums[i]), float(nums[i + 1]))
+                        for i in range(0, 6, 2)
+                    ]
+                    vec.append(new)
+                    if len(vec) == len(atoms):
+                        displacements.append(vec)
+                        vec = []
+
+    # Attach units and get positions, elmenets and masses.
+    positions = (np.array(atoms)[:, 1:] * alat).to("ang")
+    indices = np.array(atoms)[:, 0].astype(int) - 1
+    elements = [species[x][1] for x in indices]
+    masses = np.array([species[x][2] for x in indices]) * ureg._2m_e
+    displacements = np.array(displacements)
+    q_point = (q_point * ureg._2pi / alat).to("_2pi/ang")
+    freqs = np.array(freqs) * ureg("c/cm")
+
+    return SimpleNamespace(
+        q=q_point,
+        lattice=lattice,
+        freqs=freqs,
+        displacements=displacements,
+        positions=positions,
+        elements=elements,
+        masses=masses,
+    )
+
+
+def _find_dyn_file(q_cryst: np.ndarray | ureg.Quantity, results_ph_path: str) -> str:
+    """
+    Search for the Quantum ESPRESSO `.dyn` file containing a specified q-point
+    in crystalline coordinates.
+
+    This function compares the requested q-point with those found in each
+    `dyn*` file, accounting for equivalence under reciprocal lattice translations.
+
+    Parameters
+    ----------
+    q_cryst : np.ndarray | ureg.Quantity
+        The q-point to locate, expressed in crystalline (reduced) coordinates.
+    results_ph_path : str
+        Path to the folder where the phonon (`ph.x`) output `.dyn*` files are stored.
+
+    Returns
+    -------
+    str
+        The full path to the `.dyn` file that contains the matching q-point.
+
+    Raises
+    ------
+    FileNotFoundError
+        If no `.dyn*` file or no matching q-point is found in any of the `.dyn` files
+    """
+    # Locate a reference .dyn file to extract lattice
+    dyn1 = glob.glob(results_ph_path + "/*dyn1") + glob.glob(results_ph_path + "/*dyn")
+    if not dyn1:
+        raise FileNotFoundError(
+            "No 'dyn1' or 'dyn' file found in the specified folder."
+        )
+
+    # Read lattice and convert to alat units
+    lattice = dyn_file(dyn1[0]).lattice
+    lattice = lattice / np.linalg.norm(lattice[0]) * ureg.alat
+    k_basis = ut.reciprocal_basis(lattice)
+
+    # Scan all .dyn* files (excluding matdyn if present)
+    dyn_files = glob.glob(results_ph_path + "/*.dyn*")
+    dyn_files = [f for f in dyn_files if "results_matdyn" not in f]
+
+    for file in dyn_files:
+        with open(file, "r") as f:
+            for line in f:
+                if "q = (" in line:
+                    q_point = np.array([float(x) for x in line.split()[3:6]]) * ureg(
+                        "_2pi/alat"
+                    )
+                    q_crys_from_file = ut.cartesian2cryst(q_point, k_basis)
+
+                    # Account for periodic images using symmetry
+                    for q_equiv in ut._expand_zone_border(q_crys_from_file):
+                        if np.allclose(q_cryst, q_equiv, atol=1e-4):
+                            return file
+
+    raise FileNotFoundError(
+        f"No `.dyn*` file found containing q = {q_cryst} in crystalline coordinates."
+    )
+
+
+def dyn_q(
+    q_cryst: np.ndarray | ureg.Quantity, results_ph_path: str, qe_format: bool = True
+) -> SimpleNamespace:
+    """
+    Reads the Quantum ESPRESSO `.dyn*` file corresponding to a given q-point.
+
+    This function locates the `.dyn*` file generated by `ph.x` that corresponds to a
+    desired q-point (in reduced crystalline coordinates), extracts the corresponding dynamical
+    matrix, and optionally converts it to the real physical dynamical matrix in units
+    of 1 / [time]².
+
+    Parameters
+    ----------
+    q_cryst : np.ndarray | ureg.Quantity
+        The q-point of interest, expressed in reduced crystalline coordinates (fractions of reciprocal lattice vectors).
+        If not a `Quantity`, it is assumed to be in `_2pi/crystal` units.
+
+    results_ph_path : str
+        Path to the directory containing the Quantum ESPRESSO `ph.x` output `.dyn*` files.
+
+    qe_format : bool, optional
+        If True (default), returns the raw QE dynamical matrix (includes sqrt(m_i m_j) mass factors).
+        If False, converts the dynamical matrix to true physical form in 1 / [time]² units (Ry/h)^2.
+
+    Returns
+    -------
+    system : SimpleNamespace
+        A container with the following fields:
+        - q : ureg.Quantity, shape (3,)
+            The q-point in where the calculation was performed.
+        - lattice : ureg.Quantity, shape (3, 3)
+            The lattice vectors of the unit cell.
+        - freqs : ureg.Quantity, shape (n_modes,)
+            Array of vibrational frequencies (in cm⁻¹).
+        - positions : ureg.Quantity, shape (n_atoms, 3)
+            Atomic positions.
+        - elements : list of str
+            Chemical symbol for each atom.
+        - masses : ureg.Quantity, shape (n_atoms,)
+            Atomic mass in atomic units for each atom.
+        - dyn: ureg.Quantity
+            The (3N × 3N) complex dynamical matrix (units depend on `qe_format`).
+
+    Notes
+    -----
+    - The dynamical matrix read from QE includes a sqrt(m_i m_j) prefactor for each (3×3) subblock.
+      This must be removed to obtain the physical matrix for diagonalization (ω² in Ry²/ħ²).
+    - The units of the returned matrix are `_2m_e * Ry^2 / planck_constant^2` in QE format.
+    """
+    # Normalize units
+    if isinstance(q_cryst, ureg.Quantity):
+        q_cryst = q_cryst.to("_2pi/crystal")
+    else:
+        q_cryst = q_cryst * ureg("_2pi/crystal")
+
+    file = _find_dyn_file(q_cryst, results_ph_path)
+
+    system = dyn_file(file)
+    dim = 3 * len(system.elements)
+    dyn_mat = np.zeros((dim, dim), dtype=complex)
+
+    # Lattice and reciprocal basis
+    lattice = system.lattice / np.linalg.norm(system.lattice[0]) * ureg.alat
+    k_basis = ut.reciprocal_basis(lattice)
+
+    READ_dynmat = False
+    with open(file, "r") as lines:
+        for line in lines:
+            if "q = (" in line:
+                q_point = np.array([float(x) for x in line.split()[3:6]]) * ureg(
+                    "_2pi/alat"
+                )
+                q_crys_from_file = ut.cartesian2cryst(q_point, k_basis)
+
+                for q_equiv in ut._expand_zone_border(q_crys_from_file):
+                    if np.allclose(q_cryst.magnitude, q_equiv.magnitude, atol=1e-4):
+                        READ_dynmat = True
+                        break
+
+            if READ_dynmat:
+                l = line.split()
+                if len(l) == 2:  # matrix block index line
+                    n, m = int(l[0]), int(l[1])
+                    num = 0
+                elif len(l) == 6:  # submatrix row
+                    row = np.array(
+                        [
+                            complex(float(l[0]), float(l[1])),
+                            complex(float(l[2]), float(l[3])),
+                            complex(float(l[4]), float(l[5])),
+                        ]
+                    )
+                    sub_mat = row if num == 0 else np.vstack([sub_mat, row])
+                    num += 1
+                    if num == 3:
+                        i, j = 3 * (n - 1), 3 * (m - 1)
+                        dyn_mat[i : i + 3, j : j + 3] = sub_mat
+                if re.search("Dynamical", line) or re.search("Diagonalizing", line):
+                    break
+
+    # Clean output
+    system.q = q_cryst
+    delattr(system, "displacements")
+    system.dyn = dyn_mat * ureg("_2m_e * Ry^2 / planck_constant^2")
+    if not qe_format:
+        system.dyn = ph._QEdyn2Realdyn(system.dyn, system.masses)
+
+    return system
