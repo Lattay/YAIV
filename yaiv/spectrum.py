@@ -30,7 +30,8 @@ PhononBands
 Density
     General container for a scalar density defined on a 1D grid.
     Provides:
-    - integrate(): Computes the integral of the density or finds the intagration limit corresponding to certain integral value.
+    - integrate(): Computes the integral of the density or finds the intagration limit
+                    corresponding to certain integral value.
     - plot(): Plots the density curve with optional fill and orientation options.
 
 Private Utilities
