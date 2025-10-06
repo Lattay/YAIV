@@ -453,7 +453,7 @@ class _Qe_xml:
             weights=np.array(WEIGHTS),
         )
 
-    def symmetries(self) -> list:
+    def symmetries(self) -> list[SimpleNamespace]:
         """
         Grep symmetry operations from the QE XML and return them as rotation/translation pairs.
 
@@ -465,7 +465,7 @@ class _Qe_xml:
 
         Returns
         -------
-        symmetries : list(SimpleNamespace)
+        symmetries : list[SimpleNamespace]
             Each entry contains R (3×3 rotation matrix) and t (fractional translation
             vector in 2π/crystal units).
         """
@@ -1451,7 +1451,7 @@ def dyn_q(
     return system
 
 
-def symmetries(file: str) -> list(SimpleNamespace):
+def symmetries(file: str) -> list[SimpleNamespace]:
     """
     Grep symmetry operations and return them as rotation/translation pairs.
 
@@ -1467,7 +1467,7 @@ def symmetries(file: str) -> list(SimpleNamespace):
 
     Returns
     -------
-    symmetries : list(SimpleNamespace)
+    symmetries : list[SimpleNamespace]
         Each entry contains R (3×3 rotation matrix) and t (fractional translation
         vector in 2π/crystal units).
 

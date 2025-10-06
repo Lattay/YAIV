@@ -27,6 +27,7 @@ SUPPORTED_KPATH = {"qe_bands_in", "matdyn_in", "kpath"}
 SUPPORTED_KPTS_E = {"qe_xml", "qe_scf_out", "outcar", "eigenval", "procar"}
 SUPPORTED_PROJ = {"procar"}
 SUPPORTED_FREQS = {"qe_freq_out"}
+SUPPORTED_SYMS = {"qe_xml"}
 
 # ----------------------------------------------------------------------
 # External data matrix (filename relative to tests/data, expected kind)
@@ -222,3 +223,23 @@ def test_dyn_q_on_results_folder(data_dir):
     assert system.dyn.magnitude.ndim == 2
     assert system.dyn.check(ureg("_2m_e * Ry^2 / planck_constant^2"))
     assert system.dyn.shape == (3 * n_ions, 3 * n_ions)
+
+@pytest.mark.parametrize("fname, kind", FILES, ids=IDS)
+def test_symmetries(data_dir, require, fname, kind):
+    f = data_dir / fname
+    require(f, f"Missing test data: {fname}")
+
+    if kind in SUPPORTED_SYMS:
+        syms = grep.symmetries(str(f))
+        # basic content checks
+        assert isinstance(syms, list)
+        assert len(syms) == 48
+
+        # first symmetry entry sanity
+        s0 = syms[0]
+        assert isinstance(s0.R, np.ndarray)
+        assert s0.R.shape == (3, 3)
+
+        # translation is a Quantity with correct units
+        assert hasattr(s0, "t")
+        assert s0.t.check(ureg("_2pi/crystal"))
