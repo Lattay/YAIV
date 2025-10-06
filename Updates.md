@@ -13,3 +13,6 @@ OLD - AS TEMPLATE:
 
 ### `grep`
 - Added `grep.symmetires`, currently only supporting QE xml files.
+
+### `utils`
+- Added `utils.symmetry_orbit_kpoints`, for applying all symmetry rotations to a set of k-points and returning a unique set.

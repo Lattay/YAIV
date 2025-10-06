@@ -47,6 +47,9 @@ amplitude2order_parameter(amplitudes, masses, displacements)
 cumulative_integral(X, Y)
     Compute the cumulative integral of a function defined by discrete x and y values.
 
+symmetry_orbit_kpoints(kpoints,symmetries)
+    Apply all symmetry rotations to a set of k-points (row vectors) and return the unique set.
+
 Private Utilities
 -----------------
 _normal_dist(x, mean=0, sd=0.1, A=1)
@@ -868,3 +871,111 @@ def _point_to_segment_distance(
     perpendicular_vec = np.cross(point - endpoint_a, segment_dir)
 
     return np.hypot(parallel_dist, np.linalg.norm(perpendicular_vec))
+
+
+def symmetry_orbit_kpoints(
+    kpoints: np.ndarray | ureg.Quantity,
+    symmetries=list[SimpleNamespace],
+    tol: float = 1e-8,
+    mod_G: bool = True,
+):
+    """
+    Apply all symmetry rotations to a set of k-points (row vectors) and return
+    the unique set.
+
+    This function treats k-points as row vectors and multiplies them on the
+    right by the rotation matrices (i.e., k' = k @ R). It preserves the order
+    of first appearance so that identity-generated points are kept when
+    duplicates occur.
+
+    Parameters
+    ----------
+    kpoints : np.ndarray | pint.Quantity, shape (N, 3)
+        Input k-points as row vectors. If a Quantity, units are preserved in
+        the output. For `mod_G=True`, points are assumed to be in crystal units
+        (2π/crystal), i.e., periodic under k ≡ k + G with integer G.
+    symmetries : list
+        List of symmetry objects. Each must provide attribute `R` (3×3 rotation
+        matrix, check `grep.symmetries`). The first element (index 0) must be the
+        identity symmetry. Any translational parts `.t` (if present) are ignored for k.
+    tol : float, optional
+        Numerical tolerance used to detect duplicates (after rounding). Default 1e-8.
+    mod_G : bool, optional
+        If True (default), identify k ≡ k + G via wrapping to the canonical
+        interval (-0.5, 0.5]: k -> k - floor(k + 0.5). This maps -0.5 to +0.5
+        so boundary points are handled consistently.
+
+    Returns
+    -------
+    SimpleNamespace
+        - kpoints : np.ndarray | pint.Quantity, shape (M, 3)
+            Unique symmetry-expanded k-points (within `tol`), in the same units
+            as the input.
+        - sym : np.ndarray, shape (M,)
+            For each unique point, the symmetry index (into `symmetries`) of its chosen
+            representative (identity-preferred).
+        - origin : np.ndarray, shape (M,)
+            For each unique point, the original input k-point index from which the
+            representative was generated.
+
+    Raises
+    ------
+    ValueError
+        If mod_G is True and units are not 2pi/crystal.
+
+    Notes
+    -----
+    - Vectors are treated as rows, so rotations are applied as k' = k @ R.
+    - First occurrence order is preserved when removing duplicates, thus
+      ensuring identity-generated points (symmetries[0]) are kept as representatives.
+    - If your k-points are not in crystal units, convert before calling or set
+      `mod_G=False`.
+    """
+    # Units handling
+    if isinstance(kpoints, ureg.Quantity):
+        units = kpoints.units
+        kpts = np.asarray(kpoints.magnitude, dtype=float)
+    else:
+        units = 1
+        kpts = np.asarray(kpoints, dtype=float)
+
+    if kpts.ndim != 2 or kpts.shape[1] != 3:
+        raise ValueError("kpoints must be of shape (N, 3)")
+
+    # Expand via symmetries (identity first)
+    expanded = []
+    idx_pairs = []
+    for i, sym in enumerate(symmetries):
+        R = np.asarray(sym.R, dtype=float)
+        for j, k in enumerate(kpts):
+            expanded.append(k @ R)  # row-vector convention
+            idx_pairs.append([i, j])
+    expanded = np.asarray(expanded)  # shape (S*N, 3)
+
+    # Wrap modulo reciprocal lattice vectors: (-0.5, 0.5]
+    if mod_G:
+        if units != 1 and units != ureg("_2pi/crystal"):
+            raise ValueError(
+                "mod_G=True requires kpoints in crystal units (2π/crystal). "
+                "Convert your k-points before calling or set mod_G=False."
+            )
+        expanded = expanded - np.floor(expanded + 0.5)
+
+    # Order-preserving uniqueness via rounding to tolerance
+    rounded = np.round(expanded / tol) * tol
+    seen = set()
+    keep_idx = []
+    for idx, row in enumerate(rounded):
+        key = tuple(row)
+        if key not in seen:
+            seen.add(key)
+            keep_idx.append(idx)
+
+    unique_kpts = expanded[keep_idx]
+    idx_map = np.array([idx_pairs[i] for i in keep_idx], dtype=int)
+
+    return SimpleNamespace(
+        kpoints=unique_kpts * units,
+        sym=idx_map[:, 0],
+        origin=idx_map[:, 1],
+    )

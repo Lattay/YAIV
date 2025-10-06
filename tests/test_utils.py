@@ -5,6 +5,7 @@ from numpy.testing import assert_allclose
 
 from yaiv.defaults.config import ureg
 from yaiv import utils as ut
+from yaiv import spectrum, grep
 
 
 def test_check_unit_consistency_success():
@@ -389,3 +390,57 @@ def test_point_to_segment_distance():
     assert_allclose(
         ut._point_to_segment_distance(P_near_A, A, B), np.sqrt(2.0), atol=1e-12
     )
+
+
+# @pytest.mark.parametrize("fname, kind", FILES, ids=IDS)
+def test_symmetry_orbit_kpoints_matches_2x2x2_grid(data_dir, require):
+    """
+    For a QE XML with a 2x2x2 Monkhorst-Pack grid, the symmetry orbit
+    of IBZ k-points (modulo G) should match the full 2x2x2 grid generated
+    by ut.grid_generator (up to ordering).
+    """
+
+
+    fname = data_dir / "qe/results_scf/scf.xml"
+    require(fname, f"Missing test data: {fname}")
+
+    # Read symmetries and k-points from file
+    syms = grep.symmetries(str(fname))
+    data = spectrum.ElectronBands(str(fname))
+    data.kpoints = ut.cartesian2cryst(data.kpoints / data.alat, data.k_lattice)
+    k_ibz = data.kpoints  # Quantity in _2pi/crystal (expected)
+    print(k_ibz.units)
+
+    # Compute symmetry orbit (modulo G)
+    out = ut.symmetry_orbit_kpoints(k_ibz, syms, tol=1e-12, mod_G=True)
+
+    # Build expected 2x2x2 grid in crystal units
+    # periodic=True means values in (-0.5, 0.5] for a 2x2x2 mesh
+    grid = ut.grid_generator([2, 2, 2], periodic=True)  # ndarray or Quantity
+
+    # Prepare actual orbit set for comparison (float crystal units)
+    orbit = out.kpoints.magnitude
+    # orbit = _to_crystal_array(out.kpoints)
+    # orbit = _wrap_pos_interval(orbit)
+    # orbit = _unique_rows_with_tol(orbit, tol=1e-12)
+
+    # Compare sets ignoring order: sort rows and compare shape and values
+    assert grid.shape == orbit.shape
+
+    # For each expected point, ensure there is an orbit point equivalent mod 1
+    def is_close_mod1(a, b, tol=1e-12):
+        """
+        Check if vectors a and b are equal modulo integers (component-wise), i.e.,
+        a - b ≡ 0 (mod 1). Assumes a, b are 1D arrays of length 3.
+        """
+        d = a - b
+        d = d - np.round(d)
+        return np.all(np.abs(d) <= tol)
+    for kg in grid:
+        assert any(
+            is_close_mod1(kg, ko, tol=1e-12) for ko in orbit
+        ), f"Missing k-point mod 1: {ke}"
+
+    # mod_G requires crystal units; verify unit on output
+    assert hasattr(out.kpoints, "units")
+    assert out.kpoints.check(ureg("_2pi/crystal"))
