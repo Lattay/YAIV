@@ -224,6 +224,7 @@ def test_dyn_q_on_results_folder(data_dir):
     assert system.dyn.check(ureg("_2m_e * Ry^2 / planck_constant^2"))
     assert system.dyn.shape == (3 * n_ions, 3 * n_ions)
 
+
 @pytest.mark.parametrize("fname, kind", FILES, ids=IDS)
 def test_symmetries(data_dir, require, fname, kind):
     f = data_dir / fname
@@ -238,7 +239,7 @@ def test_symmetries(data_dir, require, fname, kind):
         # first symmetry entry sanity
         s0 = syms[0]
         assert isinstance(s0.R, np.ndarray)
-        assert s0.R.shape == (3, 3)
+        assert np.all(s0.R == np.identity(3))
 
         # translation is a Quantity with correct units
         assert hasattr(s0, "t")
