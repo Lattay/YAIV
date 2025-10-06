@@ -240,6 +240,7 @@ def test_symmetries(data_dir, require, fname, kind):
         s0 = syms[0]
         assert isinstance(s0.R, np.ndarray)
         assert np.all(s0.R == np.identity(3))
+        assert np.all(s0.t.magnitude == np.zeros(3))
 
         # translation is a Quantity with correct units
         assert hasattr(s0, "t")
