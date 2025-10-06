@@ -50,9 +50,6 @@ dyn_file(file)
 dyn_q(q_cryst, results_ph_path, qe_format=True)
     Locates and reads `.dyn*` file for a given q-point, returning the full dynamical matrix (3Nx3N).
 
-def symmetries(file)
-    Grep symmetry operations and return them as rotation/translation pairs.
-
 Private Utilities
 -----------------
 _filetype(file)
