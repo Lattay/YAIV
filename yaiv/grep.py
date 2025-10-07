@@ -474,9 +474,13 @@ class _Qe_xml:
         for elem in symmetries:
             rotation = elem.find(".//rotation")
             R = np.fromstring(rotation.text, sep=" ").reshape(3, 3)
-            t = [
-                float(x) for x in elem.find(".//fractional_translation").text.split()
-            ] * ureg("_2pi/crystal")
+            translation = elem.find(".//fractional_translation")
+            if translation is not None:
+                t = np.array([float(x) for x in translation.text.split()]) * ureg(
+                    "_2pi/crystal"
+                )
+            else:
+                t = np.zeros(3) * ureg("_2pi/crystal")
             OUT.append(SimpleNamespace(R=R, t=t))
         return OUT
 
