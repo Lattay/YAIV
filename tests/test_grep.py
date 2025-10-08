@@ -226,12 +226,13 @@ def test_dyn_q_on_results_folder(data_dir):
 
 
 @pytest.mark.parametrize("fname, kind", FILES, ids=IDS)
-def test_symmetries(data_dir, require, fname, kind):
+def test_symmetries_and_symmetry_class(data_dir, require, fname, kind):
     f = data_dir / fname
     require(f, f"Missing test data: {fname}")
 
     if kind in SUPPORTED_SYMS:
         syms = grep.symmetries(str(f))
+        lattice = grep.lattice(str(f))
         # basic content checks
         assert isinstance(syms, list)
         assert len(syms) == 48
@@ -240,9 +241,17 @@ def test_symmetries(data_dir, require, fname, kind):
         s0 = syms[0]
         assert isinstance(s0.R, np.ndarray)
         assert np.all(s0.R == np.identity(3))
-        assert np.all(s0.t== np.zeros(3))
+        assert np.all(s0.t == np.zeros(3))
 
         # translation is a Quantity with correct units
         assert hasattr(s0, "t")
         print(s0.units)
         assert s0.units == ureg.crystal
+
+        # Check lattice and crystal conversion.
+        s1 = syms[1]
+        s1.t = np.ones(3)
+        new = s1.to_cartesian(lattice).to_crystal(lattice)
+        assert np.allclose(s1.R, new.R, rtol=1e-15)
+        assert np.allclose(s1.t, new.t, rtol=1e-15)
+        assert s1.units == new.units
