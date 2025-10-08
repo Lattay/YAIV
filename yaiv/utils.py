@@ -961,8 +961,6 @@ def find_little_group(
             if ok:
                 inv_ops.append(i)
         little_group.append(np.asarray(inv_ops, dtype=int))
-        if kpts.shape[0] == 1:
-            little_group = little_group[0]
     return little_group
 
 
@@ -971,7 +969,7 @@ def symmetry_orbit_kpoints(
     symmetries: list,
     tol: float = 1e-8,
     mod_G: bool = True,
-):
+) -> SimpleNamespace:
     """
     Apply all symmetry rotations to a set of k-points (row vectors) and return
     the unique set.
@@ -997,7 +995,7 @@ def symmetry_orbit_kpoints(
 
     Returns
     -------
-    SimpleNamespace
+    orbit : SimpleNamespace
         - kpoints : np.ndarray | pint.Quantity, shape (M, 3)
             Unique symmetry-expanded k-points (within `tol`), same units as input.
         - sym : np.ndarray, shape (M,)

@@ -461,13 +461,14 @@ class _Qe_xml:
         <rotation> and the fractional translation from <fractional_translation>,
         and returns a list of objects with fields:
           - R: np.ndarray shape (3, 3)
-          - t: pint.Quantity length-3 vector in units of 2π/crystal
+          - t: lenght-3 translation vector
+          - units: ureg.Quantity with the units in which {R|t} is given.
 
         Returns
         -------
         symmetries : list[SimpleNamespace]
-            Each entry contains R (3×3 rotation matrix) and t (fractional translation
-            vector in 2π/crystal units).
+            Each entry contains R (3×3 rotation matrix) and t (translation
+            vector) and units.
         """
         OUT = []
         symmetries = self.root.findall(".//symmetry")
@@ -476,12 +477,10 @@ class _Qe_xml:
             R = np.fromstring(rotation.text, sep=" ").reshape(3, 3)
             translation = elem.find(".//fractional_translation")
             if translation is not None:
-                t = np.array([float(x) for x in translation.text.split()]) * ureg(
-                    "_2pi/crystal"
-                )
+                t = np.array([float(x) for x in translation.text.split()])
             else:
-                t = np.zeros(3) * ureg("_2pi/crystal")
-            OUT.append(SimpleNamespace(R=R, t=t))
+                t = np.zeros(3)
+            OUT.append(SimpleNamespace(R=R, t=t, units=ureg.crystal))
         return OUT
 
 
