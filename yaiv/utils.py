@@ -1042,6 +1042,9 @@ def symmetry_orbit_kpoints(
             idx_pairs.append([i, j])
     expanded = np.asarray(expanded)  # shape (S*N, 3)
 
+    # Order-preserving uniqueness via rounding to tolerance
+    rounded = np.round(expanded / tol) * tol
+
     # Wrap modulo reciprocal lattice vectors: (-0.5, 0.5]
     if mod_G:
         if units != 1 and units != ureg("_2pi/crystal"):
@@ -1049,10 +1052,8 @@ def symmetry_orbit_kpoints(
                 "mod_G=True requires kpoints in crystal units (2π/crystal). "
                 "Convert your k-points before calling or set mod_G=False."
             )
-        expanded = expanded - np.floor(expanded + 0.5)
+        rounded = rounded - np.floor(rounded + 0.5)
 
-    # Order-preserving uniqueness via rounding to tolerance
-    rounded = np.round(expanded / tol) * tol
     seen = set()
     keep_idx = []
     for idx, row in enumerate(rounded):
