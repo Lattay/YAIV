@@ -61,6 +61,9 @@ _filetype(file)
 _OrbitalProjectionContainer:
     Container for orbital-resolved projection matrices.
 
+_Symmetry:
+    Container for symmetry operations.
+
 class _Qe_xml:
     Minimal reader for Quantum ESPRESSO XML output files.
 
@@ -303,6 +306,115 @@ class _OrbitalProjectionContainer:
         return sum(selected)
 
 
+class _Symmetry:
+    def __init__(
+        self,
+        R: np.ndarray,
+        t: np.ndarray = None,
+        units: ureg.Quantity = ureg.dimensionless,
+    ):
+        """
+        Container for symmetry operations with rotation and (optional) translation in a given basis.
+
+        Parameters
+        ----------
+        R : np.ndarray
+            Rotation matrix in the current coordinate system (matches `units`).
+        t : np.ndarray, optional
+            Translation (shift) vector in the current coordinate system. Default is zero.
+        units : ureg.Quantity, optional.
+            Units of `t` (and the basis in which `R` is expressed). Typically
+            crystal (e.g., ureg('crystal')) or Cartesian length (e.g., ureg.meter).
+
+        Methods
+        -------
+        to_cartesian(lattice)
+            Convert this symmetry from crystal to Cartesian coordinates.
+        to_crystal(lattice)
+            Convert this symmetry from Cartesian to crystal coordinates.
+
+        Notes
+        -----
+        - This container does not assume or enforce a specific convention
+          (row/column) beyond storing R and t consistently in the same basis.
+        - Use `to_cartesian` / `to_crystal` to convert both R and t between bases.
+        """
+
+        self.R = R
+        if t is None:
+            t = np.zeros(R.shape[0])
+        self.t = t
+        self.units = units
+
+    def __repr__(self) -> str:
+        return f"_Symmetry \n {self.R}, {self.t}, {self.units}"
+
+    # ------------- change of basis ---------
+    def to_cartesian(self, lattice: np.ndarray | ureg.Quantity) -> "_Symmetry":
+        """
+        Convert _Symmetry object to Cartesian coordinates.
+
+        Parameters
+        ----------
+        lattice : np.ndarray | ureg.Quantity
+            Direct lattice vectors (rows) in Cartesian units (e.g., Å). If
+            given as a Quantity, units are used; otherwise assumed Cartesian length
+
+        Returns
+        -------
+        Sym_new : _Symmetry
+            New _Symmetry object in Cartesian coord.
+
+        Raises
+        ------
+        ValueError
+            If the current `units` are not crystal units.
+        """
+        if self.units.dimensionality != ureg.crystal.dimensionality:
+            raise ValueError(
+                f"Only can chage to Cartesian coord from crystal units. Not {self.units} units."
+            )
+        t = ut.cryst2cartesian(self.t * self.units, lattice)
+        if isinstance(lattice, ureg.Quantity):
+            lattice = lattice.magnitude
+        cryst2cartesian = lattice.T
+        cartesian2cryst = ut.invQ(cryst2cartesian)
+        R = cryst2cartesian @ self.R @ cartesian2cryst
+        return _Symmetry(R, t.magnitude, t.units)
+
+    def to_crystal(self, lattice: np.ndarray | ureg.Quantity) -> "_Symmetry":
+        """
+        Convert _Symmetry object to crystal coordinates.
+
+        Parameters
+        ----------
+        lattice : np.ndarray | ureg.Quantity
+            Direct lattice vectors (rows) in Cartesian units (e.g., Å). If
+            given as a Quantity, units are used; otherwise assumed Cartesian length
+
+        Returns
+        -------
+        Sym_new : _Symmetry
+            New _Symmetry object in crystal coord.
+
+        Raises
+        ------
+        ValueError
+            If the current `units` are not in lenght dimnesion.
+        """
+        if self.units.dimensionality != ureg.meter.dimensionality:
+            raise ValueError(
+                f"Only can chage to crystal coord from length units. Not {self.units} units."
+            )
+        t = ut.cartesian2cryst(self.t * self.units, lattice)
+        if isinstance(lattice, ureg.Quantity):
+            lattice = lattice.magnitude
+        cryst2cartesian = lattice.T
+        cartesian2cryst = ut.invQ(cryst2cartesian)
+        R = cartesian2cryst @ self.R @ cryst2cartesian
+        return _Symmetry(R, t.magnitude, t.units)
+
+
 class _Qe_xml:
     """
     Minimal reader for Quantum ESPRESSO XML output files.
@@ -480,7 +592,7 @@ class _Qe_xml:
                 t = np.array([float(x) for x in translation.text.split()])
             else:
                 t = np.zeros(3)
-            OUT.append(SimpleNamespace(R=R, t=t, units=ureg.crystal))
+            OUT.append(_Symmetry(R=R, t=t, units=ureg.crystal))
         return OUT
 
 
