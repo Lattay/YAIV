@@ -928,6 +928,8 @@ def find_little_group(
         units = 1
         kpts = np.asarray(kpoints, dtype=float)
 
+    if kpts.ndim == 1:
+        kpts = np.asarray([kpoints], dtype=float)
     if kpts.ndim != 2 or kpts.shape[1] != 3:
         raise ValueError("kpoints must be of shape (N, 3)")
 
@@ -958,8 +960,9 @@ def find_little_group(
 
             if ok:
                 inv_ops.append(i)
-
         little_group.append(np.asarray(inv_ops, dtype=int))
+        if kpts.shape[0] == 1:
+            little_group = little_group[0]
     return little_group
 
 
@@ -1025,6 +1028,8 @@ def symmetry_orbit_kpoints(
         units = 1
         kpts = np.asarray(kpoints, dtype=float)
 
+    if kpts.ndim == 1:
+        kpts = np.asarray([kpoints], dtype=float)
     if kpts.ndim != 2 or kpts.shape[1] != 3:
         raise ValueError("kpoints must be of shape (N, 3)")
 
