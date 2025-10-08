@@ -47,8 +47,12 @@ amplitude2order_parameter(amplitudes, masses, displacements)
 cumulative_integral(X, Y)
     Compute the cumulative integral of a function defined by discrete x and y values.
 
+find_little_group(kpoints,symmetries)
+    Compute the little group for each input k-point.
+
 symmetry_orbit_kpoints(kpoints,symmetries)
-    Apply all symmetry rotations to a set of k-points (row vectors) and return the unique set.
+    Apply all symmetry rotations to a set of k-points (row vectors) and return the unique set as well
+    as the little group of the original points.
 
 Private Utilities
 -----------------
@@ -873,9 +877,95 @@ def _point_to_segment_distance(
     return np.hypot(parallel_dist, np.linalg.norm(perpendicular_vec))
 
 
+def find_little_group(
+    kpoints: np.ndarray | ureg.Quantity,
+    symmetries: list,
+    tol: float = 1e-8,
+    mod_G: bool = False,
+) -> list[np.ndarray]:
+    """
+    Compute the little group for each input k-point.
+
+    For each k (row vector), returns the indices i of symmetry operations R_i
+    that leave k invariant, using the row-vector convention k' = k @ R.
+
+    Parameters
+    ----------
+    kpoints : np.ndarray | ureg.Quantity, shape (N, 3)
+        Input k-points as row vectors. If a Quantity, units are preserved internally.
+        If `mod_G=True`, kpoints must be in crystal units (2π/crystal).
+    symmetries : list
+        List of symmetry objects, each with attribute `R` (3×3 rotation matrix).
+        Translations (if present) are ignored for k.
+    tol : float, optional
+        Numerical tolerance for invariance checks. Default 1e-8.
+    mod_G : bool, optional
+        If True, test invariance modulo reciprocal lattice vectors:
+        (k @ R) = k (mod 1). If False, test direct equality
+        (k @ R − k) = 0 within `tol`. Default is False.
+
+    Returns
+    -------
+    little_group : list[np.ndarray]
+        A list of length N. Each entry is an array of symmetry indices that
+        leave the corresponding k-point invariant (under the chosen check).
+
+    Raises
+    ------
+    ValueError
+        If `kpoints` are not shape (N, 3), or if `mod_G=True` and units are not 2π/crystal.
+
+    Notes
+    -----
+    - Row-vector convention: k' = k @ R.
+    - If `mod_G=True`, invariance is tested modulo 1 per component (crystal units).
+    """
+    # Units handling
+    if isinstance(kpoints, ureg.Quantity):
+        units = kpoints.units
+        kpts = np.asarray(kpoints.magnitude, dtype=float)
+    else:
+        units = 1
+        kpts = np.asarray(kpoints, dtype=float)
+
+    if kpts.ndim != 2 or kpts.shape[1] != 3:
+        raise ValueError("kpoints must be of shape (N, 3)")
+
+    little_group = []
+
+    for k in kpts:
+        inv_ops = []
+        # Pre-wrap reference if using mod_G
+        if mod_G:
+            if units != 1 and units != ureg("_2pi/crystal"):
+                raise ValueError(
+                    "mod_G=True requires kpoints in crystal units (2π/crystal). "
+                    "Convert your k-points before calling or set mod_G=False."
+                )
+            k_wr = k - np.floor(k + 0.5)
+
+        for i, sym in enumerate(symmetries):
+            R = np.asarray(sym.R, dtype=float)
+            kR = k @ R
+            if mod_G:
+                kR_wr = kR - np.floor(kR + 0.5)
+                d = kR_wr - k_wr
+                # modulo-1 closeness: subtract nearest integers
+                d = d - np.round(d)
+            else:
+                d = kR - k
+            ok = np.all(np.abs(d) <= tol)
+
+            if ok:
+                inv_ops.append(i)
+
+        little_group.append(np.asarray(inv_ops, dtype=int))
+    return little_group
+
+
 def symmetry_orbit_kpoints(
     kpoints: np.ndarray | ureg.Quantity,
-    symmetries=list[SimpleNamespace],
+    symmetries: list,
     tol: float = 1e-8,
     mod_G: bool = True,
 ):
@@ -883,54 +973,50 @@ def symmetry_orbit_kpoints(
     Apply all symmetry rotations to a set of k-points (row vectors) and return
     the unique set.
 
-    This function treats k-points as row vectors and multiplies them on the
-    right by the rotation matrices (i.e., k' = k @ R). It preserves the order
-    of first appearance so that identity-generated points are kept when
-    duplicates occur.
+    This treats k-points as row vectors and multiplies on the right by the
+    rotation matrices (k' = k @ R). It preserves first occurrence so identity-
+    generated points are kept when duplicates occur.
 
     Parameters
     ----------
-    kpoints : np.ndarray | pint.Quantity, shape (N, 3)
-        Input k-points as row vectors. If a Quantity, units are preserved in
-        the output. For `mod_G=True`, points are assumed to be in crystal units
-        (2π/crystal), i.e., periodic under k ≡ k + G with integer G.
+    kpoints : np.ndarray | ureg.Quantity, shape (N, 3)
+        Input k-points (rows). If a Quantity, units are preserved. For mod_G=True,
+        points are assumed in crystal units (2π/crystal).
     symmetries : list
-        List of symmetry objects. Each must provide attribute `R` (3×3 rotation
-        matrix, check `grep.symmetries`). The first element (index 0) must be the
-        identity symmetry. Any translational parts `.t` (if present) are ignored for k.
+        List of symmetry objects, each with attribute R (3×3 rotation matrix).
+        The first element must be the identity symmetry.
     tol : float, optional
-        Numerical tolerance used to detect duplicates (after rounding). Default 1e-8.
+        Numerical tolerance used for detecting duplicates (after rounding). Default 1e-8.
     mod_G : bool, optional
-        If True (default), identify k ≡ k + G via wrapping to the canonical
-        interval (-0.5, 0.5]: k -> k - floor(k + 0.5). This maps -0.5 to +0.5
-        so boundary points are handled consistently.
+        If True (default), identify k ≡ k + G via wrapping to (-0.5, 0.5]:
+        k -> k - floor(k + 0.5). This maps -0.5 to +0.5 so boundary points are
+        handled consistently.
 
     Returns
     -------
     SimpleNamespace
         - kpoints : np.ndarray | pint.Quantity, shape (M, 3)
-            Unique symmetry-expanded k-points (within `tol`), in the same units
-            as the input.
+            Unique symmetry-expanded k-points (within `tol`), same units as input.
         - sym : np.ndarray, shape (M,)
-            For each unique point, the symmetry index (into `symmetries`) of its chosen
-            representative (identity-preferred).
+            Symmetry index (into `symmetries`) of the representative kept.
         - origin : np.ndarray, shape (M,)
-            For each unique point, the original input k-point index from which the
-            representative was generated.
+            Original input k-point index from which the representative was generated.
+        - weights : np.ndarray, shape (N,)
+            Normalized weights per original k-point, computed as the fraction of orbit
+            points whose representative originated from each input k-point (sums to 1).
 
     Raises
     ------
     ValueError
-        If mod_G is True and units are not 2pi/crystal.
+        If mod_G=True and units are not 2π/crystal.
 
     Notes
     -----
-    - Vectors are treated as rows, so rotations are applied as k' = k @ R.
-    - First occurrence order is preserved when removing duplicates, thus
-      ensuring identity-generated points (symmetries[0]) are kept as representatives.
-    - If your k-points are not in crystal units, convert before calling or set
-      `mod_G=False`.
+    - Row-vector convention: k' = k @ R.
+    - First occurrence order is preserved when removing duplicates (identity wins).
+    - Little group checks use full equivalence: (k @ R) ≈ k, not k + G.
     """
+
     # Units handling
     if isinstance(kpoints, ureg.Quantity):
         units = kpoints.units
@@ -946,9 +1032,8 @@ def symmetry_orbit_kpoints(
     expanded = []
     idx_pairs = []
     for i, sym in enumerate(symmetries):
-        R = np.asarray(sym.R, dtype=float)
         for j, k in enumerate(kpts):
-            expanded.append(k @ R)  # row-vector convention
+            expanded.append(k @ sym.R)  # row-vector convention
             idx_pairs.append([i, j])
     expanded = np.asarray(expanded)  # shape (S*N, 3)
 
@@ -974,8 +1059,14 @@ def symmetry_orbit_kpoints(
     unique_kpts = expanded[keep_idx]
     idx_map = np.array([idx_pairs[i] for i in keep_idx], dtype=int)
 
+    # Compute origin weights: count how many orbit points came from each original k-point
+    N_orig = kpts.shape[0]
+    origin_counts = np.bincount(idx_map[:, 1], minlength=N_orig)
+    origin_weights = origin_counts / origin_counts.sum()
+
     return SimpleNamespace(
         kpoints=unique_kpts * units,
         sym=idx_map[:, 0],
         origin=idx_map[:, 1],
+        weights=origin_weights,
     )

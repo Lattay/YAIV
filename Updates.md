@@ -16,3 +16,4 @@ OLD - AS TEMPLATE:
 
 ### `utils`
 - Added `utils.symmetry_orbit_kpoints`, for applying all symmetry rotations to a set of k-points and returning a unique set.
+- Added `find_little_group` for finding the little group of a given set of points.

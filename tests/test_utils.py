@@ -392,7 +392,6 @@ def test_point_to_segment_distance():
     )
 
 
-# @pytest.mark.parametrize("fname, kind", FILES, ids=IDS)
 def test_symmetry_orbit_kpoints_matches_2x2x2_grid(data_dir, require):
     """
     For a QE XML with a 2x2x2 Monkhorst-Pack grid, the symmetry orbit
@@ -400,16 +399,14 @@ def test_symmetry_orbit_kpoints_matches_2x2x2_grid(data_dir, require):
     by ut.grid_generator (up to ordering).
     """
 
-
     fname = data_dir / "qe/results_scf/scf.xml"
     require(fname, f"Missing test data: {fname}")
 
     # Read symmetries and k-points from file
     syms = grep.symmetries(str(fname))
     data = spectrum.ElectronBands(str(fname))
-    data.kpoints = ut.cartesian2cryst(data.kpoints / data.alat, data.k_lattice)
-    k_ibz = data.kpoints  # Quantity in _2pi/crystal (expected)
-    print(k_ibz.units)
+    # Quantity in _2pi/crystal (expected)
+    k_ibz = ut.cartesian2cryst(data.kpoints / data.alat, data.k_lattice)
 
     # Compute symmetry orbit (modulo G)
     out = ut.symmetry_orbit_kpoints(k_ibz, syms, tol=1e-12, mod_G=True)
@@ -420,9 +417,6 @@ def test_symmetry_orbit_kpoints_matches_2x2x2_grid(data_dir, require):
 
     # Prepare actual orbit set for comparison (float crystal units)
     orbit = out.kpoints.magnitude
-    # orbit = _to_crystal_array(out.kpoints)
-    # orbit = _wrap_pos_interval(orbit)
-    # orbit = _unique_rows_with_tol(orbit, tol=1e-12)
 
     # Compare sets ignoring order: sort rows and compare shape and values
     assert grid.shape == orbit.shape
@@ -436,6 +430,7 @@ def test_symmetry_orbit_kpoints_matches_2x2x2_grid(data_dir, require):
         d = a - b
         d = d - np.round(d)
         return np.all(np.abs(d) <= tol)
+
     for kg in grid:
         assert any(
             is_close_mod1(kg, ko, tol=1e-12) for ko in orbit
@@ -444,3 +439,23 @@ def test_symmetry_orbit_kpoints_matches_2x2x2_grid(data_dir, require):
     # mod_G requires crystal units; verify unit on output
     assert hasattr(out.kpoints, "units")
     assert out.kpoints.check(ureg("_2pi/crystal"))
+
+
+def test_find_little_group_silicon(data_dir, require):
+    fname = data_dir / "qe/results_scf/scf.xml"
+    require(fname, f"Missing test data: {fname}")
+
+    # Read symmetries and k-points from file
+    syms = grep.symmetries(str(fname))
+    data = spectrum.ElectronBands(str(fname))
+    # Quantity in _2pi/crystal (expected)
+    k_ibz = ut.cartesian2cryst(data.kpoints / data.alat, data.k_lattice)
+
+    # Compute little_group or original points and points in the orbits
+    origin_lg = ut.find_little_group(k_ibz, syms, tol=1e-12)
+    orbit = ut.symmetry_orbit_kpoints(k_ibz, syms, tol=1e-12, mod_G=True)
+    orbit_lg = ut.find_little_group(orbit.kpoints, syms, tol=1e-12)
+
+    # Check that all little groups of points in the star have the same number of elements
+    for i, k in enumerate(orbit.kpoints):
+        assert len(orbit_lg[i]) == len(origin_lg[orbit.origin[i]])
