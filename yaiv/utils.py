@@ -79,6 +79,7 @@ from scipy.special import factorial, hermite
 from scipy import integrate
 
 from yaiv.defaults.config import ureg
+from yaiv.defaults.config import defaults
 
 __all__ = [
     "invQ",
@@ -524,7 +525,7 @@ def kernel_density_on_grid(
     sigma: float | ureg.Quantity | None = None,
     steps: int | None = None,
     order: int = 0,
-    cutoff_sigmas: float = 3.0,
+    cutoff_sigmas: float = defaults.cutoff_sigmas,
 ) -> SimpleNamespace:
     """
     Compute a kernel-broadened density on a grid from samples located at `x`.
@@ -557,7 +558,7 @@ def kernel_density_on_grid(
         Order of the Methfessel-Paxton kernel. Default is 0, which recovers a Gaussian kernel.
     cutoff_sigmas : float, optional
         Truncate kernel support to [-cutoff_sigmas * sigma, +cutoff_sigmas * sigma]
-        when summing contributions. Default 3.0.
+        when summing contributions. Default yaiv.defaults.config.defaults.cutoff_sigmas.
 
     Returns
     -------

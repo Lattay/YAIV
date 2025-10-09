@@ -32,6 +32,7 @@ pint.set_application_registry(ureg)
 defaults = SimpleNamespace(
     symprec=1e-5,  # Default symmetry precision
     CDW_amplitude=0.5 * ureg.ang,  # Default CDW amplitude
+    cutoff_sigmas = 4  # Truncate smearings
 )
 
 # === Plotting defaults ===

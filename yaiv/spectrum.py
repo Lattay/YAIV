@@ -71,6 +71,8 @@ from scipy import interpolate, integrate
 
 from yaiv.defaults.config import ureg
 from yaiv.defaults.config import plot_defaults as pdft
+from yaiv.defaults.config import defaults
+
 from yaiv import utils as ut
 from yaiv import grep as grep
 
@@ -290,7 +292,7 @@ class Spectrum(_Has_lattice, _Has_kpath):
         smearing: float | ureg.Quantity = None,
         steps: int = None,
         order: int = 0,
-        cutoff_sigmas: float = 3.0,
+        cutoff_sigmas: float = defaults.cutoff_sigmas,
     ):
         """
         Compute a density of states (DOS) using Gaussian or Methfessel-Paxton (MP)
@@ -315,6 +317,7 @@ class Spectrum(_Has_lattice, _Has_kpath):
             Order of the Methfessel-Paxton expansion. Default is 0, which recovers a Gaussian smearing.
         cutoff_sigmas : float, optional
             Number of smearing widths to use for truncation (e.g., 3 means ±3σ).
+            Default yaiv.defaults.defaults.cutoff_sigmas.
 
         Returns
         -------
@@ -757,7 +760,7 @@ class Density:
         sigma: float | ureg.Quantity | None = None,
         steps: int | None = None,
         order: int = 0,
-        cutoff_sigmas: float = 3.0,
+        cutoff_sigmas: float = defaults.cutoff_sigmas,
     ):
         """
         Initialize a kernel-broadened density on a grid from samples located at `x`.
@@ -790,7 +793,7 @@ class Density:
             Order of the Methfessel-Paxton kernel. Default is 0, which recovers a Gaussian kernel.
         cutoff_sigmas : float, optional
             Truncate kernel support to [-cutoff_sigmas * sigma, +cutoff_sigmas * sigma]
-            when summing contributions. Default 3.0.
+            when summing contributions. Default yaiv.defaults.config.defaults.cutoff_sigmas.
 
         Notes
         -----
