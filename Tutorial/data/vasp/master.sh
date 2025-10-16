@@ -30,6 +30,5 @@ cp vasprun.xml vasprun_BS.xml
 #########################################################################
 #
 # Cleaning
-cd RESULTS
 rm CHG* CONTCAR DOSCAR IBZKPT INCAR* KPOINTS* KPATH OSZICAR OUTCAR PCDAT POSCAR REPORT vasprun.xml WAVECAR XDATCAR EIGENVAL POTCAR
 echo "DONE"

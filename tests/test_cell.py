@@ -7,7 +7,7 @@ import spglib as spg
 from yaiv import cell
 
 FILES = [
-    "vasp/RESULTS/POSCAR",
+    "vasp/POSCAR",
     "qe/results/Si.scf.pwo",
 ]
 IDS = FILES[:]  # nicer test IDs

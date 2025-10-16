@@ -50,5 +50,6 @@ EOF
 
 echo "running the scf calculation"
 mpiexec -np $NPROCS $QE_PATH/pw.x <$NAME.scf.pwi >$NAME.scf.pwo
+cp ../tmp/$NAME.save/data-file-schema.xml ./scf.xml
 rm input_tmp.in
 echo "done"

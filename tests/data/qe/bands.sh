@@ -48,4 +48,5 @@ EOF
 
 echo "running the bands calculation"
 mpiexec -np $NPROCS $QE_PATH/pw.x <$NAME.bands.pwi >$NAME.bands.pwo
+cp ../tmp/$NAME.save/data-file-schema.xml ./bands.xml
 echo "done"
