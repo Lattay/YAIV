@@ -1,3 +1,5 @@
 List of ToDos...
 
-- A test for the plot module.
+- Tutorial for phonon.py.
+- Recover the convergence module.
+- Unify Density and get_DOS sintax...

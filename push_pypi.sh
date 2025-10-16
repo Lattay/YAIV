@@ -76,7 +76,7 @@ if [[ "$proceed" == "yes" ]]; then
     # Switch to pip branch
     git switch pip
     # Merge changes from dev into pip, excluding yaiv/dev
-    git checkout dev -- . ':!yaiv/dev'
+    git checkout dev -- . ':!yaiv/dev' ':!tests/dev'
     git status
 
     # Verify the differences (should only be yaiv/dev)
@@ -111,7 +111,19 @@ read -p "Do you want to proceed with updating the main branch from pip? (yes/no)
 if [[ "$proceed" == "yes" ]]; then
     # Update main branch from pip and push
     git switch main
-    git checkout pip -- . ':!new_test_env.sh' ':!push_pypi.sh' ':!pyproject.toml' ':!Updates.md' ':!ToDos.md'
+    git checkout pip -- . ':!new_test_env.sh' ':!push_pypi.sh' ':!pyproject.toml' ':!Updates.md' ':!ToDos.md' ':!pytest_wrap.sh'
+
+    # Verify the differences (should only be yaiv/dev)
+    echo "Differences between pip and dev branches:"
+    git diff --name-only pip
+
+    # Confirm differences before pushing
+    read -p "Are the differences as expected and you want to merge? (yes/no): " confirm_diff
+    if [[ "$confirm_diff" != "yes" ]]; then
+        echo "Differences not as expected, exiting."
+        exit 1
+    fi
+
     git commit -m "Merge pip into main — Version $VERSION"
     git merge -s ours pip -m "Merge pip into main — Version $VERSION"
     git push private main

@@ -16,5 +16,6 @@ bash project_bands.sh
 bash ph.sh
 bash matdyn.sh
 #########################################################################
+rm -r tmp
 
 echo "DONE"

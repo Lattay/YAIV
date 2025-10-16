@@ -47,6 +47,13 @@ amplitude2order_parameter(amplitudes, masses, displacements)
 cumulative_integral(X, Y)
     Compute the cumulative integral of a function defined by discrete x and y values.
 
+find_little_group(kpoints,symmetries)
+    Compute the little group for each input k-point.
+
+symmetry_orbit_kpoints(kpoints,symmetries)
+    Apply all symmetry rotations to a set of k-points (row vectors) and return the unique set as well
+    as the little group of the original points.
+
 Private Utilities
 -----------------
 _normal_dist(x, mean=0, sd=0.1, A=1)
@@ -72,6 +79,7 @@ from scipy.special import factorial, hermite
 from scipy import integrate
 
 from yaiv.defaults.config import ureg
+from yaiv.defaults.config import defaults
 
 __all__ = [
     "invQ",
@@ -259,17 +267,31 @@ def cartesian2voigt(xyz: np.ndarray | ureg.Quantity) -> np.ndarray | ureg.Quanti
     Parameters
     ----------
     xyz : np.ndarray | ureg.Quantity
-        A 3x3 symmetric tensor in Cartesian notation. Can optionally carry physical units.
+        A numpy array with last two indices being a 3x3 symmetric tensor
+        in Cartesian notation (a,b,...,3,3). Can optionally carry physical units.
 
     Returns
     -------
     np.ndarray | ureg.Quantity
-        A 1D array of length 6 in Voigt notation. If the input had units, they are preserved.
+        A (a,b,...,6) array in Voigt notation. If the input had units, they are preserved.
     """
     if isinstance(xyz, ureg.Quantity):
         units = xyz.units
         xyz = xyz.magnitude
-    voigt = np.array([xyz[0, 0], xyz[1, 1], xyz[2, 2], xyz[1, 2], xyz[0, 2], xyz[0, 1]])
+    else:
+        units = 1
+    voigt = np.array(
+        [
+            xyz[..., 0, 0],
+            xyz[..., 1, 1],
+            xyz[..., 2, 2],
+            xyz[..., 1, 2],
+            xyz[..., 0, 2],
+            xyz[..., 0, 1],
+        ]
+    )
+    # reshape: (a, b, c, d, e) -> result shape: (b, c, d, e, a)
+    voigt = np.moveaxis(voigt, (0), (-1))
     return voigt * units
 
 
@@ -284,24 +306,30 @@ def voigt2cartesian(voigt: np.ndarray | ureg.Quantity) -> np.ndarray | ureg.Quan
     Parameters
     ----------
     voigt : np.ndarray | ureg.Quantity
-        A 1D array of length 6 in Voigt notation. Can optionally carry physical units.
+        An array with last index being length 6 in Voigt notation (a,b,...,6).
+        If the input had units, they are preserved.
 
     Returns
     -------
     np.ndarray | ureg.Quantity
-        A 3x3 symmetric tensor in Cartesian matrix notation. If the input had units, they are preserved.
+        A (a,b,...,3,3) symmetric tensor in Cartesian matrix notation.
+        If the input had units, they are preserved.
     """
     units = 1
     if isinstance(voigt, ureg.Quantity):
         units = voigt.units
         voigt = voigt.magnitude
+    else:
+        units = 1
     xyz = np.array(
         [
-            [voigt[0], voigt[5], voigt[4]],
-            [voigt[5], voigt[1], voigt[3]],
-            [voigt[4], voigt[3], voigt[2]],
+            [voigt[..., 0], voigt[..., 5], voigt[..., 4]],
+            [voigt[..., 5], voigt[..., 1], voigt[..., 3]],
+            [voigt[..., 4], voigt[..., 3], voigt[..., 2]],
         ]
     )
+    # reshape: (a, b, c, d, e) -> result shape: (c, d, e, a, b)
+    xyz = np.moveaxis(xyz, (0, 1), (-2, -1))
     return xyz * units
 
 
@@ -517,7 +545,7 @@ def kernel_density_on_grid(
     sigma: float | ureg.Quantity | None = None,
     steps: int | None = None,
     order: int = 0,
-    cutoff_sigmas: float = 3.0,
+    cutoff_sigmas: float = defaults.cutoff_sigmas,
 ) -> SimpleNamespace:
     """
     Compute a kernel-broadened density on a grid from samples located at `x`.
@@ -550,7 +578,7 @@ def kernel_density_on_grid(
         Order of the Methfessel-Paxton kernel. Default is 0, which recovers a Gaussian kernel.
     cutoff_sigmas : float, optional
         Truncate kernel support to [-cutoff_sigmas * sigma, +cutoff_sigmas * sigma]
-        when summing contributions. Default 3.0.
+        when summing contributions. Default yaiv.defaults.config.defaults.cutoff_sigmas.
 
     Returns
     -------
@@ -868,3 +896,202 @@ def _point_to_segment_distance(
     perpendicular_vec = np.cross(point - endpoint_a, segment_dir)
 
     return np.hypot(parallel_dist, np.linalg.norm(perpendicular_vec))
+
+
+def find_little_group(
+    kpoints: np.ndarray | ureg.Quantity,
+    symmetries: list,
+    tol: float = 1e-8,
+    mod_G: bool = False,
+) -> list[np.ndarray]:
+    """
+    Compute the little group for each input k-point.
+
+    For each k (row vector), returns the indices i of symmetry operations R_i
+    that leave k invariant, using the row-vector convention k' = k @ R.
+
+    Parameters
+    ----------
+    kpoints : np.ndarray | ureg.Quantity, shape (N, 3)
+        Input k-points as row vectors. If a Quantity, units are preserved internally.
+        If `mod_G=True`, kpoints must be in crystal units (2π/crystal).
+    symmetries : list
+        List of symmetry objects, each with attribute `R` (3×3 rotation matrix).
+        Translations (if present) are ignored for k.
+    tol : float, optional
+        Numerical tolerance for invariance checks. Default 1e-8.
+    mod_G : bool, optional
+        If True, test invariance modulo reciprocal lattice vectors:
+        (k @ R) = k (mod 1). If False, test direct equality
+        (k @ R − k) = 0 within `tol`. Default is False.
+
+    Returns
+    -------
+    little_group : list[np.ndarray]
+        A list of length N. Each entry is an array of symmetry indices that
+        leave the corresponding k-point invariant (under the chosen check).
+
+    Raises
+    ------
+    ValueError
+        If `kpoints` are not shape (N, 3), or if `mod_G=True` and units are not 2π/crystal.
+
+    Notes
+    -----
+    - Row-vector convention: k' = k @ R.
+    - If `mod_G=True`, invariance is tested modulo 1 per component (crystal units).
+    """
+    # Units handling
+    if isinstance(kpoints, ureg.Quantity):
+        units = kpoints.units
+        kpts = np.asarray(kpoints.magnitude, dtype=float)
+    else:
+        units = 1
+        kpts = np.asarray(kpoints, dtype=float)
+
+    if kpts.ndim == 1:
+        kpts = np.asarray([kpoints], dtype=float)
+    if kpts.ndim != 2 or kpts.shape[1] != 3:
+        raise ValueError("kpoints must be of shape (N, 3)")
+
+    little_group = []
+
+    for k in kpts:
+        inv_ops = []
+        # Pre-wrap reference if using mod_G
+        if mod_G:
+            if units != 1 and units != ureg("_2pi/crystal"):
+                raise ValueError(
+                    "mod_G=True requires kpoints in crystal units (2π/crystal). "
+                    "Convert your k-points before calling or set mod_G=False."
+                )
+            k_wr = k - np.floor(k + 0.5)
+
+        for i, sym in enumerate(symmetries):
+            R = np.asarray(sym.R, dtype=float)
+            kR = k @ R
+            if mod_G:
+                kR_wr = kR - np.floor(kR + 0.5)
+                d = kR_wr - k_wr
+                # modulo-1 closeness: subtract nearest integers
+                d = d - np.round(d)
+            else:
+                d = kR - k
+            ok = np.all(np.abs(d) <= tol)
+
+            if ok:
+                inv_ops.append(i)
+        little_group.append(np.asarray(inv_ops, dtype=int))
+    return little_group
+
+
+def symmetry_orbit_kpoints(
+    kpoints: np.ndarray | ureg.Quantity,
+    symmetries: list,
+    tol: float = 1e-8,
+    mod_G: bool = True,
+) -> SimpleNamespace:
+    """
+    Apply all symmetry rotations to a set of k-points (row vectors) and return
+    the unique set.
+
+    This treats k-points as row vectors and multiplies on the right by the
+    rotation matrices (k' = k @ R). It preserves first occurrence so identity-
+    generated points are kept when duplicates occur.
+
+    Parameters
+    ----------
+    kpoints : np.ndarray | ureg.Quantity, shape (N, 3)
+        Input k-points (rows). If a Quantity, units are preserved. For mod_G=True,
+        points are assumed in crystal units (2π/crystal).
+    symmetries : list
+        List of symmetry objects, each with attribute R (3×3 rotation matrix).
+        The first element must be the identity symmetry.
+    tol : float, optional
+        Numerical tolerance used for detecting duplicates (after rounding). Default 1e-8.
+    mod_G : bool, optional
+        If True (default), identify k ≡ k + G via wrapping to (-0.5, 0.5]:
+        k -> k - floor(k + 0.5). This maps -0.5 to +0.5 so boundary points are
+        handled consistently.
+
+    Returns
+    -------
+    orbit : SimpleNamespace
+        - kpoints : np.ndarray | pint.Quantity, shape (M, 3)
+            Unique symmetry-expanded k-points (within `tol`), same units as input.
+        - sym : np.ndarray, shape (M,)
+            Symmetry index (into `symmetries`) of the representative kept.
+        - origin : np.ndarray, shape (M,)
+            Original input k-point index from which the representative was generated.
+        - weights : np.ndarray, shape (N,)
+            Normalized weights per original k-point, computed as the fraction of orbit
+            points whose representative originated from each input k-point (sums to 1).
+
+    Raises
+    ------
+    ValueError
+        If mod_G=True and units are not 2π/crystal.
+
+    Notes
+    -----
+    - Row-vector convention: k' = k @ R.
+    - First occurrence order is preserved when removing duplicates (identity wins).
+    - Little group checks use full equivalence: (k @ R) ≈ k, not k + G.
+    """
+
+    # Units handling
+    if isinstance(kpoints, ureg.Quantity):
+        units = kpoints.units
+        kpts = np.asarray(kpoints.magnitude, dtype=float)
+    else:
+        units = 1
+        kpts = np.asarray(kpoints, dtype=float)
+
+    if kpts.ndim == 1:
+        kpts = np.asarray([kpoints], dtype=float)
+    if kpts.ndim != 2 or kpts.shape[1] != 3:
+        raise ValueError("kpoints must be of shape (N, 3)")
+
+    # Expand via symmetries (identity first)
+    expanded = []
+    idx_pairs = []
+    for i, sym in enumerate(symmetries):
+        for j, k in enumerate(kpts):
+            expanded.append(k @ sym.R)  # row-vector convention
+            idx_pairs.append([i, j])
+    expanded = np.asarray(expanded)  # shape (S*N, 3)
+
+    # Order-preserving uniqueness via rounding to tolerance
+    rounded = np.round(expanded / tol) * tol
+
+    # Wrap modulo reciprocal lattice vectors: (-0.5, 0.5]
+    if mod_G:
+        if units != 1 and units != ureg("_2pi/crystal"):
+            raise ValueError(
+                "mod_G=True requires kpoints in crystal units (2π/crystal). "
+                "Convert your k-points before calling or set mod_G=False."
+            )
+        rounded = rounded - np.floor(rounded + 0.5)
+
+    seen = set()
+    keep_idx = []
+    for idx, row in enumerate(rounded):
+        key = tuple(row)
+        if key not in seen:
+            seen.add(key)
+            keep_idx.append(idx)
+
+    unique_kpts = expanded[keep_idx]
+    idx_map = np.array([idx_pairs[i] for i in keep_idx], dtype=int)
+
+    # Compute origin weights: count how many orbit points came from each original k-point
+    N_orig = kpts.shape[0]
+    origin_counts = np.bincount(idx_map[:, 1], minlength=N_orig)
+    origin_weights = origin_counts / origin_counts.sum()
+
+    return SimpleNamespace(
+        kpoints=unique_kpts * units,
+        sym=idx_map[:, 0],
+        origin=idx_map[:, 1],
+        weights=origin_weights,
+    )

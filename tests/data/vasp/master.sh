@@ -28,4 +28,7 @@ cp ./OUTCAR ./OUTCAR_BS
 cp ./EIGENVAL ./EIGENVAL_BS
 cp vasprun.xml vasprun_BS.xml
 #########################################################################
+#
+# Cleaning
+rm CHG* CONTCAR DOSCAR IBZKPT INCAR* KPOINTS* KPATH OSZICAR OUTCAR PCDAT POSCAR REPORT vasprun.xml WAVECAR XDATCAR EIGENVAL POTCAR
 echo "DONE"
