@@ -112,9 +112,10 @@ if [[ "$proceed" == "yes" ]]; then
     # Update main branch from pip and push
     git switch main
     git checkout pip -- . ':!new_test_env.sh' ':!push_pypi.sh' ':!pyproject.toml' ':!Updates.md' ':!ToDos.md' ':!pytest_wrap.sh'
+    git status
 
     # Verify the differences (should only be yaiv/dev)
-    echo "Differences between pip and dev branches:"
+    echo "Differences between main and pip branches:"
     git diff --name-only pip
 
     # Confirm differences before pushing
