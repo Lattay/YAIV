@@ -267,17 +267,31 @@ def cartesian2voigt(xyz: np.ndarray | ureg.Quantity) -> np.ndarray | ureg.Quanti
     Parameters
     ----------
     xyz : np.ndarray | ureg.Quantity
-        A 3x3 symmetric tensor in Cartesian notation. Can optionally carry physical units.
+        A numpy array with last two indices being a 3x3 symmetric tensor
+        in Cartesian notation (a,b,...,3,3). Can optionally carry physical units.
 
     Returns
     -------
     np.ndarray | ureg.Quantity
-        A 1D array of length 6 in Voigt notation. If the input had units, they are preserved.
+        A (a,b,...,6) array in Voigt notation. If the input had units, they are preserved.
     """
     if isinstance(xyz, ureg.Quantity):
         units = xyz.units
         xyz = xyz.magnitude
-    voigt = np.array([xyz[0, 0], xyz[1, 1], xyz[2, 2], xyz[1, 2], xyz[0, 2], xyz[0, 1]])
+    else:
+        units = 1
+    voigt = np.array(
+        [
+            xyz[..., 0, 0],
+            xyz[..., 1, 1],
+            xyz[..., 2, 2],
+            xyz[..., 1, 2],
+            xyz[..., 0, 2],
+            xyz[..., 0, 1],
+        ]
+    )
+    # reshape: (a, b, c, d, e) -> result shape: (b, c, d, e, a)
+    voigt = np.moveaxis(voigt, (0), (-1))
     return voigt * units
 
 
@@ -292,24 +306,30 @@ def voigt2cartesian(voigt: np.ndarray | ureg.Quantity) -> np.ndarray | ureg.Quan
     Parameters
     ----------
     voigt : np.ndarray | ureg.Quantity
-        A 1D array of length 6 in Voigt notation. Can optionally carry physical units.
+        An array with last index being length 6 in Voigt notation (a,b,...,6).
+        If the input had units, they are preserved.
 
     Returns
     -------
     np.ndarray | ureg.Quantity
-        A 3x3 symmetric tensor in Cartesian matrix notation. If the input had units, they are preserved.
+        A (a,b,...,3,3) symmetric tensor in Cartesian matrix notation.
+        If the input had units, they are preserved.
     """
     units = 1
     if isinstance(voigt, ureg.Quantity):
         units = voigt.units
         voigt = voigt.magnitude
+    else:
+        units = 1
     xyz = np.array(
         [
-            [voigt[0], voigt[5], voigt[4]],
-            [voigt[5], voigt[1], voigt[3]],
-            [voigt[4], voigt[3], voigt[2]],
+            [voigt[..., 0], voigt[..., 5], voigt[..., 4]],
+            [voigt[..., 5], voigt[..., 1], voigt[..., 3]],
+            [voigt[..., 4], voigt[..., 3], voigt[..., 2]],
         ]
     )
+    # reshape: (a, b, c, d, e) -> result shape: (c, d, e, a, b)
+    xyz = np.moveaxis(xyz, (0, 1), (-2, -1))
     return xyz * units
 
 
