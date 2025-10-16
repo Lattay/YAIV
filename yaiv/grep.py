@@ -741,7 +741,7 @@ def lattice(file: str, alat: bool = False) -> ureg.Quantity:
             return lattice * ureg.angstrom
 
 
-def fermi(file: str) -> float:
+def fermi(file: str) -> ureg.Quantity:
     """
     Greps the Fermi energy from a variety of filetypes.
 
@@ -752,7 +752,7 @@ def fermi(file: str) -> float:
 
     Returns
     -------
-    E_f : float
+    E_f : ureg.Quantity
         Fermi energy with attached units (ureg.Quantity).
 
     Raises
@@ -873,7 +873,7 @@ def total_energy(file: str, decomposition: bool = False) -> float | SimpleNamesp
     return energy
 
 
-def stress_tensor(file: str) -> np.ndarray:
+def stress_tensor(file: str) -> ureg.Quantity:
     """
     Greps the total stress tensor.
 
@@ -884,8 +884,8 @@ def stress_tensor(file: str) -> np.ndarray:
 
     Returns
     -------
-    stress : np.ndarray
-        Stress tensor.
+    stress : ureg.Quantity
+        Stress tensor with attached units.
 
     Raises
     ------
