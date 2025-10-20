@@ -226,6 +226,26 @@ class _OrbitalProjectionContainer:
         """
         self._data[(ion, l, m, M)] = matrix
 
+    def add_qe(self, ion: int, l: int, j: float, mj: float, matrix: np.ndarray):
+        """
+        Store a projection matrix for a specific orbital channel.
+
+        Parameters
+        ----------
+        ion : int
+            Index of the ion the projection refers to.
+        l : int
+            Orbital angular momentum quantum number (e.g. 0 = s, 1 = p).
+        m : int
+            Magnetic quantum number (e.g. -l to +l).
+        M : int
+            Magnetization, with `0` being the total (absolute) magnetizatioon and `1,2,3`
+            corresponding to `x,y,z` directions.
+        matrix : np.ndarray
+            Projection matrix (k-points x bands).
+        """
+        self._data[(ion, l, j, mj)] = matrix
+
     def __repr__(self) -> str:
         keys = np.array(tuple(self._data.keys()), dtype=int)
         ions = np.max(keys[:, 0]) + 1
@@ -1135,7 +1155,77 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
             Klat = ut.reciprocal_basis(lat).magnitude
             KPOINTS = ut.cartesian2cryst(KPOINTS, Klat) * (ureg._2pi / ureg.crystal)
             ENERGIES *= ureg("eV")
-
+        elif filetype == "qe_proj_out":
+            print("In development")
+            STATES, PROJECTIONS = [], []
+            for line in lines:
+                if "natomwfc" in line:
+                    num_states = int(line.split()[-1])
+                if "nbnd" in line:
+                    num_bands = int(line.split()[-1])
+                if "nkstot" in line:
+                    num_points = int(line.split()[-1])
+                # Scrape STATES info
+                if "state #" in line:
+                    l = line.split()
+                    # atom, l, j, mj, wfc
+                    state = [
+                        int(l[4]) - 1,
+                        int(l[9][3:]),
+                        float(l[10][2:]),
+                        float(l[-1].split("=")[-1][:-1]),
+                        int(l[8]),
+                    ]
+                    STATES = STATES + [state]
+                if "k =" in line:
+                    k = [float(x) for x in line.split()[2:]]
+                    KPOINTS.append(k)
+                elif "eV ===" in line:
+                    energy = float(line.split()[-3])
+                    E.append(energy)
+                    P = np.zeros(num_states)
+                    if len(E) == num_bands:
+                        ENERGIES.append(E)
+                        E = []
+                elif "*[#" in line:
+                    l = line.split("=")[-1].split("]")[:-1]
+                    for x in l:
+                        split = x.split("*[#")
+                        proj = float(split[0])
+                        index = int(split[1]) - 1
+                        P[index] = proj
+                if "|psi|" in line:
+                    PROJ.append(P)
+                    if len(PROJ) == num_bands:
+                        PROJECTIONS.append(PROJ)
+                        PROJ = []
+            KPOINTS = np.array(KPOINTS) * (ureg._2pi / ureg.alat)
+            ENERGIES *= ureg("eV")
+            # Save projections into the proper container
+            PROJ = np.array(PROJECTIONS)
+            STATES = np.array(STATES)
+            PROJECTIONS = _OrbitalProjectionContainer()
+            N = 0
+            for i in range(int(STATES[-1, 0]) + 1):  # atom
+                subset1 = STATES[STATES[:, 0] == i]
+                L = set(subset1[:, 1])
+                for l in L:
+                    subset2 = subset1[subset1[:, 1] == l]
+                    J = set(subset2[:, 2])
+                    for j in J:
+                        subset3 = subset2[subset2[:, 2] == j]
+                        Mj = set(subset3[:, 3])
+                        for mj in Mj:
+                            subset4 = subset3[subset3[:, 3] == j]
+                            WFC = set(subset4[:, 4])
+                            for wfc in WFC:
+                                #PROJ[:,:,k]
+                                N = N + 1
+           if N!=len(STATES):
+               #RAISE SOME SORT OF ERROR
+               pass
+            print(N)
+            print(len(STATES))
         elif filetype == "eigenval":
             for i, line in enumerate(lines):
                 l = line.split()
@@ -1597,3 +1687,4 @@ def symmetries(file: str) -> list[SimpleNamespace]:
     else:
         raise NotImplementedError("Unsupported filetype")
     return symmetries
+error: cannot format -: unindent does not match any outer indentation level (<tokenize>, line 1223)
