@@ -1,0 +1,8 @@
+&PROJWFC
+  prefix='Si',
+  outdir='/u/51/gutierm2/unix/Software/YAIV/yaiv/dev/Tutorial/data/qe/tmp',
+  ngauss=0, degauss=0.001
+  kresolveddos=.true.
+  filpdos='pdos.dat'
+  filproj='proj.dat'
+/
