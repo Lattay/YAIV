@@ -13,6 +13,7 @@ OLD - AS TEMPLATE:
 
 ### `grep`
 - Added `grep.symmetires`, currently only supporting QE xml files.
+- Expanded `grep.kpointsEnergies` to grep projection over orbitals from Quantum Espresso's `projwfc.x`
 
 ### `utils`
 - Added `utils.symmetry_orbit_kpoints`, for applying all symmetry rotations to a set of k-points and returning a unique set.
