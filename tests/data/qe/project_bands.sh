@@ -24,5 +24,7 @@ EOF
 
 echo "running the projection calculation"
 mpiexec -np $NPROCS $QE_PATH/projwfc.x <$NAME.proj.pwi >$NAME.proj.pwo
+rm pdos.data*
+rm proj.dat*
 rm input_tmp.in
 echo "done"
