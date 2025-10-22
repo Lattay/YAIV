@@ -656,14 +656,16 @@ def kernel_density(
 
     # Build callable
     def density_func(
-        X, cutoff_sigmas=None, sigma=None
+        X: float | np.ndarray | ureg.Quantity,
+        cutoff_sigmas: float = None,
+        sigma: float | ureg.Quantity = None,
     ) -> float | np.ndarray | ureg.Quantity:
         """
         Evaluate density at points X.
 
         Parameters
         ----------
-        X : array-like | pint.Quantity
+        X : float | np.array | pint.Quantity
             Evaluation points (same units as x).
         cutoff_sigmas : float, optional
             Cutoff in multiples of sigma; defaults to `default_cutoff_sigmas`
@@ -695,9 +697,7 @@ def kernel_density(
             sigma = default_sigma
         elif x_units != 1:
             sigma = sigma.to(x_units).magnitude
-        cutoff = (
-            default_cutoff_sigmas if cutoff_sigmas is None else float(cutoff_sigmas)
-        )
+        cutoff = default_cutoff_sigmas if cutoff_sigmas is None else cutoff_sigmas
 
         # Accumulate contributions
         if len(X.shape) == 0:
