@@ -38,7 +38,10 @@ methpax_delta(x, mean=0.0, smearing=0.1, order=1, A=1.0)
 analyze_distribution(x, y)
     Computes the mean, std, skewness, kurtosis and normalization of a distribution defined over `X`.
 
-def kernel_density_on_grid(x,values)
+kernel_density(x, values)
+    Build a callable density(X) that returns the kernel-broadened density evaluated at arbitrary positions X.
+
+kernel_density_on_grid(x, values)
     Compute a kernel-broadened density on a grid from samples located at `x`.
 
 amplitude2order_parameter(amplitudes, masses, displacements)
@@ -91,6 +94,7 @@ __all__ = [
     "grid_generator",
     "methpax_delta",
     "analyze_distribution",
+    "kernel_density",
     "kernel_density_on_grid",
     "amplitude2order_parameter",
     "cumulative_integral",
@@ -536,6 +540,199 @@ def analyze_distribution(X, Y):
     )
 
 
+def kernel_density(
+    x: np.ndarray | ureg.Quantity,
+    values: np.ndarray | ureg.Quantity = None,
+    weights: np.ndarray | None = None,
+    default_sigma: float | ureg.Quantity | None = None,
+    default_cutoff_sigmas: float = defaults.cutoff_sigmas,
+    order: int = 0,
+) -> callable:
+    """
+    Build a callable density(X, cutoff_sigmas=None) that returns the kernel-broadened
+    density evaluated at arbitrary positions X.
+
+    This implements a DOS-like convolution:
+        density(X) = sum_i values_i * K_sigma(X - x_i) * w_k(i)
+    where K is either a Gaussian (order=0) or a Methfessel–Paxton kernel (order>=0).
+
+    Parameters
+    ----------
+    x : np.ndarray | pint.Quantity, shape (nk, nb)
+        Sample locations (e.g., energies). If unitful, `default_sigma` must be compatible.
+    values : np.ndarray | pint.Quantity, optional, shape (nk, nb)
+        Amplitudes per sample. Defaults to ones giving a DOS like quantity.
+    weights : np.ndarray, optional, shape (nk,)
+        k-point weights (sum to 1). Defaults to uniform weights 1/nk.
+    default_sigma : float | pint.Quantity, optional
+        Default kernel width of the returned function. Defaults to ((x.max-x.min)/ 200). (smearing)
+    default_cutoff_sigmas : float, optional
+        Default cutoff in units of sigma used when density(X) is called without an explicit cutoff.
+        Defaults to yaiv.defaults.config.defaults.cutoff_sigmas.
+    order : int, optional
+        Kernel type: 0=Gaussian; >0=Methfessel–Paxton order.
+
+    Returns
+    -------
+    func : callable
+        density(X, cutoff_sigmas=None, sigma=None) → array/Quantity. If cutoff_sigmas is None,
+        uses `default_cutoff_sigmas`.
+
+    Raises
+    ------
+    ValueError
+        If shapes are inconsistent (e.g., weights length not equal to nk, or values shape
+        does not match `x`).
+
+    Notes
+    -----
+    - Units: output has units (values units)/(x units).
+    - The callable supports arrays for X and uses the preprocessed (sorted) samples.
+    - To change sigma at call time, pass it as a Quantity or float compatible with x units.
+    """
+    # Default DOS
+    if values is None:
+        values = np.ones_like(x)
+
+    # Units consistency
+    quantities = [x, default_sigma]
+    names = ["x", "default_sigma"]
+    _check_unit_consistency(quantities, names)
+
+    # Units normalization
+    if isinstance(x, ureg.Quantity):
+        x_units = x.units
+        x = np.asarray(x.magnitude)
+        default_sigma = (
+            default_sigma.to(x_units).magnitude
+            if default_sigma is not None
+            else default_sigma
+        )
+    else:
+        x_units = 1
+        x = np.asarray(x)
+        default_sigma = float(default_sigma) if default_sigma is not None else None
+
+    if isinstance(values, ureg.Quantity):
+        val_units = values.units
+        val = np.asarray(values.magnitude)
+    else:
+        val_units = 1
+        val = np.asarray(values)
+
+    # Shapes/checks
+    nk = x.shape[0]
+    if values.shape != x.shape:
+        raise ValueError("`values` and `x` must have the same shape (nk, nb).")
+    if weights is None:
+        w = np.ones(nk, dtype=float) / nk
+    else:
+        w = np.asarray(weights, dtype=float)
+    if w.shape[0] != x.shape[0]:
+        raise ValueError(
+            "`weights` must have shape (nk,) matching the number of k-points."
+        )
+
+    # Flatten, align, sort by x for efficient search
+    x_flat = x.flatten()
+    v_flat = val.flatten()
+    w_flat = np.repeat(w, int(len(x_flat) / nk))
+
+    # Sort by x for efficient windowing with searchsorted
+    sort_idx = np.argsort(x_flat)
+    x_flat = x_flat[sort_idx]
+    v_flat = v_flat[sort_idx]
+    w_flat = w_flat[sort_idx]
+
+    # Default sigma
+    if default_sigma is None:
+        default_sigma = (x_flat[-1] - x_flat[0]) / 200
+
+    # Kernel chooser
+    def kernel(xloc, X, sig):
+        if order == 0:
+            return _normal_dist(xloc, mean=X, sd=sig)
+        return methpax_delta(xloc, mean=X, smearing=sig, order=order)
+
+    # Build callable
+    def density_func(
+        X, cutoff_sigmas=None, sigma=None
+    ) -> float | np.ndarray | ureg.Quantity:
+        """
+        Evaluate density at points X.
+
+        Parameters
+        ----------
+        X : array-like | pint.Quantity
+            Evaluation points (same units as x).
+        cutoff_sigmas : float, optional
+            Cutoff in multiples of sigma; defaults to `default_cutoff_sigmas`
+            used in the definition.
+        sigma : float | pint.Quantity, optional
+            Override kernel width at call time.
+
+        Returns
+        -------
+        density : float | np.ndarray | pint.Quantity
+            Computed density at X. Units are (values units) / (x units).
+
+        Raises
+        ------
+        TypeError
+            If unit consistency is violated among unitful inputs.
+        """
+        # Units for X and sigma at call
+        if isinstance(X, ureg.Quantity):
+            if X.units != x_units:
+                X = np.asarray(X.to(x_units).magnitude)
+            else:
+                X = np.asarray(X.magnitude)
+        elif x_units != 1:
+            raise ValueError(f"X should be in dimensionality compatible with {x_units}")
+
+        # Resolve sigma and cutoff_sigmas
+        if sigma is None:
+            sigma = default_sigma
+        elif x_units != 1:
+            sigma = sigma.to(x_units).magnitude
+        cutoff = (
+            default_cutoff_sigmas if cutoff_sigmas is None else float(cutoff_sigmas)
+        )
+
+        # Accumulate contributions
+        if len(X.shape) == 0:
+            return_float = True
+            X = np.asarray([X])
+        else:
+            return_float = False
+            X = np.asarray(X)
+        out = np.zeros(X.shape, dtype=float)
+        lefts = X - cutoff * sigma
+        rights = X + cutoff * sigma
+
+        # vectorized window search
+        starts = np.searchsorted(x_flat, lefts, side="left")
+        stops = np.searchsorted(x_flat, rights, side="right")
+
+        for i, (start, stop, X0) in enumerate(zip(starts, stops, X)):
+            x_loc = x_flat[start:stop]
+            v_loc = v_flat[start:stop]
+            w_loc = w_flat[start:stop]
+            if x_loc.size == 0:
+                continue
+            K = kernel(x_loc, X0, sigma)
+            out[i] = np.sum(K * v_loc * w_loc)
+
+        # Units: (values units)/(x units)
+        OUT = out * (val_units / x_units)
+        if return_float:
+            return OUT[0]
+        else:
+            return OUT
+
+    return density_func
+
+
 def kernel_density_on_grid(
     x: np.ndarray | ureg.Quantity,
     values: np.ndarray | ureg.Quantity = None,
@@ -575,7 +772,7 @@ def kernel_density_on_grid(
     steps : int, optional
         Number of grid points. Defaults to int(4 * (window_size / sigma)), with a minimum of 128.
     order : int, optional
-        Order of the Methfessel-Paxton kernel. Default is 0, which recovers a Gaussian kernel.
+        Kernel type: 0=Gaussian; >0=Methfessel–Paxton order.
     cutoff_sigmas : float, optional
         Truncate kernel support to [-cutoff_sigmas * sigma, +cutoff_sigmas * sigma]
         when summing contributions. Default yaiv.defaults.config.defaults.cutoff_sigmas.
@@ -587,35 +784,8 @@ def kernel_density_on_grid(
             The output grid in the units of `x`.
         density : np.ndarray | ureg.Quantity
             The computed density at each grid point. Units are (values units) / (x units).
-
-    Raises
-    ------
-    ValueError
-        If shapes are inconsistent (e.g., weights length not equal to nk, or values shape
-        does not match `x`).
-    TypeError
-        If unit consistency is violated among unitful inputs.
     """
-    # Default values: DOS
-    if values is None:
-        values = np.ones_like(x)
-
-    # Shapes
-    if x.ndim != 2:
-        raise ValueError("`x` must be a 2D array of shape (nk, nb).")
-    nk, nb = x.shape
-    if values.shape != x.shape:
-        raise ValueError("`values` must have the same shape as `x` (nk, nb).")
-    if weights is None:
-        w = np.ones(nk, dtype=float) / nk
-    else:
-        w = np.asarray(weights, dtype=float)
-    if w.shape[0] != nk:
-        raise ValueError(
-            "`weights` must have shape (nk,) matching the number of k-points."
-        )
-
-    # Handle units
+    # Units consistency for x, center, x_window, sigma
     quantities = [x, center, x_window, sigma]
     names = ["x", "center", "x_window", "sigma"]
     _check_unit_consistency(quantities, names)
@@ -636,8 +806,6 @@ def kernel_density_on_grid(
         val_units = 1
 
     # Determine computing center, window, sigma and steps
-    x_min = x.min()
-    x_max = x.max()
     center = 0 if center is None else center
     if x_window is None:
         x_min = x.min()
@@ -648,7 +816,7 @@ def kernel_density_on_grid(
         x_min, x_max = np.asarray(x_window) + center
     window_size = x_max - x_min
     if sigma is None:
-        sigma = window_size / 200.0
+        sigma = window_size / 200
     if steps is None:
         # Ensure at least some reasonable resolution
         steps = max(int(4.0 * (window_size / sigma)), 128)
@@ -659,42 +827,23 @@ def kernel_density_on_grid(
 
     grid = np.linspace(x_min, x_max, steps)
 
-    # Flatten samples and align weights across bands
-    x_flat = x.flatten()
-    v_flat = values.flatten()
-    w_flat = np.repeat(w, nb)
+    # Build callable and evaluate on grid
+    density = kernel_density(
+        x,
+        values=values,
+        weights=weights,
+        order=order,
+        default_sigma=sigma,
+        default_cutoff_sigmas=cutoff_sigmas,
+    )
+    density_on_grid = (
+        density(grid) * val_units / x_units
+    )  # returns ndarray or Quantity (values/x units)
 
-    # Sort by x for efficient windowing with searchsorted
-    sort_idx = np.argsort(x_flat)
-    x_flat = x_flat[sort_idx]
-    v_flat = v_flat[sort_idx]
-    w_flat = w_flat[sort_idx]
-
-    density = np.zeros_like(grid, dtype=float)
-
-    # Loop over grid points and accumulate contributions within cutoff window
-    for i, X in enumerate(grid):
-        left = X - cutoff_sigmas * sigma
-        right = X + cutoff_sigmas * sigma
-        start = np.searchsorted(x_flat, left, side="left")
-        stop = np.searchsorted(x_flat, right, side="right")
-
-        x_loc = x_flat[start:stop]
-        v_loc = v_flat[start:stop]
-        w_loc = w_flat[start:stop]
-
-        if order == 0:
-            K = _normal_dist(x_loc, mean=X, sd=sigma)
-        else:
-            K = methpax_delta(x_loc, mean=X, smearing=sigma, order=order)
-
-        density[i] = np.sum(K * v_loc * w_loc)
-
-    # Units of the density: (values units) / (x units)
+    # Attach units to grid if needed
     grid_out = grid * x_units
-    density_out = density * val_units / x_units
 
-    return SimpleNamespace(grid=grid_out, density=density_out)
+    return SimpleNamespace(grid=grid_out, density=density_on_grid)
 
 
 def _expand_zone_border(
