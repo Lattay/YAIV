@@ -173,7 +173,7 @@ def _filetype(file: str) -> str:
             elif ("direct" in line and "directory" not in line) or "cartesian" in line:
                 filetype = "poscar"
                 break
-            elif "espresso xml" in line:
+            elif "espresso xml" in line or "espresso xsi" in line:
                 filetype = "qe_xml"
                 break
     return filetype
