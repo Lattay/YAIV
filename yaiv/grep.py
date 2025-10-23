@@ -64,7 +64,7 @@ _OrbitalProjectionContainer:
 _Symmetry:
     Container for symmetry operations.
 
-class _Qe_xml:
+_Qe_xml:
     Minimal reader for Quantum ESPRESSO XML output files.
 
 _find_dyn_file(q_cryst, results_ph_path)
