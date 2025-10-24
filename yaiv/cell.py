@@ -361,7 +361,7 @@ class Cell:
         self,
         filename: str = "espresso.pwi",
         template: str = None,
-        kpoints: tuple | list = None,
+        kgrid: tuple | list = None,
     ):
         """
         Write Quantum ESPRESSO input file using either default parameters or a template.
@@ -378,13 +378,13 @@ class Cell:
         template : str
             Optional template input file to use as a base. Only geometry-related fields
             (CELL_PARAMETERS, ATOMIC_POSITIONS, nat) are updated.
-        kpoints : list, optional
-            Desiered number of kpoints [N1,N2,N3]. Defaults to the template or `qe_defaults`.
+        kgrid : list, optional
+            Desiered number of kgrid [N1,N2,N3]. Defaults to the template or `qe_defaults`.
         """
-        # Pass a valid kpoints tuple.
-        if isinstance(kpoints, list):
-            kpts = kpoints = tuple(kpoints)
-        elif kpoints is None:
+        # Pass a valid kgrid tuple.
+        if isinstance(kgrid, list):
+            kpts = kgrid = tuple(kgrid)
+        elif kgrid is None:
             kpts = qe_defaults.kpts
 
         # Generate a basic template with ASE if not provided
@@ -458,8 +458,8 @@ class Cell:
                 output.write(line)
             elif write_kpoints == True:
                 output.write(line)
-                if kpoints is not None:
-                    output.write(' '.join(map(str, (*kpoints, 0, 0, 0))) + '\n')
+                if kgrid is not None:
+                    output.write('  '+' '.join(map(str, (*kgrid, 0, 0, 0))) + '\n')
                     write_kpoints = False
         temp.close()
         output.close()

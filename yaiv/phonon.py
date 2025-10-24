@@ -88,6 +88,7 @@ import spglib as spg
 from yaiv.defaults.config import ureg
 
 from yaiv.defaults.config import defaults
+from yaiv.defaults.config import qe_defaults
 from yaiv import utils as ut
 from yaiv import grep
 from yaiv import cell
@@ -1019,8 +1020,9 @@ class BOES:
         self,
         dest_folder: str,
         template: str = None,
-        kpoints: tuple | list = None,
+        kgrid: tuple | list = None,
         primitive: bool = False,
+        automatic_kgrid: bool = False,
         symprec: float = defaults.symprec,
     ):
         """
@@ -1032,11 +1034,15 @@ class BOES:
             Path to the folder where input files will be saved.
         template : str
             Path to a QE input file to use as a template.
-        kpoints : list, optional
-            Desiered number of kpoints [N1,N2,N3].
+        kgrid : list, optional
+            Desiered number of kgrid [N1,N2,N3].
             Defaults to the template (if given) or `qe_defaults`.
         primitive : bool, optional
             Whether to convert distorted structures to primitive cells.
+            Defaults to False.
+        automatic_kgrid : bool, optional
+            If True, it inversely scales the k-point grid with the lattice.
+            The ratio is computed from the undistorted lattice to the provided kgrid.
             Defaults to False.
         symprec : float
             Symmetry tolerance used by spglib to define the primitive cell.
@@ -1047,12 +1053,20 @@ class BOES:
             print("Folder created...")
 
         print("Generating input files...")
+        if automatic_kgrid:
+            lat=np.asarray([np.linalg.norm(x) for x in self.CDW.Cell.spglib[0]])
+            ratio=np.sum(np.asarray(kgrid)*lat)/3
         for i, structure in enumerate(self.structures):
             if primitive:
-                structure.spglib = spg.find_primitive(structure)
-                structure.atoms = cell.spglib2ase(structure.spglib, symprec=symprec)
+                structure.spglib = spg.find_primitive(structure, symprec=symprec)
+                structure.atoms = cell.spglib2ase(structure.spglib)
+            if automatic_kgrid:
+                lat=np.asarray([np.linalg.norm(x) for x in structure.spglib[0]])
+                if kgrid is None:
+                    kgrid = qe_defaults.kpts
+                kgrid = np.around(ratio/lat).astype(int)
             filename = dest_folder + "/" + str(i) + ".pwi"
-            structure.write_espresso_in(filename, template=template, kpoints=kpoints)
+            structure.write_espresso_in(filename, template=template, kgrid=kgrid)
         print("Done.")
 
     def read_energies_pwo(self, dest_folder: str, decomposition: bool = True):

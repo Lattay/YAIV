@@ -25,4 +25,5 @@ OLD - AS TEMPLATE:
 - The `write_espresso_in` method inside the `Cell` class now allows for overwritting the kpoints.
 
 ### `phonons`
-- The `save_jobs_pwi` method inside the `BOES` class now allows for overwritting the kpoints. Usefull as different BOES arising from different phonons will usually share all computational parameters except for the kpoints.
+- The `BOES.save_jobs_pwi` now allows for overwritting the kpoints. Usefull as different BOES arising from different phonons will usually share all computational parameters except for the kpoints.
+- Added automatic kgrid scaling to `BOES.save_jobs_pwi`.
