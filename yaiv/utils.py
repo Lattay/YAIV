@@ -57,6 +57,9 @@ symmetry_orbit_kpoints(kpoints,symmetries)
     Apply all symmetry rotations to a set of k-points (row vectors) and return the unique set as well
     as the little group of the original points.
 
+auto_kgrid(lattice)
+    Compute a k-grid from a target k-point spacing or target kpoints-per-reciprocal-atom (KPPRA).
+
 Private Utilities
 -----------------
 _normal_dist(x, mean=0, sd=0.1, A=1)
@@ -98,6 +101,7 @@ __all__ = [
     "kernel_density_on_grid",
     "amplitude2order_parameter",
     "cumulative_integral",
+    "auto_kgrid",
 ]
 
 
@@ -1244,3 +1248,137 @@ def symmetry_orbit_kpoints(
         origin=idx_map[:, 1],
         weights=origin_weights,
     )
+
+
+def auto_kgrid(
+    lattice: np.ndarray | ureg.Quantity,
+    delta_k: float | ureg.Quantity = 0.1 / ureg.ang,
+    n_atoms: int = None,
+    kppra: int | float = 9000,
+    force_even: bool | list[bool] = False,
+    force_odd: bool | list[bool] = False,
+    verbose: bool = False,
+) -> list[int]:
+    """
+    Suggest a Monkhorst–Pack grid [n1, n2, n3] using either:
+      1) A target reciprocal-space spacing (delta_k), or
+      2) A target KPPRA (k-points per reciprocal atom) product:
+         Nk_total × n_atoms ≈ kppra  =>  Nk_total ≈ kppra / n_atoms.
+
+    The grid is distributed proportionally to the magnitudes of the reciprocal
+    lattice vectors (to keep the spacing as isotropic as possible). Optionally,
+    each grid component can be coerced to even or odd after the estimate, either
+    globally (bool) or per direction with a 3-element list of bools.
+
+    Parameters
+    ----------
+    lattice : np.ndarray | pint.Quantity
+        Direct lattice vectors in rows. If a Quantity is given, it must carry length units
+        (e.g., angstrom). Unit handling is applied consistently to `delta_k`.  delta_k : float | pint.Quantity, optional
+        Target k-point spacing in reciprocal space, with units of [1/length]. Default is 0.1 Å⁻¹.
+        Used when `kpoints_per_atom` is None.
+    n_atoms : int | None, optional
+        Number of atoms in the cell. If provided, KPPRA mode is used, with
+        Nk_total ≈ kppra / n_atoms, instead of constant spacing.
+    kppra : int | float, optional
+        Target product Nk_total × n_atoms (k-points per reciprocal atom).
+        Default 9000. Only used when `n_atoms` is provided (KPPRA mode).
+    force_even : bool | list[bool], optional
+        Postprocessing to coerce each grid component to even. If a single bool is given, it applies to all
+        directions. If a 3-length list/tuple is given (e.g., [True, False, True]), it applies per direction.
+        Cannot be True where `force_odd` is True in the same direction.
+    force_odd : bool | list[bool], optional
+        Postprocessing to coerce each grid component to odd. Same semantics as `force_even` (bool or 3-length).
+        Cannot be True where `force_even` is True in the same direction.
+    verbose : bool, optional
+        If True, a final report is given. Default is False.
+
+    Returns
+    -------
+    kgrid : list[int]
+        Integer array [n1, n2, n3] with a minimum of 1 in each direction.
+
+    Raises
+    ------
+    TypeError
+        - If `lattice` has units but `delta_k` is unitless (or vice versa).
+        - If `lattice` units are not length units.
+        - If `kpoints_per_atom` is not None but `n_atoms` is None.
+    ValueError
+        - If `force_even` and `force_odd` are both True in any given direction.
+
+    Notes
+    -----
+    - Constant Δk (default) is physically consistent across different cells/supercells.
+    - KPPRA mode (Nk_total × n_atoms ≈ kppra) is a common consistency rule across materials datasets.
+    """
+    DIM = len(lattice)
+
+    # Helper to broadcast bool or list[bool] to a 3-length list[bool]
+    def _as_bool(x, name: str) -> list[bool]:
+        if isinstance(x, bool):
+            return [x, x, x]
+        if not isinstance(x, list):
+            raise TypeError(f"`{name}` must be a bool or a list[bool] of length {DIM}.")
+        if len(x) != DIM:
+            raise TypeError(f"`{name}` list must have length {DIM}.")
+        if not all(isinstance(v, bool) for v in x):
+            raise TypeError(f"All entries of `{name}` must be bool.")
+        return x
+
+    even = _as_bool(force_even, "force_even")
+    odd = _as_bool(force_odd, "force_odd")
+    if any(e and o for e, o in zip(even, odd)):
+        raise ValueError(
+            "`force_even` and `force_odd` cannot both be True in the same direction."
+        )
+
+    if isinstance(lattice, ureg.Quantity):
+        # Lattice must carry length units
+        if not lattice.check(ureg.meter):
+            raise TypeError(
+                "`lattice` must have length units if provided as a Quantity."
+            )
+        if not isinstance(delta_k, ureg.Quantity):
+            raise TypeError(
+                "`delta_k` must have units of 1/length when `lattice` has units."
+            )
+        # Convert delta_k to 1/(lattice units)
+        delta_k = delta_k.to(1 / lattice.units).magnitude
+        units = lattice.units
+        lattice = lattice.magnitude
+    else:
+        units = 1
+        if isinstance(delta_k, ureg.Quantity):
+            delta_k = delta_k.magnitude
+
+    if n_atoms is not None:
+        target_kpts = kppra / n_atoms
+    else:
+        target_kpts = ((2 * np.pi) ** DIM / np.linalg.det(lattice)) / delta_k**DIM
+
+    kmod = [np.linalg.norm(k) for k in reciprocal_basis(lattice).magnitude]
+    kmod = kmod / (np.prod(kmod) ** (1 / DIM))
+    kgrid = np.around(np.ones(DIM) * (target_kpts ** (1 / DIM)) * kmod).astype(int)
+    # Force k to be at least 1
+    kgrid = [int(k) if k > 0 else 1 for k in kgrid]
+
+    # Postprocessing: enforce even/odd if requested (minimal addition)
+    for i in range(DIM):
+        if even[i]:
+            if kgrid[i] % 2 != 0:
+                kgrid[i] += 1
+        elif odd[i]:
+            if kgrid[i] % 2 == 0:
+                # make odd, ensuring it stays >= 1
+                kgrid[i] = kgrid[i] + 1 if kgrid[i] >= 1 else 1
+
+    if verbose:
+        total = np.prod(kgrid)
+        Kvolume = (2 * np.pi) ** DIM / np.linalg.det(lattice)
+        delta_k = (Kvolume / total) ** (1 / DIM) * (1 / units)
+        print(f"Total number of k-points: {total}")
+        print(f"Averge Δk distance: {delta_k}")
+        if n_atoms is not None:
+            print(f"K-points per atom: {float(total)/n_atoms}")
+    return kgrid

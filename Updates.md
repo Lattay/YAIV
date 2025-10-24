@@ -20,6 +20,7 @@ OLD - AS TEMPLATE:
 - Added `find_little_group` for finding the little group of a given set of points.
 - Now `voigt2cartesian` and `cartesian2voigt` can transform full arrays.
 - Added `kernel_density` for  building a callable density(X) that returns the kernel-broadened density evaluated at arbitrary positions X.
+- Added `auto_kgrid`, which allows to comput a k-grid from a target k-point spacing or target kpoints-per-reciprocal-atom (KPPRA).
 
 ### `cell`
 - The `write_espresso_in` method inside the `Cell` class now allows for overwritting the kpoints.

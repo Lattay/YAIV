@@ -1041,8 +1041,8 @@ class BOES:
             Whether to convert distorted structures to primitive cells.
             Defaults to False.
         automatic_kgrid : bool, optional
-            If True, it inversely scales the k-point grid with the lattice.
-            The ratio is computed from the undistorted lattice to the provided kgrid.
+            If True, it inversely scales the k-point grid with the lattice. The scale is
+            computed from the volume of the undistorted crystal to the provided kgrid.
             Defaults to False.
         symprec : float
             Symmetry tolerance used by spglib to define the primitive cell.
@@ -1052,19 +1052,23 @@ class BOES:
             os.makedirs(dest_folder)
             print("Folder created...")
 
+        if kgrid is None:
+            kgrid = qe_defaults.kpts
+
         print("Generating input files...")
+        # Get the scaling factor scale = kpoints * volume
         if automatic_kgrid:
-            lat=np.asarray([np.linalg.norm(x) for x in self.CDW.Cell.spglib[0]])
-            ratio=np.sum(np.asarray(kgrid)*lat)/3
+            KPPRA = np.prod(kgrid) * len(self.CDW.Cell.spglib[1])
         for i, structure in enumerate(self.structures):
             if primitive:
                 structure.spglib = spg.find_primitive(structure, symprec=symprec)
                 structure.atoms = cell.spglib2ase(structure.spglib)
             if automatic_kgrid:
-                lat=np.asarray([np.linalg.norm(x) for x in structure.spglib[0]])
-                if kgrid is None:
-                    kgrid = qe_defaults.kpts
-                kgrid = np.around(ratio/lat).astype(int)
+                kgrid = ut.auto_kgrid(
+                    lattice=structure.spglib[0],
+                    n_atoms=len(structure.spglib[1]),
+                    kppra=KPPRA,
+                )
             filename = dest_folder + "/" + str(i) + ".pwi"
             structure.write_espresso_in(filename, template=template, kgrid=kgrid)
         print("Done.")

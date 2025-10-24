@@ -459,3 +459,47 @@ def test_find_little_group_silicon(data_dir, require):
     # Check that all little groups of points in the star have the same number of elements
     for i, k in enumerate(orbit.kpoints):
         assert len(orbit_lg[i]) == len(origin_lg[orbit.origin[i]])
+
+
+def _avg_delta_k(lattice, kgrid):
+    # Matches the average Δk definition used in verbose mode
+    if isinstance(lattice, ureg.Quantity):
+        Kvol = (2 * np.pi) ** 3 / np.linalg.det(lattice.magnitude)
+        dk = (Kvol / np.prod(kgrid)) ** (1 / 3) * (1 / lattice.units)
+        return dk
+    else:
+        Kvol = (2 * np.pi) ** 3 / np.linalg.det(lattice)
+        return (Kvol / np.prod(kgrid)) ** (1 / 3)
+
+
+def test_auto_kgrid_spacing_and_parity():
+    # Cubic 5 Å cell, target Δk = 0.1 Å^-1
+    a = 5.0 * ureg.angstrom
+    lattice = np.eye(3) * a
+    dk_target = 0.1 / ureg.angstrom
+
+    # Enforce odd in x,z and even in y
+    kgrid = ut.auto_kgrid(
+        lattice=lattice,
+        delta_k=dk_target,
+        force_odd=[True, False, True],
+        force_even=[False, True, False],
+    )
+
+    # Basic sanity
+    assert isinstance(kgrid, list) and len(kgrid) == 3
+    assert all(isinstance(ni, int) and ni >= 1 for ni in kgrid)
+
+    # Parity checks
+    assert kgrid[0] % 2 == 1  # odd
+    assert kgrid[1] % 2 == 0  # even
+    assert kgrid[2] % 2 == 1  # odd
+
+    # Achieved average Δk close to target (allow ~25% due to integer rounding/parity)
+    dk_eff = _avg_delta_k(lattice, kgrid)
+    assert dk_eff.check(ureg.angstrom**-1)
+    rel_err = (
+        abs(dk_eff.to(dk_target.units).magnitude - dk_target.magnitude)
+        / dk_target.magnitude
+    )
+    assert rel_err < 0.25
