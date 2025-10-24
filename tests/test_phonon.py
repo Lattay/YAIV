@@ -86,7 +86,7 @@ def test_cdw_from_file_and_distort(data_dir, require, rel_dir):
     require(results_dir, f"Missing results directory: {rel_dir}")
     q = np.array([0, 0, 0])
     try:
-        cdw = ph.CDW.from_file(q_cryst=q, results_ph_path=str(results_dir))
+        cdw = ph.CDW.from_files(q_cryst=q, results_ph_path=str(results_dir))
     except FileNotFoundError:
         pytest.skip(f"q={q} not found in {results_dir}")
 
@@ -107,7 +107,7 @@ def test_boes_save_load_and_line_generation(data_dir, require, tmp_path, rel_dir
     require(results_dir, f"Missing results directory: {rel_dir}")
     q = np.array([0, 0, 0])
     try:
-        cdw = ph.CDW.from_file(q_cryst=q, results_ph_path=str(results_dir))
+        cdw = ph.CDW.from_files(q_cryst=q, results_ph_path=str(results_dir))
     except FileNotFoundError:
         pytest.skip(f"q={q} not found in {results_dir}")
 

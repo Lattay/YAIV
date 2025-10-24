@@ -357,12 +357,17 @@ class Cell:
 
         return Cell(lattice, positions, elements)
 
-    def write_espresso_in(self, filename: str = "espresso.pwi", template: str = None):
+    def write_espresso_in(
+        self,
+        filename: str = "espresso.pwi",
+        template: str = None,
+        kpoints: tuple | list = None,
+    ):
         """
         Write Quantum ESPRESSO input file using either default parameters or a template.
 
         If no template is provided, writes a new input using default settings stored
-        in `qe_defaults`. If a template is provided, it replaces the structural
+        in `yaiv.defaults.config.qe_defaults`. If a template is provided, it replaces the structural
         information (cell, atomic positions, nat) in the template with those from
         `self.atoms`.
 
@@ -373,13 +378,22 @@ class Cell:
         template : str
             Optional template input file to use as a base. Only geometry-related fields
             (CELL_PARAMETERS, ATOMIC_POSITIONS, nat) are updated.
+        kpoints : list, optional
+            Desiered number of kpoints [N1,N2,N3]. Defaults to the template or `qe_defaults`.
         """
+        # Pass a valid kpoints tuple.
+        if isinstance(kpoints, list):
+            kpts = kpoints = tuple(kpoints)
+        elif kpoints is None:
+            kpts = qe_defaults.kpts
+
+        # Generate a basic template with ASE if not provided
         if template is None:
             write(
                 filename,
                 self.atoms,
                 input_data=qe_defaults.input_data,
-                kpts=qe_defaults.kpts,
+                kpts=kpts,
                 format="espresso-in",
             )
             return
@@ -411,7 +425,7 @@ class Cell:
         write_nat = True
         write_pos = True
         write_basis = True
-        K_points = False
+        write_kpoints = False
 
         temp = open(template, "r")
         output = open(filename, "w")
@@ -433,15 +447,20 @@ class Cell:
                     output.write(line)
                 write_pos = False
             elif re.search("POINTS", line, re.IGNORECASE):
-                K_points = True
+                write_kpoints = True
             elif re.search("CELL", line, re.IGNORECASE):
                 line = "CELL_PARAMETERS {angstrom}\n"
                 output.write(line)
                 for line in basis:
                     output.write(line)
-                K_points = False
-            if write_pos == True or K_points == True:
+                write_kpoints = False
+            if write_pos == True:
                 output.write(line)
+            elif write_kpoints == True:
+                output.write(line)
+                if kpoints is not None:
+                    output.write(' '.join(map(str, (*kpoints, 0, 0, 0))) + '\n')
+                    write_kpoints = False
         temp.close()
         output.close()
 

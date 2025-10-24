@@ -31,7 +31,7 @@ CDW
     Constructs and manipulates charge-density wave (CDW) distorted supercells from
     multiple q-point phonon modes.
     Provides:
-    - from_file(): Class method to initialize a `CDW` object by reading `.dyn*` files at one or more q-points.
+    - from_files(): Class method to initialize a `CDW` object by reading `.dyn*` files at one or more q-points.
     - distort_crystal(): Applies the displacement pattern of selected phonon modes to the supercell.
     - sym_analysis(): Perform a symmetry analysis of commensurate CDW distortions across a grid of order parameters.
 
@@ -473,7 +473,7 @@ class CDW:
 
     Methods
     -------
-    from_file(...)
+    from_files(...)
         Initialize a `CDW` object by reading .dyn files from a directory.
     distort_crystal(...)
         Apply a charge density wave distortion to the supercell.
@@ -518,7 +518,7 @@ class CDW:
         self.SuperCell = self.Cell.get_supercell(self._supercell.size)
 
     @classmethod
-    def from_file(cls, q_cryst, results_ph_path):
+    def from_files(cls, q_cryst, results_ph_path):
         """
         Construct a CDW object by reading .dyn files from a directory.
 
@@ -635,7 +635,8 @@ class CDW:
             Default is 0.5 Å for each mode.
 
         symprec : float, optional
-            Tolerance used by spglib to determine space group symmetry. Default is `defaults.symprec`.
+            Tolerance used by spglib to determine space group symmetry.
+            Default is `yaiv.defaults.config.defaults.symprec`.
 
         Returns
         -------
@@ -876,7 +877,8 @@ class BOES:
             Default is 0.5 Å for each mode.
 
         symprec : float, optional
-            Tolerance used by spglib to determine space group symmetry. Default is `defaults.symprec`.
+            Tolerance used by spglib to determine space group symmetry.
+            Default is `yaiv.defaults.config.defaults.symprec`.
         """
         _formatted = _format_input(
             self.CDW, grid=grid, modes=modes, amplitudes=amplitudes
@@ -944,7 +946,8 @@ class BOES:
         steps : int
             Number of interpolation steps between initial and final distortion.
         symprec : float, optional
-            Tolerance used by spglib to determine space group symmetry. Default is `defaults.symprec`.
+            Tolerance used by spglib to determine space group symmetry.
+            Default is `yaiv.defaults.config.defaults.symprec`.
 
         Notes
         -----
@@ -1016,6 +1019,7 @@ class BOES:
         self,
         dest_folder: str,
         template: str = None,
+        kpoints: tuple | list = None,
         primitive: bool = False,
         symprec: float = defaults.symprec,
     ):
@@ -1028,10 +1032,15 @@ class BOES:
             Path to the folder where input files will be saved.
         template : str
             Path to a QE input file to use as a template.
-        primitive : bool
+        kpoints : list, optional
+            Desiered number of kpoints [N1,N2,N3].
+            Defaults to the template (if given) or `qe_defaults`.
+        primitive : bool, optional
             Whether to convert distorted structures to primitive cells.
+            Defaults to False.
         symprec : float
             Symmetry tolerance used by spglib to define the primitive cell.
+            Default is `yaiv.defaults.config.defaults.symprec`.
         """
         if not os.path.exists(dest_folder):
             os.makedirs(dest_folder)
@@ -1043,7 +1052,7 @@ class BOES:
                 structure.spglib = spg.find_primitive(structure)
                 structure.atoms = cell.spglib2ase(structure.spglib, symprec=symprec)
             filename = dest_folder + "/" + str(i) + ".pwi"
-            structure.write_espresso_in(filename, template=template)
+            structure.write_espresso_in(filename, template=template, kpoints=kpoints)
         print("Done.")
 
     def read_energies_pwo(self, dest_folder: str, decomposition: bool = True):
