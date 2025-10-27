@@ -914,6 +914,8 @@ def total_energy(file: str, decomposition: bool = False) -> float | SimpleNamesp
                     U_xc = float(line.split()[3]) * ureg("Ry")
                 elif "ewald" in line:
                     U_ewald = float(line.split()[3]) * ureg("Ry")
+                elif "convergence NOT achieved" in line:
+                    raise NameError(f"Convergence not achieved in {file}")
             if decomposition and "TS" in locals():
                 energy = SimpleNamespace(
                     F=F,
