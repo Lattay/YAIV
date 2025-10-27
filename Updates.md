@@ -24,6 +24,7 @@ OLD - AS TEMPLATE:
 
 ### `cell`
 - The `write_espresso_in` method inside the `Cell` class now allows for overwritting the kpoints.
+- `Cell.print()` to write the structure in human-readable format.
 
 ### `phonons`
 - The `BOES.save_jobs_pwi` now allows for overwritting the kpoints. Usefull as different BOES arising from different phonons will usually share all computational parameters except for the kpoints.

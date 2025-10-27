@@ -24,6 +24,7 @@ Cell
     - get_wyckoff_positions(symprec=...): Group atoms by Wyckoff positions.
     - get_supercell(supercell): Return a repeated Cell object.
     - write_espresso_in(...): Write Quantum ESPRESSO input file.
+    - print(...): Write the crystal structure in a human‑readable text format.
 
 Functions
 ---------
@@ -63,6 +64,7 @@ yaiv.utils    : Utility functions for basis and vector transformations
 from types import SimpleNamespace
 import re
 import os
+import sys
 
 import numpy as np
 import spglib as spg
@@ -107,6 +109,8 @@ class Cell:
         Construct a supercell by repeating the current unit cell along each lattice direction.
     write_espresso_in(...)
         Write Quantum ESPRESSO input file using either default parameters or a template.
+    print(...)
+        Write the crystal structure in a human‑readable text format.
     """
 
     def __init__(
@@ -459,10 +463,43 @@ class Cell:
             elif write_kpoints == True:
                 output.write(line)
                 if kgrid is not None:
-                    output.write('  '+' '.join(map(str, (*kgrid, 0, 0, 0))) + '\n')
+                    output.write("  " + " ".join(map(str, (*kgrid, 0, 0, 0))) + "\n")
                     write_kpoints = False
         temp.close()
         output.close()
+
+    def print(self, filename: str = None):
+        """
+        Write the crystal structure in a human‑readable text format.
+
+        If `filename` is provided, the output is written to that file. If `filename`
+        is None, the output is printed to standard output.
+
+        Parameters
+        ----------
+        filename : str, optional
+            Path to the file to write. If None, writes to stdout.
+        """
+        # Gather data from ASE Atoms
+        cell = np.asarray(self.atoms.get_cell())
+        positions = np.asarray(self.atoms.get_scaled_positions())
+        symbols = self.atoms.get_chemical_symbols()
+
+        # Decide output stream
+        out = sys.stdout if filename is None else open(filename, "w")
+
+        try:
+            # Write CELL (Angstrom)
+            np.savetxt(out, cell, fmt="%14.9f", header="CELL (Angstrom)", comments="")
+            out.write("\n")
+
+            # Write atomic positions in crystal coordinates
+            out.write("Atomic Positions (crystal)\n")
+            for s, (x, y, z) in zip(symbols, positions):
+                out.write(f"{s:<2} {x:14.9f} {y:14.9f} {z:14.9f}\n")
+        finally:
+            if out is not sys.stdout:
+                out.close()
 
 
 def ase2spglib(crystal_ase: Atoms) -> tuple:
