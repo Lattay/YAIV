@@ -772,6 +772,8 @@ def kernel_regresion(
         k-point weights (sum to 1). Defaults to uniform weights 1/nk.
     default_sigma : float | pint.Quantity, optional
         Default kernel width ("smearing") used by returned function.
+        If not provided, it defaults to: 10 × (average spacing in x),
+        check `Notes` to see how average spacing is defined.
     default_cutoff_sigmas : float, optional
         Default cutoff in units of sigma used when f(X) is called without an explicit cutoff.
         Defaults to yaiv.defaults.config.defaults.cutoff_sigmas.
@@ -793,10 +795,18 @@ def kernel_regresion(
     -----
     - Output has the same units as `values`.
     - The density and DOS funtions are built with utils.kernel_density()
+    - The average distance in x is obtained after trimming band gaps: spacings are
+    computed from sorted x, outliers larger than 200 × the median spacing are discarded,
+    and the mean of the remaining spacings is used.
     """
     # Default sigma
     if default_sigma is None:
-        default_sigma = (np.max(x) - np.min(x)) / 200
+        flat = x.flatten()
+        flat = flat[np.argsort(flat)]
+        dist = np.diff(flat)
+        thrushold = np.median(dist) * 200
+        no_gaps = dist[np.where(dist < thrushold)[0]]
+        default_sigma = 10 * (np.sum(no_gaps) / len(no_gaps))
 
     if isinstance(x, ureg.Quantity):
         x_units = x.units
