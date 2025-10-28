@@ -41,6 +41,9 @@ analyze_distribution(x, y)
 kernel_density(x, values)
     Build a callable density(X) that returns the kernel-broadened density evaluated at arbitrary positions X.
 
+kernel_regresion(x, values)
+    Build a callable that performs 1D kernel regression (Nadaraya–Watson estimator) from samples.
+
 kernel_density_on_grid(x, values)
     Compute a kernel-broadened density on a grid from samples located at `x`.
 
@@ -98,6 +101,7 @@ __all__ = [
     "methpax_delta",
     "analyze_distribution",
     "kernel_density",
+    "kernel_regresion",
     "kernel_density_on_grid",
     "amplitude2order_parameter",
     "cumulative_integral",
@@ -608,9 +612,7 @@ def kernel_density(
         x_units = x.units
         x = np.asarray(x.magnitude)
         default_sigma = (
-            default_sigma.to(x_units).magnitude
-            if default_sigma is not None
-            else default_sigma
+            default_sigma.to(x_units).magnitude if default_sigma is not None else None
         )
     else:
         x_units = 1
@@ -695,6 +697,8 @@ def kernel_density(
                 X = np.asarray(X.magnitude)
         elif x_units != 1:
             raise ValueError(f"X should be in dimensionality compatible with {x_units}")
+        else:
+            X = np.asarray(X)
 
         # Resolve sigma and cutoff_sigmas
         if sigma is None:
@@ -735,6 +739,129 @@ def kernel_density(
             return OUT
 
     return density_func
+
+
+def kernel_regresion(
+    x: np.ndarray | ureg.Quantity,
+    values: np.ndarray | ureg.Quantity,
+    weights: np.ndarray | None = None,
+    default_sigma: float | ureg.Quantity | None = None,
+    default_cutoff_sigmas: float = defaults.cutoff_sigmas,
+    order: int = 0,
+    default_reg: float | ureg.Quantity = 1e-10,
+) -> callable:
+    """
+    Build a callable that performs 1D kernel regression (Nadaraya–Watson estimator)
+    from samples (x, values), with optional k-point weights.
+
+    The returned function evaluates
+        f(X) = density(X) / (DOS(X) + reg)
+    where:
+      - density(X) = sum_i values_i * K_sigma(X - x_i) * w_i
+      - DOS(X)     = sum_i 1         * K_sigma(X - x_i) * w_i
+      - K is Gaussian (order=0) or Methfessel–Paxton (order>0).
+      - reg is a small regularization to avoid division by ~0.
+
+    Parameters
+    ----------
+    x : np.ndarray | pint.Quantity, shape (nk, nb)
+        Sample locations (e.g., energies). If unitful, `default_sigma` must be compatible.
+    values : np.ndarray | pint.Quantity, shape (nk, nb)
+        Amplitudes per sample. Defaults to ones giving a DOS like quantity.
+    weights : np.ndarray, optional, shape (nk,)
+        k-point weights (sum to 1). Defaults to uniform weights 1/nk.
+    default_sigma : float | pint.Quantity, optional
+        Default kernel width ("smearing") used by returned function.
+    default_cutoff_sigmas : float, optional
+        Default cutoff in units of sigma used when f(X) is called without an explicit cutoff.
+        Defaults to yaiv.defaults.config.defaults.cutoff_sigmas.
+    order : int, optional
+        Kernel type: 0=Gaussian; >0=Methfessel–Paxton order.
+    default_reg : float | pint.Quantity, optional
+        Default regularization added to the denominator DOS to prevent division
+        by zero. If x is unitful, `default_reg` should have units 1/x. Defaults
+        to 1e-10 (interpreted as 1/x if x has units).
+
+    Returns
+    -------
+    func : callable
+        A function f(X, cutoff_sigmas=None, sigma=None, reg=None) that evaluates
+        the kernel regression at points X. If `sigma`, `cutoff_sigmas` or `reg` are not
+        provided at call time, the defaults passed here are used.
+
+    Notes
+    -----
+    - Output has the same units as `values`.
+    - The density and DOS funtions are built with utils.kernel_density()
+    """
+    # Default sigma
+    if default_sigma is None:
+        default_sigma = (np.max(x) - np.min(x)) / 200
+
+    if isinstance(x, ureg.Quantity):
+        x_units = x.units
+    else:
+        x_units = 1
+
+    density = kernel_density(
+        x=x,
+        values=values,
+        weights=weights,
+        default_sigma=default_sigma,
+        default_cutoff_sigmas=default_cutoff_sigmas,
+        order=order,
+    )
+
+    DOS = kernel_density(
+        x=x,
+        values=np.ones_like(x),
+        weights=weights,
+        default_sigma=default_sigma,
+        default_cutoff_sigmas=default_cutoff_sigmas,
+        order=order,
+    )
+
+    # Build callable
+    def kernel_regresion_func(
+        X: float | np.ndarray | ureg.Quantity,
+        cutoff_sigmas: float = None,
+        sigma: float | ureg.Quantity = None,
+        reg: float = None,
+    ) -> float | np.ndarray | ureg.Quantity:
+        """
+        Evaluate the kernel regression f(X) = density(X)/(DOS(X) + reg).
+
+        Parameters
+        ----------
+        X : float | np.ndarray | pint.Quantity
+            Evaluation points (same units as x).
+        cutoff_sigmas : float, optional
+            Cutoff in multiples of sigma; defaults to `default_cutoff_sigmas`
+            used in the definition.
+        sigma : float | pint.Quantity, optional
+            Override kernel width at call time.
+        reg : float | pint.Quantity, optional
+            Override the regularization factor at call (units of 1/x).
+
+        Returns
+        -------
+        estimate : float | np.ndarray | pint.Quantity
+            Regression estimate f(X), with the same units as `values`.
+        """
+        # Resolve reg
+        if reg is None:
+            reg = default_reg * (1 / x_units)
+        if isinstance(reg, ureg.Quantity):
+            reg = reg.to(1 / x_units)
+        else:
+            reg *= 1 / x_units
+
+        A = density(X=X, cutoff_sigmas=cutoff_sigmas, sigma=sigma)
+        B = DOS(X=X, cutoff_sigmas=cutoff_sigmas, sigma=sigma)
+        OUT = A / (B + reg)
+        return OUT
+
+    return kernel_regresion_func
 
 
 def kernel_density_on_grid(

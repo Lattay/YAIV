@@ -308,6 +308,75 @@ def test_kernel_density_window_and_steps_defaults():
         assert out.grid.magnitude.shape == out.density.magnitude.shape
 
 
+def test_kernel_regresion_units_and_constant_recovery():
+    """
+    Output units must match `values` units, and a constant `values` should be recovered.
+    """
+    nk, nb = 3, 2
+    # x with units (e.g., eV), and constant values with another unit (e.g., ampere)
+    x = np.array([[-0.3, 0.0], [0.1, 0.2], [0.4, 0.5]]) * ureg.eV
+    values = np.full_like(x, 5.0) * ureg.ampere
+    weights = np.ones(nk) / nk
+
+    # Build regression callable
+    f = ut.kernel_regresion(
+        x=x,
+        values=values,
+        weights=weights,
+        default_sigma=0.05 * ureg.eV,
+        default_cutoff_sigmas=5.0,
+        order=0,
+    )
+
+    # Evaluate on a grid in the same x units
+    X = np.linspace(-0.4, 0.6, 201) * ureg.eV
+    y = f(X)
+
+    # Units must match values units
+    assert hasattr(y, "units")
+    assert y.check(ureg.ampere)
+
+    # For constant values, the regression output should be approximately the constant
+    assert_allclose(y.magnitude, 5.0, rtol=5e-2, atol=5e-2)
+
+
+def test_kernel_regresion_sigma_override_and_scalar_eval():
+    """
+    The returned callable should accept scalar/array inputs and allow overriding sigma at call time.
+    """
+    nk, nb = 2, 2
+    x = np.array([[0.0, 0.1], [0.3, 0.4]])  # unitless for simplicity
+    # Let values be constant so the target is easy to check
+    values = np.ones_like(x) * 2.0
+    weights = np.ones(nk) / nk
+
+    # Build callable with a default sigma
+    f = ut.kernel_regresion(
+        x=x,
+        values=values,
+        weights=weights,
+        default_sigma=0.05,
+        default_cutoff_sigmas=5.0,
+        order=0,
+    )
+
+    # Scalar evaluation
+    y0 = f(0.2)
+    # Array evaluation with an override sigma (narrower kernel)
+    X = np.array([0.05, 0.2, 0.35])
+    y1 = f(X, sigma=0.02)
+
+    # Outputs are numeric, shapes as expected
+    assert np.all(y0!=y1)
+    assert np.isscalar(y0) or getattr(y0, "shape", ()) == ()
+    assert isinstance(y1, np.ndarray)
+
+    # Since values are constant (2.0), regression output should be ~2.0
+    # (tolerate some smoothing variation)
+    assert_allclose(y0, 2.0, rtol=5e-2, atol=5e-2)
+    assert_allclose(y1, 2.0, rtol=5e-2, atol=5e-2)
+
+
 def test_expand_zone_border_shapes_and_units():
     q = np.array([[0.5, 0.0, 0.0], [0, 0, 0]]) * ureg.meter
     with pytest.raises(TypeError):
