@@ -11,6 +11,7 @@ OLD - AS TEMPLATE:
 
 ## 📦 Module-Specific Updates
 
+OLD - AS TEMPLATE:
 ### `grep`
 - Added `grep.symmetires`, currently only supporting QE xml files.
 - Expanded `grep.kpointsEnergies` to grep projection over orbitals from Quantum Espresso's `projwfc.x`
