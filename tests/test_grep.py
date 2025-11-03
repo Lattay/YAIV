@@ -24,8 +24,8 @@ SUPPORTED_FERMI = {"qe_xml", "qe_scf_out", "outcar"}
 SUPPORTED_ENERGY = {"qe_xml", "qe_scf_out", "outcar"}
 SUPPORTED_STRESS = {"qe_scf_out", "outcar"}
 SUPPORTED_KPATH = {"qe_bands_in", "matdyn_in", "kpath"}
-SUPPORTED_KPTS_E = {"qe_xml", "qe_scf_out", "outcar", "eigenval", "procar"}
-SUPPORTED_PROJ = {"procar"}
+SUPPORTED_KPTS_E = {"qe_xml", "qe_scf_out", "outcar", "eigenval", "procar", "qe_proj_out"}
+SUPPORTED_PROJ = {"procar", "qe_proj_out"}
 SUPPORTED_FREQS = {"qe_freq_out"}
 SUPPORTED_SYMS = {"qe_xml"}
 
@@ -245,7 +245,6 @@ def test_symmetries_and_symmetry_class(data_dir, require, fname, kind):
 
         # translation is a Quantity with correct units
         assert hasattr(s0, "t")
-        print(s0.units)
         assert s0.units == ureg.crystal
 
         # Check lattice and crystal conversion.
