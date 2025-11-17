@@ -11,6 +11,9 @@ OLD - AS TEMPLATE:
 
 ## 📦 Module-Specific Updates
 
+### `grep`
+- Energy decomposition of `grep.total_energy` now also works for fixed occuaption calcualtions.
+
 OLD - AS TEMPLATE:
 ### `grep`
 - Added `grep.symmetires`, currently only supporting QE xml files.

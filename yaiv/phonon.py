@@ -1095,15 +1095,16 @@ class BOES:
 
         if isinstance(energies[0], SimpleNamespace):
             units = energies[0].F.units
-            energies = SimpleNamespace(
-                F=[X.F.magnitude for X in energies] * units,
-                TS=[X.TS.magnitude for X in energies] * units,
-                U=[X.U.magnitude for X in energies] * units,
-                U_one_electron=[X.U_one_electron.magnitude for X in energies] * units,
-                U_hartree=[X.U_hartree.magnitude for X in energies] * units,
-                U_xc=[X.U_xc.magnitude for X in energies] * units,
-                U_ewald=[X.U_ewald.magnitude for X in energies] * units,
-            )
+            data = {}
+            for atr in energies[0].__dict__:
+                data = dict(
+                    data,
+                    **{
+                        atr: [X.__getattribute__(atr).magnitude for X in energies]
+                        * units
+                    },
+                )
+            energies = SimpleNamespace(**data)
         else:
             energies = [X.magnitude for X in energies] * energies[0].units
         self.energies = energies

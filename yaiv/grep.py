@@ -926,6 +926,14 @@ def total_energy(file: str, decomposition: bool = False) -> float | SimpleNamesp
                     U_xc=U_xc,
                     U_ewald=U_ewald,
                 )
+            elif decomposition and "U_h" in locals():
+                energy = SimpleNamespace(
+                    F=F,
+                    U_one_electron=U_one_electron,
+                    U_hartree=U_h,
+                    U_xc=U_xc,
+                    U_ewald=U_ewald,
+                )
             else:
                 energy = F
         elif filetype == "outcar":
