@@ -30,6 +30,7 @@ PhononBands
 Density
     General container for a scalar density defined on a 1D grid.
     Provides:
+    - from_data(): Initialize a Density object with kernel-broadening from a set of discreate data.
     - integrate(): Computes the integral of the density or finds the intagration limit
                     corresponding to certain integral value.
     - plot(): Plots the density curve with optional fill and orientation options.
