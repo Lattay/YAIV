@@ -2,7 +2,7 @@
 
 ## ✅ General Improvements
 
-- Fermi-Dirac smearing is now included as a possible smearing for all methods (along with Gaussian and Methfessel-Paxton).
+- Fermi-Dirac included as a possible smearing for all methods (along with Gaussian and Methfessel-Paxton).
 
 ---
 
@@ -16,4 +16,3 @@
 
 ### `spectrum`
 - Implement Fermi-Dirac smearing for the calculation of the Densities.
-
