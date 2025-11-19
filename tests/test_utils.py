@@ -130,19 +130,19 @@ def test_grid_generator_periodic():
     assert np.all(coords[:, 1] > -0.5 - 1e-12) and np.all(coords[:, 1] <= 0.5 + 1e-12)
 
 
-def test_methpax_delta_integrates_to_A():
+def test_methpax_kernel_delta_integrates_to_A():
     # Order 0 should integrate to A. Numerically approximate over a wide range.
     A = 1.7
     s = 0.2  # smearing
     xs = np.linspace(-5 * s, 5 * s, 2001)
     # order 0
-    ys = np.array([ut.methpax_delta(x, mean=0.0, smearing=s, order=0, A=A) for x in xs])
+    ys = np.array([ut.methpax_kernel(x, mean=0.0, smearing=s, order=0, A=A) for x in xs])
     integral = np.trapezoid(ys, xs)
     assert_allclose(
         integral, A, rtol=5e-3, atol=5e-3
     )  # loose tolerance due to finite range
     # order 1
-    ys = np.array([ut.methpax_delta(x, mean=0.0, smearing=s, order=0, A=A) for x in xs])
+    ys = np.array([ut.methpax_kernel(x, mean=0.0, smearing=s, order=0, A=A) for x in xs])
     integral = np.trapezoid(ys, xs)
     assert_allclose(
         integral, A, rtol=5e-3, atol=5e-3

@@ -32,8 +32,11 @@ voigt2cartesian(voigt)
 grid_generator(grid, periodic=False)
     Generates a uniform D-dimensional grid in either periodic or bounded mode.
 
-methpax_delta(x, mean=0.0, smearing=0.1, order=1, A=1.0)
-    Evaluates the Methfessel–Paxton delta approximation up to a given order.
+methpax_kernel(x, mean=0.0, smearing=0.1, order=1, A=1.0)
+    Evaluates the Methfessel–Paxton brodening kernel approximation to the delta function up to a given order.
+
+fermidirac_kernel(x, mean=0.0, smearing=0.1)
+    Fermi–Dirac (FD) broadening kernel.
 
 analyze_distribution(x, y)
     Computes the mean, std, skewness, kurtosis and normalization of a distribution defined over `X`.
@@ -98,7 +101,8 @@ __all__ = [
     "cartesian2voigt",
     "voigt2cartesian",
     "grid_generator",
-    "methpax_delta",
+    "methpax_kernel",
+    "fermidirac_kernel",
     "analyze_distribution",
     "kernel_density",
     "kernel_regresion",
@@ -428,11 +432,11 @@ def _normal_dist(x, mean=0, sd=0.1, A=1):
     return y
 
 
-def methpax_delta(
+def methpax_kernel(
     x: float, mean: float = 0.0, smearing: float = 0.1, order: int = 1, A: float = 1.0
 ) -> float:
     """
-    Methfessel-Paxton (MP) approximation to the delta fuction δ(x).
+    Methfessel-Paxton (MP) broadening kernel approximation to the delta fuction δ(x).
 
     The MP impulse function generalizes a Gaussian by adding Hermite polynomial
     corrections to improve convergence in electronic structure integrations.
@@ -473,6 +477,35 @@ def methpax_delta(
 
     normalization = A / smearing  # Restores scale in physical units
     return normalization * y
+
+
+def fermidirac_kernel(x: float, mean: float = 0.0, smearing: float = 0.1) -> float:
+    """
+    Fermi–Dirac (FD) broadening kernel.
+
+    This function is the (positive) derivative of the Fermi–Dirac occupation
+    with respect to energy and acts as a normalized impulse:
+        g(x; μ, s) = exp((x - μ)/s) / [ s · (1 + exp((x - μ)/s))^2 ]
+    where μ = mean and s = smearing (often k_B T in energy units).
+    It satisfies ∫ g(x; μ, s) dx = 1, and as s → 0, g → δ(x − μ).
+
+    Parameters
+    ----------
+    x : float or array-like
+        Point(s) at which to evaluate the broadening kernel.
+    mean : float, optional
+        Center μ of the kernel. Default is 0.
+    smearing : float, optional
+        Width parameter s (> 0), typically corresponding to thermal smearing
+        (e.g., k_B·T if x is in energy units). Default is 0.1.
+
+    Returns
+    -------
+    y : float
+        Fermi-Dirac kernel evaluated at x. Returns an ndarray if x is array-like.
+    """
+    exp = np.exp((x - mean) / smearing)
+    return (exp / smearing) / (exp + 1) ** 2
 
 
 def analyze_distribution(X, Y):
@@ -658,7 +691,7 @@ def kernel_density(
     def kernel(xloc, X, sig):
         if order == 0:
             return _normal_dist(xloc, mean=X, sd=sig)
-        return methpax_delta(xloc, mean=X, smearing=sig, order=order)
+        return methpax_kernel(xloc, mean=X, smearing=sig, order=order)
 
     # Build callable
     def density_func(
