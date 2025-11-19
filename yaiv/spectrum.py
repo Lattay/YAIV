@@ -295,7 +295,7 @@ class Spectrum(_Has_lattice, _Has_kpath):
         cutoff_sigmas: float = defaults.cutoff_sigmas,
     ):
         """
-        Compute a density of states (DOS) using Gaussian or Methfessel-Paxton (MP)
+        Compute a density of states (DOS) using Gaussian, Fermi-Dirac or Methfessel-Paxton (MP)
         smearing of any order.
 
         This implementation uses a MP delta function to smear each eigenvalue and
@@ -314,7 +314,8 @@ class Spectrum(_Has_lattice, _Has_kpath):
         steps : int, optional
             Number of grid points for DOS sampling. Default is 4 * (window_size/smearing).
         order : int, optional
-            Order of the Methfessel-Paxton expansion. Default is 0, which recovers a Gaussian smearing.
+            Kernel type: 0=Gaussian; >0=Methfessel–Paxton order; -1=Fermi-Dirac.
+            Default is 0, which recovers a Gaussian smearing.
         cutoff_sigmas : float, optional
             Number of smearing widths to use for truncation (e.g., 3 means ±3σ).
             Default yaiv.defaults.defaults.cutoff_sigmas.
@@ -767,7 +768,7 @@ class Density:
 
         This implements a DOS-like convolution:
             density(X) = sum_i values_i * K_sigma(X - x_i) * w_k(i)
-        where K is either a Gaussian (order=0) or a Methfessel–Paxton kernel (order>=0).
+        where K is either a Gaussian (order=0), Methfessel–Paxton (order>0) or Fermi-Dirac (order=-1).
 
         Parameters
         ----------
@@ -790,7 +791,8 @@ class Density:
         steps : int, optional
             Number of grid points. Defaults to int(4 * (window_size / sigma)), with a minimum of 128.
         order : int, optional
-            Order of the Methfessel-Paxton kernel. Default is 0, which recovers a Gaussian kernel.
+            Kernel type: 0=Gaussian; >0=Methfessel–Paxton order; -1=Fermi-Dirac.
+            Default is 0, which recovers a Gaussian smearing.
         cutoff_sigmas : float, optional
             Truncate kernel support to [-cutoff_sigmas * sigma, +cutoff_sigmas * sigma]
             when summing contributions. Default yaiv.defaults.config.defaults.cutoff_sigmas.

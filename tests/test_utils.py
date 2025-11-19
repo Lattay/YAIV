@@ -130,22 +130,38 @@ def test_grid_generator_periodic():
     assert np.all(coords[:, 1] > -0.5 - 1e-12) and np.all(coords[:, 1] <= 0.5 + 1e-12)
 
 
-def test_methpax_kernel_delta_integrates_to_A():
+def test_methpax_kernel_integrates_to_A():
     # Order 0 should integrate to A. Numerically approximate over a wide range.
     A = 1.7
     s = 0.2  # smearing
     xs = np.linspace(-5 * s, 5 * s, 2001)
     # order 0
-    ys = np.array([ut.methpax_kernel(x, mean=0.0, smearing=s, order=0, A=A) for x in xs])
+    ys = np.array(
+        [ut.methpax_kernel(x, mean=0.0, smearing=s, order=0, A=A) for x in xs]
+    )
     integral = np.trapezoid(ys, xs)
     assert_allclose(
         integral, A, rtol=5e-3, atol=5e-3
     )  # loose tolerance due to finite range
     # order 1
-    ys = np.array([ut.methpax_kernel(x, mean=0.0, smearing=s, order=0, A=A) for x in xs])
+    ys = np.array(
+        [ut.methpax_kernel(x, mean=0.0, smearing=s, order=0, A=A) for x in xs]
+    )
     integral = np.trapezoid(ys, xs)
     assert_allclose(
         integral, A, rtol=5e-3, atol=5e-3
+    )  # loose tolerance due to finite range
+
+
+def test_fermidirac_kernel_integrates_to_one():
+    # Order 0 should integrate to A. Numerically approximate over a wide range.
+    s = 0.2  # smearing
+    xs = np.linspace(-10 * s, 10 * s, 2001)
+    # order 0
+    ys = ut.fermidirac_kernel(xs, mean=0.0, smearing=s)
+    integral = np.trapezoid(ys, xs)
+    assert_allclose(
+        integral, 1, rtol=5e-3, atol=5e-3
     )  # loose tolerance due to finite range
 
 
@@ -367,7 +383,7 @@ def test_kernel_regresion_sigma_override_and_scalar_eval():
     y1 = f(X, sigma=0.02)
 
     # Outputs are numeric, shapes as expected
-    assert np.all(y0!=y1)
+    assert np.all(y0 != y1)
     assert np.isscalar(y0) or getattr(y0, "shape", ()) == ()
     assert isinstance(y1, np.ndarray)
 

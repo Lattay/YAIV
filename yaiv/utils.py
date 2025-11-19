@@ -611,7 +611,7 @@ def kernel_density(
         Default cutoff in units of sigma used when density(X) is called without an explicit cutoff.
         Defaults to yaiv.defaults.config.defaults.cutoff_sigmas.
     order : int, optional
-        Kernel type: 0=Gaussian; >0=Methfessel–Paxton order.
+        Kernel type: 0=Gaussian; >0=Methfessel–Paxton order; -1=Fermi-Dirac.
 
     Returns
     -------
@@ -691,6 +691,8 @@ def kernel_density(
     def kernel(xloc, X, sig):
         if order == 0:
             return _normal_dist(xloc, mean=X, sd=sig)
+        elif order == -1:
+            return fermidirac_kernel(xloc, mean=X, smearing=sig)
         return methpax_kernel(xloc, mean=X, smearing=sig, order=order)
 
     # Build callable
@@ -792,7 +794,7 @@ def kernel_regresion(
     where:
       - density(X) = sum_i values_i * K_sigma(X - x_i) * w_i
       - DOS(X)     = sum_i 1         * K_sigma(X - x_i) * w_i
-      - K is Gaussian (order=0) or Methfessel–Paxton (order>0).
+      - K is Gaussian (order=0), Methfessel–Paxton (order>0) or Fermi-Dirac (order=-1).
       - reg is a small regularization to avoid division by ~0.
 
     Parameters
@@ -811,7 +813,7 @@ def kernel_regresion(
         Default cutoff in units of sigma used when f(X) is called without an explicit cutoff.
         Defaults to yaiv.defaults.config.defaults.cutoff_sigmas.
     order : int, optional
-        Kernel type: 0=Gaussian; >0=Methfessel–Paxton order.
+        Kernel type: 0=Gaussian; >0=Methfessel–Paxton order; -1=Fermi-Dirac.
     default_reg : float | pint.Quantity, optional
         Default regularization added to the denominator DOS to prevent division
         by zero. If x is unitful, `default_reg` should have units 1/x. Defaults
@@ -923,7 +925,7 @@ def kernel_density_on_grid(
 
     This implements a DOS-like convolution:
         density(X) = sum_i values_i * K_sigma(X - x_i) * w_k(i)
-    where K is either a Gaussian (order=0) or a Methfessel–Paxton kernel (order>=0).
+    where K is either a Gaussian (order=0), Methfessel–Paxton (order>0) or Fermi-Dirac (order=-1).
 
     Parameters
     ----------
@@ -946,7 +948,7 @@ def kernel_density_on_grid(
     steps : int, optional
         Number of grid points. Defaults to int(4 * (window_size / sigma)), with a minimum of 128.
     order : int, optional
-        Kernel type: 0=Gaussian; >0=Methfessel–Paxton order.
+        Kernel type: 0=Gaussian; >0=Methfessel–Paxton order; -1=Fermi-Dirac.
     cutoff_sigmas : float, optional
         Truncate kernel support to [-cutoff_sigmas * sigma, +cutoff_sigmas * sigma]
         when summing contributions. Default yaiv.defaults.config.defaults.cutoff_sigmas.
