@@ -13,7 +13,14 @@ Self_consistent
     Container and utilities for self‑consistent convergence analysis.
     Provides:
     - read_data(): Recursively scan a folder for outputs and populate convergence data.
+    - save_as(): Save the entire Self_consistent object in a .pkl file.
+    - from_pkl(): Load a Self_consistent object from a .pkl file.
     - plot(): Plot quantities agains computational parameters for checking convergence.
+    - _Analyze:
+        Analysis helper for generating multi-panel convergence figures.
+        Provides:
+        - cutoff(): Generate a multi-panel figure summarizing convergence vs. cutoff.
+        - kgrid(): Generate a multi-panel figure summarizing convergence vs. k-grid (and smearing).
 
 Examples
 --------
@@ -26,6 +33,7 @@ Examples
 
 import glob
 from types import SimpleNamespace
+import pickle
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -59,6 +67,12 @@ class Self_consistent:
         Recursively scan `folder` for outputs and populate `self.data`.
     plot(x, y, group=None)
         Plot y(x); optionally group by a third attribute `group`.
+    save_as("convergence.pkl")
+        Save the entire Self_consistent object in a .pkl file.
+    from_pkl(filename)
+        Load a Self_consistent object from a .pkl file.
+    analyze
+        Subclass for generating multi-panel convergence figures.
     """
 
     def __init__(self):
@@ -68,6 +82,8 @@ class Self_consistent:
         Use `read_data(folder)` to populate `self.data` from output files.
         """
         self.data = None
+        # Full analysis for different DFT parameters
+        self.analyze = self._Analyze(self)
 
     def read_data(self, folder: str):
         """
@@ -129,6 +145,39 @@ class Self_consistent:
             else:
                 data.__setattr__(atr, None)
         self.data = data
+
+    def save_as(self, filename: str = "convergence.pkl"):
+        """
+        Save the entire Self_consistent object in a .pkl file.
+
+        Parameters
+        ----------
+        filename : str, Optional
+            Path to the output file. '.pkl' will be added if missing. Default `D_s.pkl`.
+        """
+        if not filename.endswith(".pkl"):
+            filename += ".pkl"
+        with open(filename, "wb") as f:
+            pickle.dump(self, f)
+
+    @classmethod
+    def from_pkl(cls, filename: str):
+        """
+        Load a Self_consistent object from a .pkl file.
+
+        Parameters
+        ----------
+        filename : str
+            Path to file created with `save_as`.
+
+        Returns
+        -------
+        Self_consistent
+            Fully reconstructed Self_consistent object.
+        """
+        with open(filename, "rb") as f:
+            obj = pickle.load(f)
+        return obj
 
     def plot(
         self,
@@ -227,6 +276,86 @@ class Self_consistent:
 
         plt.tight_layout()
         return ax
+
+    class _Analyze:
+        """
+        Analysis helper for generating multi-panel convergence figures.
+
+        This sub-class produces full-page summary plots to visualize how key
+        quantities (total energy, forces, Fermi level, runtime, memory) change
+        with respect to specific convergence parameters (e.g., cutoff, k-grid,
+        smearing). It leverages the parent `Self_consistent` container to access
+        collected data and the `plot` method for consistent plotting.
+
+        Attributes
+        ----------
+        parent : Self_consistent
+            Reference to the parent convergence container from which data are obtained.
+
+        Methods
+        -------
+        cutoff()
+            Generate a multi-panel figure summarizing convergence vs. cutoff.
+        kgrid()
+            Generate a multi-panel figure summarizing convergence vs. k-grid (and smearing).
+        """
+
+        def __init__(self, parent: Self_consistent):
+            """
+            Initialize the analysis helper.
+
+            Parameters
+            ----------
+            parent : Self_consistent
+                The parent container holding convergence data (from `read_data`) and
+                the plotting utility (`plot`). Must be already populated for meaningful
+                output.
+            """
+            self._p = parent  # reference to the parent convergence class
+
+        def cutoff(self):
+            """
+            Generate a multi-panel figure summarizing convergence vs. cutoff.
+
+            The figure shows, for each quantity (energy, forces, Fermi level, runtime,
+            memory):
+              - Left column: y vs cutoff, grouped by k-grid (total Nk = Nk1*Nk2*Nk3).
+              - Right column: y vs k-grid (total Nk), grouped by cutoff.
+
+            Notes
+            -----
+            - Requires that `self._p.data` is populated via `read_data`.
+            """
+            fig, axes = plt.subplots(5, 2, figsize=(10.5, 14.5))
+            ax = axes.flatten()
+            x = "cutoff"
+            z = "kgrid"
+            for i, y in enumerate(["energy", "forces", "fermi", "time", "ram"]):
+                self._p.plot(x, y, z, ax[2 * i])
+                self._p.plot(z, y, x, ax[2 * i + 1])
+            plt.show()
+
+        def kgrid(self):
+            """
+            Generate a multi-panel figure summarizing convergence vs. k-grid (and smearing).
+
+            The figure shows, for each quantity (energy, forces, Fermi level, runtime,
+            memory):
+              - Left column: y vs smearing, grouped by k-grid (total Nk = Nk1*Nk2*Nk3).
+              - Right column: y vs k-grid (total Nk), grouped by smearing.
+
+            Notes
+            -----
+            - Requires that `self._p.data` is populated via `read_data`.
+            """
+            fig, axes = plt.subplots(5, 2, figsize=(10.5, 14.5))
+            ax = axes.flatten()
+            x = "smearing"
+            z = "kgrid"
+            for i, y in enumerate(["energy", "forces", "fermi", "time", "ram"]):
+                self._p.plot(x, y, z, ax[2 * i])
+                self._p.plot(z, y, x, ax[2 * i + 1])
+            plt.show()
 
 
 class Phonons:
