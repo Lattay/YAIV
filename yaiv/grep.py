@@ -13,6 +13,8 @@ The functions in this module perform low-level parsing (i.e., grepping) of data 
 - Lattice vectors and stress tensors
 - Number of electrons and total energies
 - Fermi level and reciprocal space paths
+- Computational cost (time, RAM)
+- DFT parameters as cutoff, smearing or K-grid
 
 Supported formats include:
 - Quantum ESPRESSO output/input: `pw.x`, `ph.x`, `bands.in`, `projwfc.x`, `matdyn.x`, `.xml`
@@ -50,8 +52,26 @@ dyn_file(file)
 dyn_q(q_cryst, results_ph_path, qe_format=True)
     Locates and reads `.dyn*` file for a given q-point, returning the full dynamical matrix (3Nx3N).
 
-def symmetries(file)
+symmetries(file)
     Grep symmetry operations and return them as rotation/translation pairs.
+
+cutoff(file)
+    Greps the cutoff energy from a variety of filetypes.
+
+smearing(file)
+    Greps the smearing used in calculation from a variety of filetypes.
+
+time(file)
+    Greps the computational time from a variety of filetypes.
+
+ram(file)
+    Greps the RAM needed in the computation from a variety of filetypes.
+
+k_grid(file)
+    Greps the k-grid from a variety of filetypes.
+
+atomic_forces(file)
+    Greps the atomic forces from a variety of filetypes.
 
 Private Utilities
 -----------------
@@ -661,6 +681,60 @@ class _Qe_xml:
                 t = np.zeros(3)
             OUT.append(_Symmetry(R=R, t=t, units=ureg.crystal))
         return OUT
+
+    def cutoff(self) -> ureg.Quantity:
+        """
+        Greps the cutoff energy.
+
+        Returns
+        -------
+        cutoff : ureg.Quantity
+            Cutoff energy with attached units (ureg.Quantity).
+        """
+        cutoff = self.root.find(".//ecutwfc").text * ureg.Ry
+        return cutoff
+
+    def smearing(self) -> ureg.Quantity:
+        """
+        Greps the smearing.
+
+        Returns
+        -------
+        smearing : ureg.Quantity
+            Smearing with attached units (ureg.Quantity).
+        """
+        smearing = float(self.root.find(".//smearing").attrib["degauss"]) * ureg.Ry
+        return smearing
+
+    def time(self) -> ureg.Quantity:
+        """
+        Greps the computational time.
+
+        Returns
+        -------
+        time : ureg.Quantity
+            Computational time with attached units (ureg.Quantity).
+        """
+        lines = self.root.find(".//timing_info")
+        time = float(lines.find(".//total").find(".//cpu").text)
+        return time * ureg.second
+
+    def k_grid(self) -> ureg.Quantity:
+        """
+        Greps the k-grid from a variety of filetypes.
+
+        Returns
+        -------
+        k_grid : list(int)
+            K-grid used in the computation.
+        """
+        lines = self.root.find(".//k_points_IBZ").find(".//monkhorst_pack")
+        kgrid = [
+            int(lines.attrib["nk1"]),
+            int(lines.attrib["nk2"]),
+            int(lines.attrib["nk3"]),
+        ]
+        return kgrid
 
 
 def electron_num(file: str) -> int:
@@ -1725,3 +1799,262 @@ def symmetries(file: str) -> list[SimpleNamespace]:
     else:
         raise NotImplementedError("Unsupported filetype")
     return symmetries
+
+
+def cutoff(file: str) -> ureg.Quantity:
+    """
+    Greps the cutoff energy from a variety of filetypes.
+
+    Parameters
+    ----------
+    file : str
+        File from which to extract the cutoff energy.
+
+    Returns
+    -------
+    cutoff : ureg.Quantity
+        Cutoff energy with attached units (ureg.Quantity).
+
+    Raises
+    ------
+    NotImplementedError:
+        The function is not currently implemeted for the provided filetype.
+    NameError:
+        The cutoff energy was not found.
+    """
+    filetype = _filetype(file)
+    with open(file, "r") as lines:
+        if filetype == "qe_xml":
+            cutoff = _Qe_xml(file).cutoff()
+        elif filetype == "qe_scf_out":
+            for line in lines:
+                # If smearing is used
+                if "kinetic-energy cutoff" in line:
+                    cutoff = float(line.split()[-2])
+                    break
+            cutoff *= ureg("Ry")
+        else:
+            raise NotImplementedError("Unsupported filetype")
+    if "cutoff" not in locals():
+        raise NameError("Cutoff energy not found.")
+    return cutoff
+
+
+def smearing(file: str) -> ureg.Quantity:
+    """
+    Greps the smearing from a variety of filetypes.
+
+    Parameters
+    ----------
+    file : str
+        File from which to extract the smearing.
+
+    Returns
+    -------
+    smearing : ureg.Quantity
+        Smearing with attached units (ureg.Quantity).
+
+    Raises
+    ------
+    NotImplementedError:
+        The function is not currently implemeted for the provided filetype.
+    NameError:
+        The smearing was not found.
+    """
+    filetype = _filetype(file)
+    with open(file, "r") as lines:
+        if filetype == "qe_xml":
+            smearing = _Qe_xml(file).smearing()
+        elif filetype == "qe_scf_out":
+            for line in lines:
+                if "smearing, width" in line:
+                    smearing = float(line.split()[-1])
+                    break
+            smearing *= ureg("Ry")
+        else:
+            raise NotImplementedError("Unsupported filetype")
+    if "smearing" not in locals():
+        raise NameError("Smearing energy not found.")
+    return smearing
+
+
+def time(file: str) -> ureg.Quantity:
+    """
+    Greps the computational time from a variety of filetypes.
+
+    Parameters
+    ----------
+    file : str
+        File from which to extract the computational time.
+
+    Returns
+    -------
+    time : ureg.Quantity
+        Computational time with attached units (ureg.Quantity).
+
+    Raises
+    ------
+    NotImplementedError:
+        The function is not currently implemeted for the provided filetype.
+    NameError:
+        The computational time was not found.
+    """
+    filetype = _filetype(file)
+    with open(file, "r") as lines:
+        if filetype == "qe_xml":
+            time = _Qe_xml(file).time()
+        elif filetype == "qe_scf_out":
+            for line in reversed(list(lines)):
+                # If smearing is used
+                if "PWSCF" in line:
+                    h, m, s = 0, 0, 0
+                    time = line.split()[2]
+                    if "h" in time:
+                        h = int(time.split("h")[0])
+                        time = time.split("h")[1]
+                    if "m" in time:
+                        m = int(time.split("m")[0])
+                        time = time.split("m")[1]
+                    if "s" in time:
+                        s = float(time.split("s")[0])
+                    time = s * ureg.second + m * ureg.minute + h * ureg.hour
+                    break
+        else:
+            raise NotImplementedError("Unsupported filetype")
+    if "time" not in locals():
+        raise NameError("Computation time not found.")
+    return time
+
+
+def ram(file: str) -> ureg.Quantity:
+    """
+    Greps the RAM needed in the computation from a variety of filetypes.
+
+    Parameters
+    ----------
+    file : str
+        File from which to extract the RAM.
+
+    Returns
+    -------
+    RAM : ureg.Quantity
+        RAM with attached units (ureg.Quantity).
+
+    Raises
+    ------
+    NotImplementedError:
+        The function is not currently implemeted for the provided filetype.
+    NameError:
+        The RAM was not found.
+    """
+    filetype = _filetype(file)
+    with open(file, "r") as lines:
+        if filetype == "qe_scf_out":
+            for line in lines:
+                if "total dynamical RAM" in line:
+                    RAM = float(line.split()[5])
+                    units = ureg(line.split()[6])
+                    break
+            RAM *= units
+        else:
+            raise NotImplementedError("Unsupported filetype")
+    if "RAM" not in locals():
+        raise NameError("RAM not found.")
+    return RAM
+
+
+def k_grid(file: str) -> list[int]:
+    """
+    Greps the k-grid from a variety of filetypes.
+
+    Parameters
+    ----------
+    file : str
+        File from which to extract the k-grid.
+
+    Returns
+    -------
+    k_grid : list(int)
+        K-grid used in the computation.
+
+    Raises
+    ------
+    NotImplementedError:
+        The function is not currently implemeted for the provided filetype.
+    NameError:
+        The k-grid was not found.
+    """
+    filetype = _filetype(file)
+    with open(file, "r") as lines:
+        if filetype == "qe_xml":
+            kgrid = _Qe_xml(file).k_grid()
+        elif filetype == "qe_scf_in":
+            READ = False
+            for line in lines:
+                if "K_POINTS" in line:
+                    READ = True
+                elif READ:
+                    l = line.split()
+                    if len(l) >= 3:
+                        kgrid = [int(x) for x in l[:3]]
+                        break
+        elif filetype == "qe_scf_out":
+            kgrid = k_grid(file[:-1] + "i")
+        else:
+            raise NotImplementedError("Unsupported filetype")
+    if "kgrid" not in locals():
+        raise NameError("K-grid not found.")
+    return kgrid
+
+
+def atomic_forces(file: str) -> SimpleNamespace:
+    """
+    Greps the atomic forces from a variety of filetypes.
+
+    Parameters
+    ----------
+    file : str
+        File from which to extract the atomic forces.
+
+    Returns
+    -------
+    forces : SimpleNamespace
+        SimpleNamespace class with the following attributes:
+        SimpleNamespace with atomic forces with attached units (ureg.Quantity).
+        - per_atom : np.ndarray | ureg.Quantity
+            List of foces per atom with shape (N,3) where N is the number of atoms.
+        - total : np.ndarray | ureg.Quantity
+            Total average force.
+
+    Raises
+    ------
+    NotImplementedError:
+        The function is not currently implemeted for the provided filetype.
+    NameError:
+        The atomic forces were not found.
+    """
+    filetype = _filetype(file)
+    with open(file, "r") as lines:
+        if filetype == "qe_scf_out":
+            READ, WRITE = False, False
+            forces = []
+            for line in lines:
+                if "Forces acting on atoms" in line:
+                    READ, WRITE = True, True
+                elif READ:
+                    l = line.split()
+                    if "atom" in line and WRITE:
+                        f = [float(x) for x in l[6 : 6 + 3]]
+                        forces.append(f)
+                    elif "Total force" in line:
+                        total_force = float(l[3])
+                        break
+                    elif len(forces) != 0:
+                        WRITE = False
+            forces = np.asarray(forces) * ureg("Ry/bohr")
+            total_force *= ureg("Ry/bohr")
+        else:
+            raise NotImplementedError("Unsupported filetype")
+    if "forces" not in locals():
+        raise NameError("Atomic forces not found.")
+    return SimpleNamespace(per_atom=forces, total=total_force)
