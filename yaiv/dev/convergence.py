@@ -17,7 +17,7 @@ Self_consistent
     - from_pkl(): Load a Self_consistent object from a .pkl file.
     - plot(): Plot quantities agains computational parameters for checking convergence.
     - _Analyze:
-        Analysis helper for generating multi-panel convergence figures.
+        Helper for generating multi-panel convergence figures.
         Provides:
         - cutoff(): Generate a multi-panel figure summarizing convergence vs. cutoff.
         - kgrid(): Generate a multi-panel figure summarizing convergence vs. k-grid (and smearing).
@@ -29,6 +29,10 @@ Examples
 >>> analysis.read_data(folder)
 >>> analysis.plot("energy", "kgrid", "smearing")
 (Figure or the energy evolution respect to the kgrid for different smearings)
+>>> analysis.analyze.cutoff
+(Multi-panel figure for analyzis of convergence vs cutoff)
+>>> analysis.analyze.kgrid
+(Multi-panel figure for analyzis of convergence vs kgrid)
 """
 
 import glob
