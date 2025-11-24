@@ -133,6 +133,13 @@ __all__ = [
     "kpointsFrequencies",
     "dyn_file",
     "dyn_q",
+    "symmetries",
+    "cutoff",
+    "smearing",
+    "k_grid",
+    "atomic_forces",
+    "runtime",
+    "ram",
 ]
 
 
@@ -706,18 +713,18 @@ class _Qe_xml:
         smearing = float(self.root.find(".//smearing").attrib["degauss"]) * ureg.Ry
         return smearing
 
-    def time(self) -> ureg.Quantity:
+    def runtime(self) -> ureg.Quantity:
         """
-        Greps the computational time.
+        Greps the computational runtime.
 
         Returns
         -------
-        time : ureg.Quantity
-            Computational time with attached units (ureg.Quantity).
+        runtime : ureg.Quantity
+            Computational runtime with attached units (ureg.Quantity).
         """
         lines = self.root.find(".//timing_info")
-        time = float(lines.find(".//total").find(".//cpu").text)
-        return time * ureg.second
+        runtime = float(lines.find(".//total").find(".//cpu").text)
+        return runtime * ureg.second
 
     def k_grid(self) -> ureg.Quantity:
         """
@@ -1878,91 +1885,6 @@ def smearing(file: str) -> ureg.Quantity:
     return smearing
 
 
-def time(file: str) -> ureg.Quantity:
-    """
-    Greps the computational time from a variety of filetypes.
-
-    Parameters
-    ----------
-    file : str
-        File from which to extract the computational time.
-
-    Returns
-    -------
-    time : ureg.Quantity
-        Computational time with attached units (ureg.Quantity).
-
-    Raises
-    ------
-    NotImplementedError:
-        The function is not currently implemeted for the provided filetype.
-    NameError:
-        The computational time was not found.
-    """
-    filetype = _filetype(file)
-    with open(file, "r") as lines:
-        if filetype == "qe_xml":
-            time = _Qe_xml(file).time()
-        elif filetype == "qe_scf_out":
-            for line in reversed(list(lines)):
-                # If smearing is used
-                if "PWSCF" in line:
-                    h, m, s = 0, 0, 0
-                    time = line.split()[2]
-                    if "h" in time:
-                        h = int(time.split("h")[0])
-                        time = time.split("h")[1]
-                    if "m" in time:
-                        m = int(time.split("m")[0])
-                        time = time.split("m")[1]
-                    if "s" in time:
-                        s = float(time.split("s")[0])
-                    time = s * ureg.second + m * ureg.minute + h * ureg.hour
-                    break
-        else:
-            raise NotImplementedError("Unsupported filetype")
-    if "time" not in locals():
-        raise NameError("Computation time not found.")
-    return time
-
-
-def ram(file: str) -> ureg.Quantity:
-    """
-    Greps the RAM needed in the computation from a variety of filetypes.
-
-    Parameters
-    ----------
-    file : str
-        File from which to extract the RAM.
-
-    Returns
-    -------
-    RAM : ureg.Quantity
-        RAM with attached units (ureg.Quantity).
-
-    Raises
-    ------
-    NotImplementedError:
-        The function is not currently implemeted for the provided filetype.
-    NameError:
-        The RAM was not found.
-    """
-    filetype = _filetype(file)
-    with open(file, "r") as lines:
-        if filetype == "qe_scf_out":
-            for line in lines:
-                if "total dynamical RAM" in line:
-                    RAM = float(line.split()[5])
-                    units = ureg(line.split()[6])
-                    break
-            RAM *= units
-        else:
-            raise NotImplementedError("Unsupported filetype")
-    if "RAM" not in locals():
-        raise NameError("RAM not found.")
-    return RAM
-
-
 def k_grid(file: str) -> list[int]:
     """
     Greps the k-grid from a variety of filetypes.
@@ -2005,7 +1927,6 @@ def k_grid(file: str) -> list[int]:
     if "kgrid" not in locals():
         raise NameError("K-grid not found.")
     return kgrid
-
 
 def atomic_forces(file: str) -> SimpleNamespace:
     """
@@ -2058,3 +1979,89 @@ def atomic_forces(file: str) -> SimpleNamespace:
     if "forces" not in locals():
         raise NameError("Atomic forces not found.")
     return SimpleNamespace(per_atom=forces, total=total_force)
+
+def runtime(file: str) -> ureg.Quantity:
+    """
+    Greps the computational runtime from a variety of filetypes.
+
+    Parameters
+    ----------
+    file : str
+        File from which to extract the computational runtime.
+
+    Returns
+    -------
+    runtime : ureg.Quantity
+        Computational runtime with attached units (ureg.Quantity).
+
+    Raises
+    ------
+    NotImplementedError:
+        The function is not currently implemeted for the provided filetype.
+    NameError:
+        The computational runtime was not found.
+    """
+    filetype = _filetype(file)
+    with open(file, "r") as lines:
+        if filetype == "qe_xml":
+            runtime = _Qe_xml(file).runtime()
+        elif filetype == "qe_scf_out":
+            for line in reversed(list(lines)):
+                # If smearing is used
+                if "PWSCF" in line:
+                    h, m, s = 0, 0, 0
+                    runtime = line.split()[2]
+                    if "h" in runtime:
+                        h = int(runtime.split("h")[0])
+                        runtime = runtime.split("h")[1]
+                    if "m" in runtime:
+                        m = int(runtime.split("m")[0])
+                        runtime = runtime.split("m")[1]
+                    if "s" in runtime:
+                        s = float(runtime.split("s")[0])
+                    runtime = s * ureg.second + m * ureg.minute + h * ureg.hour
+                    break
+        else:
+            raise NotImplementedError("Unsupported filetype")
+    if "runtime" not in locals():
+        raise NameError("Computation runtime not found.")
+    return runtime
+
+
+def ram(file: str) -> ureg.Quantity:
+    """
+    Greps the RAM needed in the computation from a variety of filetypes.
+
+    Parameters
+    ----------
+    file : str
+        File from which to extract the RAM.
+
+    Returns
+    -------
+    RAM : ureg.Quantity
+        RAM with attached units (ureg.Quantity).
+
+    Raises
+    ------
+    NotImplementedError:
+        The function is not currently implemeted for the provided filetype.
+    NameError:
+        The RAM was not found.
+    """
+    filetype = _filetype(file)
+    with open(file, "r") as lines:
+        if filetype == "qe_scf_out":
+            for line in lines:
+                if "total dynamical RAM" in line:
+                    RAM = float(line.split()[5])
+                    units = ureg(line.split()[6])
+                    break
+            RAM *= units
+        else:
+            raise NotImplementedError("Unsupported filetype")
+    if "RAM" not in locals():
+        raise NameError("RAM not found.")
+    return RAM
+
+
