@@ -1,4 +1,29 @@
-# PYTHON module for cutoff convergence analysis
+"""
+YAIV | yaiv.convergence
+=======================
+
+Tools to collect, organize, and visualize convergence data from ab initio
+calculations. Typical use cases include scanning cutoffs, smearing, and k-point grids,
+then plotting how total energy, forces, Fermi level, runtime, and memory usage
+evolve with these parameters.
+
+Classes
+-------
+Self_consistent
+    Container and utilities for self‑consistent convergence analysis.
+    Provides:
+    - read_data(): Recursively scan a folder for outputs and populate convergence data.
+    - plot(): Plot quantities agains computational parameters for checking convergence.
+
+Examples
+--------
+>>> from yaiv.convergence import Self_consistent
+>>> analysis = Self_consistent()
+>>> analysis.read_data(folder)
+>>> analysis.plot("energy", "kgrid", "smearing")
+(Figure or the energy evolution respect to the kgrid for different smearings)
+"""
+
 import glob
 from types import SimpleNamespace
 
@@ -13,40 +38,84 @@ from yaiv.dev import grep as grepx
 
 
 class Self_consistent:
+    """
+    Container and utilities for self‑consistent convergence analysis.
+
+    This class scans a folder of output files (e.g., QE .pwo files), extracts
+    the relevant quantities (cutoff, smearing, k‑grid, time, Fermi level,
+    memory usage, forces, total energy), stores them in a SimpleNamespace
+    with consistent units, and provides simple plotting utilities.
+
+    Attributes
+    ----------
+    data : SimpleNamespace | None
+        Namespace holding arrays for each collected attribute (cutoff, smearing,
+        kgrid, time, fermi, ram, forces, energy). Each attribute is either a
+        NumPy array or a pint.Quantity array with a common unit.
+
+    Methods
+    -------
+    read_data(folder)
+        Recursively scan `folder` for outputs and populate `self.data`.
+    plot(x, y, group=None)
+        Plot y(x); optionally group by a third attribute `group`.
+    """
+
     def __init__(self):
+        """
+        Initialize an empty Self_consistent object for convergence analysis.
+
+        Use `read_data(folder)` to populate `self.data` from output files.
+        """
         self.data = None
 
     def read_data(self, folder: str):
+        """
+        Recursively read convergence data from a folder of outputs.
+
+        This scans for files matching `**/*pwo` and extracts from each:
+          - cutoff (energy cutoff)
+          - smearing
+          - kgrid (Monkhorst–Pack grid as (Nk1,Nk2,Nk3))
+          - energy (total energy)
+          - forces (total atomic force norm)
+          - fermi (Fermi energy)
+          - ram (peak memory usage if available)
+          - time (runtime)
+
+        The collected values are converted to consistent units per attribute
+        and stored in `self.data` as arrays (or pint.Quantity arrays).
+
+        Parameters
+        ----------
+        folder : str
+            Root directory to search (recursively). For example: "runs/" or "./".
+
+        Notes
+        -----
+        - This relies on helper parsers in yaiv.grep.
+        - Attributes with no data remain None.
+        """
         files = glob.glob(folder + "**/*pwo", recursive=True)
-        cutoff, smearing, kgrid, time, fermi, ram, forces, energy = (
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
+        data = SimpleNamespace(
+            cutoff=[],
+            smearing=[],
+            kgrid=[],
+            time=[],
+            fermi=[],
+            ram=[],
+            forces=[],
+            energy=[],
         )
         for file in files:
-            cutoff.append(grepx.cutoff(file))
-            smearing.append(grepx.smearing(file))
-            kgrid.append(grepx.k_grid(file))
-            time.append(grepx.time(file))
-            fermi.append(grep.fermi(file))
-            ram.append(grepx.ram(file))
-            forces.append(grepx.atomic_forces(file).total)
-            energy.append(grep.total_energy(file))
-        data = SimpleNamespace(
-            cutoff=cutoff,
-            smearing=smearing,
-            kgrid=kgrid,
-            time=time,
-            fermi=fermi,
-            ram=ram,
-            forces=forces,
-            energy=energy,
-        )
+            data.cutoff.append(grepx.cutoff(file))
+            data.smearing.append(grepx.smearing(file))
+            data.kgrid.append(grepx.k_grid(file))
+            data.time.append(grepx.time(file))
+            data.fermi.append(grep.fermi(file))
+            data.ram.append(grepx.ram(file))
+            data.forces.append(grepx.atomic_forces(file).total)
+            data.energy.append(grep.total_energy(file))
         # Unify units
         for atr in data.__dict__:
             d = data.__getattribute__(atr)
@@ -70,41 +139,49 @@ class Self_consistent:
         **kwargs,
     ) -> (Axes, Axes):
         """
-        Plot ...
+        Plot y vs x with optional grouping.
 
         Parameters
         ----------
-        ax : Axes, optional
-            Axes to plot on. If None, a new figure and axes are created.
         x : str
-            Attribute to be plotted in the x axis.
-            Attribute must be present in `self.data`.
+            Name of the attribute in `self.data` for the x‑axis
+            If x is "kgrid", the product Nk1*Nk2*Nk3 is plotted.
         y : str
-            Attribute to be plotted in the y axis.
-            Attribute must be present in `self.data`.
+            Name of the attribute in `self.data` for the y‑axis.
         group : str, optional
-            Attributed from which your dataset should be grouped.
-            Attribute must be present in `self.data`.
+            Name of an attribute in `self.data` used to group the data into curves
+            (e.g., group="smearing"). Each unique group value produces a separate line.
+        ax : matplotlib.axes.Axes, optional
+            Axes to plot on. If None, a new figure and axes are created.
         **kwargs : dict
-            Additional matplotlib arguments passed to `plot()`.
+            Additional keyword arguments passed to `ax.plot()`.
 
         Returns
-        ----------
-        ax : Axes
-            The axes with the spectrum plot.
+        -------
+        ax : matplotlib.axes.Axes
+            The axes with the plotted data.
+
+        Raises
+        ------
+        NameError
+            If `x`, `y`, or `group` (when provided) do not exist in `self.data`.
         """
+        # Get X, Y
         attributes = self.data.__dict__.keys()
         if x not in attributes:
             raise NameError(f"{x} attribute not present at self.data.\n {attributes}")
         else:
             X = self.data.__getattribute__(x)
-            # Case for kgrid in X-axis
-            if isinstance(X[0], np.ndarray):
-                X = np.asarray([np.prod(grid) for grid in X])
         if y not in attributes:
             raise NameError(f"{y} attribute not present at self.data.\n {attributes}")
         else:
             Y = self.data.__getattribute__(y)
+
+        # Special case: kgrid on x-axis -> use total number of k-points (product)
+        if isinstance(X[0], np.ndarray):
+            X = np.asarray([np.prod(grid) for grid in X])
+
+        # Prepare groups
         if group is not None:
             if group not in attributes:
                 raise NameError(
@@ -121,6 +198,7 @@ class Self_consistent:
         if ax is None:
             fig, ax = plt.subplots()
 
+        # Plot grouped or ungrouped
         if group is not None:
             for g in groups:
                 indices = []
@@ -134,6 +212,8 @@ class Self_consistent:
             Ysort = Y[np.argsort(X)]
             Xsort = X[np.argsort(X)]
             ax.plot(X, Y, ".-", **kwargs)
+
+        # Decorations
         if isinstance(X, ureg.Quantity):
             ax.set_xlabel(f"{x} ({X.units})")
         else:
@@ -148,6 +228,11 @@ class Self_consistent:
         plt.tight_layout()
         return ax
 
+
 class Phonons:
+    """
+    TODO...
+    """
+
     def __init__(self):
         self.data = None
