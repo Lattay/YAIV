@@ -1,0 +1,362 @@
+"""
+YAIV | yaiv.convergence
+=======================
+
+Tools to collect, organize, and visualize convergence data from ab initio
+calculations. Typical use cases include scanning cutoffs, smearing, and k-point grids,
+then plotting how total energy, forces, Fermi level, runtime, and memory usage
+evolve with these parameters.
+
+Classes
+-------
+Self_consistent
+    Container and utilities for convergence analysis of self‑consistent calculations.
+    Provides:
+    - read_data(): Recursively scan a folder for outputs and populate convergence data.
+    - save_as(): Save the entire Self_consistent object in a .pkl file.
+    - from_pkl(): Load a Self_consistent object from a .pkl file.
+    - plot(): Plot quantities agains computational parameters for checking convergence.
+    - _Analyze:
+        Helper for generating multi-panel convergence figures.
+        Provides:
+        - cutoff(): Generate a multi-panel figure summarizing convergence vs. cutoff.
+        - kgrid(): Generate a multi-panel figure summarizing convergence vs. k-grid (and smearing).
+
+Examples
+--------
+>>> from yaiv.convergence import Self_consistent
+>>> analysis = Self_consistent()
+>>> analysis.read_data(folder)
+>>> analysis.plot("energy", "kgrid", "smearing")
+(Figure or the energy evolution respect to the kgrid for different smearings)
+>>> analysis.analyze.cutoff
+(Multi-panel figure for analyzis of convergence vs cutoff)
+>>> analysis.analyze.kgrid
+(Multi-panel figure for analyzis of convergence vs kgrid)
+"""
+
+import glob
+import pickle
+from types import SimpleNamespace
+
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.axes import Axes
+
+from yaiv.defaults.config import ureg
+from yaiv import grep
+
+__all__ = ["Self_consistent"]
+
+
+class Self_consistent:
+    """
+    Container and utilities for convergence analysis of self‑consistent calculations.
+
+    This class scans a folder of output files (e.g., QE .pwo files), extracts
+    the relevant quantities (cutoff, smearing, k‑grid, time, Fermi level,
+    memory usage, forces, total energy), stores them in a SimpleNamespace
+    with consistent units, and provides simple plotting utilities.
+
+    Attributes
+    ----------
+    data : SimpleNamespace | None
+        Namespace holding arrays for each collected attribute (cutoff, smearing,
+        kgrid, time, fermi, ram, forces, energy). Each attribute is either a
+        NumPy array or a pint.Quantity array with a common unit.
+
+    Methods
+    -------
+    read_data(folder)
+        Recursively scan `folder` for outputs and populate `self.data`.
+    plot(x, y, group=None)
+        Plot y(x); optionally group by a third attribute `group`.
+    save_as("convergence.pkl")
+        Save the entire Self_consistent object in a .pkl file.
+    from_pkl(filename)
+        Load a Self_consistent object from a .pkl file.
+    analyze
+        Subclass for generating multi-panel convergence figures.
+    """
+
+    def __init__(self):
+        """
+        Initialize an empty Self_consistent object for convergence analysis.
+
+        Use `read_data(folder)` to populate `self.data` from output files.
+        """
+        self.data = None
+        # Full analysis for different DFT parameters
+        self.analyze = self._Analyze(self)
+
+    def read_data(self, folder: str):
+        """
+        Recursively read convergence data from a folder of outputs.
+
+        This scans for files matching `**/*pwo` and extracts from each:
+          - cutoff (energy cutoff)
+          - smearing
+          - kgrid (Monkhorst–Pack grid as (Nk1,Nk2,Nk3))
+          - energy (total energy)
+          - forces (total atomic force norm)
+          - fermi (Fermi energy)
+          - ram (peak memory usage if available)
+          - time (runtime)
+
+        The collected values are converted to consistent units per attribute
+        and stored in `self.data` as arrays (or pint.Quantity arrays).
+
+        Parameters
+        ----------
+        folder : str
+            Root directory to search (recursively). For example: "runs/" or "./".
+
+        Notes
+        -----
+        - This relies on helper parsers in yaiv.grep.
+        - Attributes with no data remain None.
+        """
+        files = glob.glob(folder + "**/*pwo", recursive=True)
+        data = SimpleNamespace(
+            cutoff=[],
+            smearing=[],
+            kgrid=[],
+            time=[],
+            fermi=[],
+            ram=[],
+            forces=[],
+            energy=[],
+        )
+        for file in files:
+            data.cutoff.append(grep.cutoff(file))
+            data.smearing.append(grep.smearing(file))
+            data.kgrid.append(grep.k_grid(file))
+            data.time.append(grep.time(file))
+            data.fermi.append(grep.fermi(file))
+            data.ram.append(grep.ram(file))
+            data.forces.append(grep.atomic_forces(file).total)
+            data.energy.append(grep.total_energy(file))
+        # Unify units
+        for atr in data.__dict__:
+            d = data.__getattribute__(atr)
+            if len(d) != 0:
+                if isinstance(d[0], ureg.Quantity):
+                    units = d[0].units
+                    new = np.asarray([x.to(units).magnitude for x in d]) * units
+                else:
+                    new = np.asarray(d)
+                data.__setattr__(atr, new)
+            else:
+                data.__setattr__(atr, None)
+        self.data = data
+
+    def save_as(self, filename: str = "convergence.pkl"):
+        """
+        Save the entire Self_consistent object in a .pkl file.
+
+        Parameters
+        ----------
+        filename : str, Optional
+            Path to the output file. '.pkl' will be added if missing. Default `D_s.pkl`.
+        """
+        if not filename.endswith(".pkl"):
+            filename += ".pkl"
+        with open(filename, "wb") as f:
+            pickle.dump(self, f)
+
+    @classmethod
+    def from_pkl(cls, filename: str):
+        """
+        Load a Self_consistent object from a .pkl file.
+
+        Parameters
+        ----------
+        filename : str
+            Path to file created with `save_as`.
+
+        Returns
+        -------
+        Self_consistent
+            Fully reconstructed Self_consistent object.
+        """
+        with open(filename, "rb") as f:
+            obj = pickle.load(f)
+        return obj
+
+    def plot(
+        self,
+        x: str,
+        y: str,
+        group: str = None,
+        ax: Axes = None,
+        **kwargs,
+    ) -> (Axes, Axes):
+        """
+        Plot y vs x with optional grouping.
+
+        Parameters
+        ----------
+        x : str
+            Name of the attribute in `self.data` for the x‑axis
+            If x is "kgrid", the product Nk1*Nk2*Nk3 is plotted.
+        y : str
+            Name of the attribute in `self.data` for the y‑axis.
+        group : str, optional
+            Name of an attribute in `self.data` used to group the data into curves
+            (e.g., group="smearing"). Each unique group value produces a separate line.
+        ax : matplotlib.axes.Axes, optional
+            Axes to plot on. If None, a new figure and axes are created.
+        **kwargs : dict
+            Additional keyword arguments passed to `ax.plot()`.
+
+        Returns
+        -------
+        ax : matplotlib.axes.Axes
+            The axes with the plotted data.
+
+        Raises
+        ------
+        NameError
+            If `x`, `y`, or `group` (when provided) do not exist in `self.data`.
+        """
+        # Get X, Y
+        attributes = self.data.__dict__.keys()
+        if x not in attributes:
+            raise NameError(f"{x} attribute not present at self.data.\n {attributes}")
+        else:
+            X = self.data.__getattribute__(x)
+        if y not in attributes:
+            raise NameError(f"{y} attribute not present at self.data.\n {attributes}")
+        else:
+            Y = self.data.__getattribute__(y)
+
+        # Special case: kgrid on x-axis -> use total number of k-points (product)
+        if isinstance(X[0], np.ndarray):
+            X = np.asarray([np.prod(grid) for grid in X])
+
+        # Prepare groups
+        if group is not None:
+            if group not in attributes:
+                raise NameError(
+                    f"{group} attribute not present at self.data.\n {attributes}"
+                )
+            else:
+                Z = self.data.__getattribute__(group)
+            if isinstance(Z, ureg.Quantity):
+                groups = np.unique(Z.magnitude, axis=0) * Z.units
+            else:
+                groups = np.unique(Z, axis=0)
+
+        # Create fig if necessary
+        if ax is None:
+            fig, ax = plt.subplots()
+
+        # Plot grouped or ungrouped
+        if group is not None:
+            for g in groups:
+                indices = []
+                for i, z in enumerate(Z):
+                    if np.all(z == g):
+                        indices.append(i)
+                Ysort = Y[indices][np.argsort(X[indices])]
+                Xsort = X[indices][np.argsort(X[indices])]
+                ax.plot(Xsort, Ysort, ".-", label=str(g), **kwargs)
+        else:
+            Ysort = Y[np.argsort(X)]
+            Xsort = X[np.argsort(X)]
+            ax.plot(X, Y, ".-", **kwargs)
+
+        # Decorations
+        if isinstance(X, ureg.Quantity):
+            ax.set_xlabel(f"{x} ({X.units})")
+        else:
+            ax.set_xlabel(f"{x}")
+        if isinstance(Y, ureg.Quantity):
+            ax.set_ylabel(f"{y} ({Y.units})")
+        else:
+            ax.set_xlabel(f"{y}")
+        if group is not None:
+            ax.legend()
+
+        plt.tight_layout()
+        return ax
+
+    class _Analyze:
+        """
+        Analysis helper for generating multi-panel convergence figures.
+
+        This sub-class produces full-page summary plots to visualize how key
+        quantities (total energy, forces, Fermi level, runtime, memory) change
+        with respect to specific convergence parameters (e.g., cutoff, k-grid,
+        smearing). It leverages the parent `Self_consistent` container to access
+        collected data and the `plot` method for consistent plotting.
+
+        Attributes
+        ----------
+        parent : Self_consistent
+            Reference to the parent convergence container from which data are obtained.
+
+        Methods
+        -------
+        cutoff()
+            Generate a multi-panel figure summarizing convergence vs. cutoff.
+        kgrid()
+            Generate a multi-panel figure summarizing convergence vs. k-grid (and smearing).
+        """
+
+        def __init__(self, parent: Self_consistent):
+            """
+            Initialize the analysis helper.
+
+            Parameters
+            ----------
+            parent : Self_consistent
+                The parent container holding convergence data (from `read_data`) and
+                the plotting utility (`plot`). Must be already populated for meaningful
+                output.
+            """
+            self._p = parent  # reference to the parent convergence class
+
+        def cutoff(self):
+            """
+            Generate a multi-panel figure summarizing convergence vs. cutoff.
+
+            The figure shows, for each quantity (energy, forces, Fermi level, runtime,
+            memory):
+              - Left column: y vs cutoff, grouped by k-grid (total Nk = Nk1*Nk2*Nk3).
+              - Right column: y vs k-grid (total Nk), grouped by cutoff.
+
+            Notes
+            -----
+            - Requires that `self._p.data` is populated via `read_data`.
+            """
+            fig, axes = plt.subplots(5, 2, figsize=(10.5, 14.5))
+            ax = axes.flatten()
+            x = "cutoff"
+            z = "kgrid"
+            for i, y in enumerate(["energy", "forces", "fermi", "time", "ram"]):
+                self._p.plot(x, y, z, ax[2 * i])
+                self._p.plot(z, y, x, ax[2 * i + 1])
+            plt.show()
+
+        def kgrid(self):
+            """
+            Generate a multi-panel figure summarizing convergence vs. k-grid (and smearing).
+
+            The figure shows, for each quantity (energy, forces, Fermi level, runtime,
+            memory):
+              - Left column: y vs smearing, grouped by k-grid (total Nk = Nk1*Nk2*Nk3).
+              - Right column: y vs k-grid (total Nk), grouped by smearing.
+
+            Notes
+            -----
+            - Requires that `self._p.data` is populated via `read_data`.
+            """
+            fig, axes = plt.subplots(5, 2, figsize=(10.5, 14.5))
+            ax = axes.flatten()
+            x = "smearing"
+            z = "kgrid"
+            for i, y in enumerate(["energy", "forces", "fermi", "time", "ram"]):
+                self._p.plot(x, y, z, ax[2 * i])
+                self._p.plot(z, y, x, ax[2 * i + 1])
+            plt.show()

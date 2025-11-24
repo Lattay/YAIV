@@ -3,7 +3,7 @@
 ## ✅ General Improvements
 
 - Fermi-Dirac included as a possible smearing for all methods (along with Gaussian and Methfessel-Paxton).
-
+- New `convergence` module with tools to collect, organize, and visualize convergence data from ab initio calculations.
 ---
 
 ## 📦 Module-Specific Updates
