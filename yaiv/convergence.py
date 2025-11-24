@@ -29,9 +29,9 @@ Examples
 >>> analysis.read_data(folder)
 >>> analysis.plot("energy", "kgrid", "smearing")
 (Figure or the energy evolution respect to the kgrid for different smearings)
->>> analysis.analyze.cutoff
+>>> analysis.analyze.cutoff()
 (Multi-panel figure for analyzis of convergence vs cutoff)
->>> analysis.analyze.kgrid
+>>> analysis.analyze.kgrid()
 (Multi-panel figure for analyzis of convergence vs kgrid)
 """
 
@@ -54,7 +54,7 @@ class Self_consistent:
     Container and utilities for convergence analysis of self‑consistent calculations.
 
     This class scans a folder of output files (e.g., QE .pwo files), extracts
-    the relevant quantities (cutoff, smearing, k‑grid, time, Fermi level,
+    the relevant quantities (cutoff, smearing, k‑grid, runtime, Fermi level,
     memory usage, forces, total energy), stores them in a SimpleNamespace
     with consistent units, and provides simple plotting utilities.
 
@@ -62,7 +62,7 @@ class Self_consistent:
     ----------
     data : SimpleNamespace | None
         Namespace holding arrays for each collected attribute (cutoff, smearing,
-        kgrid, time, fermi, ram, forces, energy). Each attribute is either a
+        kgrid, runtime, fermi, ram, forces, energy). Each attribute is either a
         NumPy array or a pint.Quantity array with a common unit.
 
     Methods
@@ -101,7 +101,7 @@ class Self_consistent:
           - forces (total atomic force norm)
           - fermi (Fermi energy)
           - ram (peak memory usage if available)
-          - time (runtime)
+          - runtime (runtime)
 
         The collected values are converted to consistent units per attribute
         and stored in `self.data` as arrays (or pint.Quantity arrays).
@@ -121,7 +121,7 @@ class Self_consistent:
             cutoff=[],
             smearing=[],
             kgrid=[],
-            time=[],
+            runtime=[],
             fermi=[],
             ram=[],
             forces=[],
@@ -131,7 +131,7 @@ class Self_consistent:
             data.cutoff.append(grep.cutoff(file))
             data.smearing.append(grep.smearing(file))
             data.kgrid.append(grep.k_grid(file))
-            data.time.append(grep.time(file))
+            data.runtime.append(grep.runtime(file))
             data.fermi.append(grep.fermi(file))
             data.ram.append(grep.ram(file))
             data.forces.append(grep.atomic_forces(file).total)
@@ -304,7 +304,7 @@ class Self_consistent:
             Generate a multi-panel figure summarizing convergence vs. k-grid (and smearing).
         """
 
-        def __init__(self, parent: Self_consistent):
+        def __init__(self, parent):
             """
             Initialize the analysis helper.
 
@@ -334,10 +334,10 @@ class Self_consistent:
             ax = axes.flatten()
             x = "cutoff"
             z = "kgrid"
-            for i, y in enumerate(["energy", "forces", "fermi", "time", "ram"]):
+            for i, y in enumerate(["energy", "forces", "fermi", "runtime", "ram"]):
                 self._p.plot(x, y, z, ax[2 * i])
                 self._p.plot(z, y, x, ax[2 * i + 1])
-            plt.show()
+            return fig, axes
 
         def kgrid(self):
             """
@@ -356,7 +356,7 @@ class Self_consistent:
             ax = axes.flatten()
             x = "smearing"
             z = "kgrid"
-            for i, y in enumerate(["energy", "forces", "fermi", "time", "ram"]):
+            for i, y in enumerate(["energy", "forces", "fermi", "runtime", "ram"]):
                 self._p.plot(x, y, z, ax[2 * i])
                 self._p.plot(z, y, x, ax[2 * i + 1])
-            plt.show()
+            return fig, axes
