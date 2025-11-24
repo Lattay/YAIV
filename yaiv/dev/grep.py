@@ -30,6 +30,18 @@ class _Qe_xml(grep._Qe_xml):
         cutoff = self.root.find(".//ecutwfc").text * ureg.Ry
         return cutoff
 
+    def smearing(self) -> ureg.Quantity:
+        """
+        Greps the smearing.
+
+        Returns
+        -------
+        smearing : ureg.Quantity
+            Smearing with attached units (ureg.Quantity).
+        """
+        smearing = float(self.root.find(".//smearing").attrib['degauss']) * ureg.Ry
+        return smearing
+
     def time(self) -> ureg.Quantity:
         """
         Greps the computational time.
@@ -98,6 +110,44 @@ def cutoff(file: str) -> ureg.Quantity:
     if "cutoff" not in locals():
         raise NameError("Cutoff energy not found.")
     return cutoff
+
+
+def smearing(file: str) -> ureg.Quantity:
+    """
+    Greps the smearing from a variety of filetypes.
+
+    Parameters
+    ----------
+    file : str
+        File from which to extract the smearing.
+
+    Returns
+    -------
+    smearing : ureg.Quantity
+        Smearing with attached units (ureg.Quantity).
+
+    Raises
+    ------
+    NotImplementedError:
+        The function is not currently implemeted for the provided filetype.
+    NameError:
+        The smearing was not found.
+    """
+    filetype = _filetype(file)
+    with open(file, "r") as lines:
+        if filetype == "qe_xml":
+            smearing = _Qe_xml(file).smearing()
+        elif filetype == "qe_scf_out":
+            for line in lines:
+                if "smearing, width" in line:
+                    smearing = float(line.split()[-1])
+                    break
+            smearing *= ureg("Ry")
+        else:
+            raise NotImplementedError("Unsupported filetype")
+    if "smearing" not in locals():
+        raise NameError("Smearing energy not found.")
+    return smearing
 
 
 def time(file: str) -> ureg.Quantity:
