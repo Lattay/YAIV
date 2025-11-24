@@ -13,7 +13,7 @@ The functions in this module perform low-level parsing (i.e., grepping) of data 
 - Lattice vectors and stress tensors
 - Number of electrons and total energies
 - Fermi level and reciprocal space paths
-- Computational cost (time, RAM)
+- Computational cost (runtime, RAM)
 - DFT parameters as cutoff, smearing or K-grid
 
 Supported formats include:
@@ -61,8 +61,8 @@ cutoff(file)
 smearing(file)
     Greps the smearing used in calculation from a variety of filetypes.
 
-time(file)
-    Greps the computational time from a variety of filetypes.
+runtime(file)
+    Greps the computational runtime from a variety of filetypes.
 
 ram(file)
     Greps the RAM needed in the computation from a variety of filetypes.
