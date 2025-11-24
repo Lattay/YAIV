@@ -698,7 +698,7 @@ class _Qe_xml:
         cutoff : ureg.Quantity
             Cutoff energy with attached units (ureg.Quantity).
         """
-        cutoff = self.root.find(".//ecutwfc").text * ureg.Ry
+        cutoff = float(self.root.find(".//ecutwfc").text) * ureg.Ry
         return cutoff
 
     def smearing(self) -> ureg.Quantity:
@@ -736,6 +736,8 @@ class _Qe_xml:
             K-grid used in the computation.
         """
         lines = self.root.find(".//k_points_IBZ").find(".//monkhorst_pack")
+        print(lines)
+        print('HERE')
         kgrid = [
             int(lines.attrib["nk1"]),
             int(lines.attrib["nk2"]),
@@ -1921,6 +1923,7 @@ def k_grid(file: str) -> list[int]:
                         kgrid = [int(x) for x in l[:3]]
                         break
         elif filetype == "qe_scf_out":
+            # Try to find the corresponding input file
             kgrid = k_grid(file[:-1] + "i")
         else:
             raise NotImplementedError("Unsupported filetype")
