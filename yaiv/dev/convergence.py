@@ -35,7 +35,7 @@ class Self_consistent:
             time.append(grepx.time(file))
             fermi.append(grep.fermi(file))
             ram.append(grepx.ram(file))
-            forces.append(grepx.forces(file).total)
+            forces.append(grepx.atomic_forces(file).total)
             energy.append(grep.total_energy(file))
         data = SimpleNamespace(
             cutoff=cutoff,

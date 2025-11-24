@@ -279,7 +279,7 @@ def k_grid(file: str) -> list[int]:
     return kgrid
 
 
-def forces(file: str) -> SimpleNamespace:
+def atomic_forces(file: str) -> SimpleNamespace:
     """
     Greps the atomic forces from a variety of filetypes.
 
