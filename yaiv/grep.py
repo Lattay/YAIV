@@ -546,7 +546,7 @@ class _Qe_xml:
 
     def fermi(self) -> float:
         """
-        Greps the Fermi energy from a variety of filetypes.
+        Greps the Fermi energy.
 
         Returns
         -------
