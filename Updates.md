@@ -10,7 +10,8 @@
 ## 📦 Module-Specific Updates
 
 ### `grep`
-- Energy decomposition of `grep.total_energy` now also works for fixed occuaption calcualtions.
+- Energy decomposition of `grep.total_energy` now also works for fixed occuaption calcualtions and greps more energy components.
+
 - New grepping tools for the `convergence` module:
     - Added `grep.cutoff` to grep the cutoff energy used in calculations .
     - Added `grep.smearing` to get smearings used in calculations.

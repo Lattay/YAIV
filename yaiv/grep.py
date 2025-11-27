@@ -736,8 +736,6 @@ class _Qe_xml:
             K-grid used in the computation.
         """
         lines = self.root.find(".//k_points_IBZ").find(".//monkhorst_pack")
-        print(lines)
-        print('HERE')
         kgrid = [
             int(lines.attrib["nk1"]),
             int(lines.attrib["nk2"]),
@@ -968,6 +966,8 @@ def total_energy(file: str, decomposition: bool = False) -> float | SimpleNamesp
                 -  U_hartree
                 -  U_exchange-correlational
                 -  U_ewald
+                -  U_paw -> One center paw contribution
+                -  U_correction -> Empirical correction (VdW for example.)
 
     Raises
     ------
@@ -981,44 +981,33 @@ def total_energy(file: str, decomposition: bool = False) -> float | SimpleNamesp
         if filetype == "qe_xml":
             energy = _Qe_xml(file).total_energy(decomposition)
         elif filetype == "qe_scf_out":
+            data = {}
             for line in reversed(list(lines)):
                 if "!" in line:
-                    F = float(line.split()[4]) * ureg("Ry")
+                    data["F"] = float(line.split()[4]) * ureg("Ry")
                     break
                 elif "smearing contrib" in line:
-                    TS = float(line.split()[4]) * ureg("Ry")
+                    data["TS"] = float(line.split()[4]) * ureg("Ry")
                 elif "internal energy" in line:
-                    U = float(line.split()[4]) * ureg("Ry")
+                    data["U"] = float(line.split()[4]) * ureg("Ry")
                 elif "one-electron" in line:
-                    U_one_electron = float(line.split()[3]) * ureg("Ry")
+                    data["U_one_electron"] = float(line.split()[3]) * ureg("Ry")
                 elif "hartree contribution" in line:
-                    U_h = float(line.split()[3]) * ureg("Ry")
+                    data["U_hartree"] = float(line.split()[3]) * ureg("Ry")
                 elif "xc contribution" in line:
-                    U_xc = float(line.split()[3]) * ureg("Ry")
+                    data["U_xc"] = float(line.split()[3]) * ureg("Ry")
                 elif "ewald" in line:
-                    U_ewald = float(line.split()[3]) * ureg("Ry")
+                    data["U_ewald"] = float(line.split()[3]) * ureg("Ry")
+                elif "Dispersion Correction" in line:
+                    data["U_correction"] = float(line.split()[3]) * ureg("Ry")
+                elif "one-center paw" in line:
+                    data["U_paw"] = float(line.split()[4]) * ureg("Ry")
                 elif "convergence NOT achieved" in line:
                     raise NameError(f"Convergence not achieved in {file}")
-            if decomposition and "TS" in locals():
-                energy = SimpleNamespace(
-                    F=F,
-                    TS=TS,
-                    U=U,
-                    U_one_electron=U_one_electron,
-                    U_hartree=U_h,
-                    U_xc=U_xc,
-                    U_ewald=U_ewald,
-                )
-            elif decomposition and "U_h" in locals():
-                energy = SimpleNamespace(
-                    F=F,
-                    U_one_electron=U_one_electron,
-                    U_hartree=U_h,
-                    U_xc=U_xc,
-                    U_ewald=U_ewald,
-                )
+            if decomposition:
+                energy = SimpleNamespace(**data)
             else:
-                energy = F
+                energy = data["F"]
         elif filetype == "outcar":
             for line in reversed(list(lines)):
                 if "sigma->" in line:
@@ -1330,7 +1319,11 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
                     l = line.split("=")[-1].split("]")[:-1]
                     for x in l:
                         split = x.split("*[#")
-                        proj = float(split[0])
+                        try:
+                            proj = float(split[0])
+                        except ValueError:
+                            print(f"ValueError with {split[0]} at {k}, defaulted to 0.")
+                            proj = 0
                         index = int(split[1]) - 1
                         P[index] = proj
                 if "|psi|" in line:
@@ -1931,6 +1924,7 @@ def k_grid(file: str) -> list[int]:
         raise NameError("K-grid not found.")
     return kgrid
 
+
 def atomic_forces(file: str) -> SimpleNamespace:
     """
     Greps the atomic forces from a variety of filetypes.
@@ -1982,6 +1976,7 @@ def atomic_forces(file: str) -> SimpleNamespace:
     if "forces" not in locals():
         raise NameError("Atomic forces not found.")
     return SimpleNamespace(per_atom=forces, total=total_force)
+
 
 def runtime(file: str) -> ureg.Quantity:
     """
@@ -2066,5 +2061,3 @@ def ram(file: str) -> ureg.Quantity:
     if "RAM" not in locals():
         raise NameError("RAM not found.")
     return RAM
-
-
