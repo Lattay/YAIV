@@ -220,3 +220,21 @@ def test_phonon_dos_panel_image_and_structure_cases(data_dir, require, case):
     fig.suptitle(f"Phonons + DOS ({case.name})")
     fig.tight_layout()
     return fig
+
+
+@pytest.mark.mpl_image_compare(
+    style="default", tolerance=tolerance, savefig_kwargs={"bbox_inches": "tight"}
+)
+def test_brillouin_zone(data_dir, require):
+    file = "qe/results/Si.scf.pwo"
+    f = data_dir / file
+    require(f, f"Missing test data: {file}")
+    lattice = grep.lattice(f)
+    fig = plt.figure()
+    ax = plt.axes(projection="3d")
+    plot.brillouinZone(lattice=lattice, axis=ax)
+    assert len(ax.get_lines()) == 14
+    assert np.allclose(ax.get_xlim(), (-0.209524, 0.209524))
+    assert np.allclose(ax.get_ylim(), (-0.209524, 0.209524))
+    assert np.allclose(ax.get_zlim(), (-0.209524, 0.209524))
+    return fig

@@ -26,3 +26,6 @@
 
 ### `spectrum`
 - Implement Fermi-Dirac smearing for the calculation of the Densities.
+
+### `plot`
+- Now the 3D Brillouin zone can be plotted with `plot.brillouinZone`.
