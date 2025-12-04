@@ -22,6 +22,7 @@
 
 ### `utils`
 - Include and implement a `utils.fermidirac_kernel` accross different utilities in order to get Fermi-Dirac statistics (along with Gaussian and Methfessel-Paxton).
+- Added `eigen_projection`, utility for projection an initial spectra onto an different spectra and optionally groups projections based on a set of eigenvalues.
 
 ### `spectrum`
 - Implement Fermi-Dirac smearing for the calculation of the Densities.

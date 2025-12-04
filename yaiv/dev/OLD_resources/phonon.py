@@ -16,59 +16,6 @@ import yaiv.utils as ut
 # import yaiv.cell_analyzer as cell
 # import yaiv.constants as cons
 
-
-def project_spectra(pol_i, pol_f, freq_f=None, Add_deg=False):
-    """
-    Projects the set of frequencies and polarization vectors (i) over the set (f) and gives you
-    the coeficients for the projection.
-    Usefull to track the evolution of particular frequencies of the spectrum.
-
-    pol_i = Initial polarization vectors you want to project
-    pol_f = Final polarization vectors over whichyou want to project
-    freq_f = Final set of frequencies
-    Add_deg = Sums the squares of the coeficients that corresponds to degenerate freqs and assigns
-            the projection to one of them.
-
-    RETURN : PROJ[i,j] (coeficients for the decomposition where i is initial and j is final)
-            CAUTION:  If Add_deg == True, then it returns abs(coef)^2, not coeficients.
-    """
-    # Get projection matrix size:
-    if pol_i.ndim == 3:
-        I = pol_i.shape[0]
-    else:
-        I = 1
-        pol_i = [pol_i]
-    PROJ = np.zeros((I, pol_f.shape[0]), dtype=complex)
-
-    # Get projections
-    for i, pi in enumerate(pol_i):
-        for j, pf in enumerate(pol_f):
-            PROJ[i, j] = __pol_matmul(pi, pf)
-
-    # Sanity check:
-    for i, dummy in enumerate(PROJ):
-        mod = np.around(np.linalg.norm((PROJ[i, :])), 4)
-        if mod != 1:
-            print(
-                "WARNING: Projections not matching to 1 beyond numerical error of 1E-4 -->",
-                mod,
-            )
-
-    # Detect degeneracies over the final base of polarization vectors to add projections
-    if Add_deg == True:
-        PROJ = (
-            np.abs(PROJ) ** 2
-        )  # Changes the format of the main output (not coeficients anymore).
-        degeneracies = [np.where(freq_f == x)[0] for x in np.unique(freq_f)]
-        for i in range(PROJ.shape[0]):
-            for deg in degeneracies:
-                if len(deg) > 1:
-                    for j in deg[1:]:
-                        PROJ[i, deg[0]] = PROJ[i, deg[0]] + PROJ[i, j]
-                        PROJ[i, j] = 0
-    return PROJ
-
-
 def pp_CDW_sym_analysis(OPs, SGs):
     """It process the output of CDW_sym_analysis returning a reduce list of the distinct possible SpaceGroups, as well
     as a corresponding list with the indices for such items in the OrderParameter list.

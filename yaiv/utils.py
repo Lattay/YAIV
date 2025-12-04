@@ -8,9 +8,6 @@ workflows, especially when combined with the data extraction tools.
 
 Functions
 ---------
-_check_unit_consistency(quantities, names=None)
-    Verifies that a list of variables are either all unitful or all unitless. Raises `TypeError` if mixed.
-
 invQ(matrix)
     Returns the inverse of a matrix, preserving units if present.
 
@@ -66,8 +63,14 @@ symmetry_orbit_kpoints(kpoints,symmetries)
 auto_kgrid(lattice)
     Compute a k-grid from a target k-point spacing or target kpoints-per-reciprocal-atom (KPPRA).
 
+eigen_projection(spectra_in, spectra_out)
+    Projects initial spectra onto final spectra.
+
 Private Utilities
 -----------------
+_check_unit_consistency(quantities, names=None)
+    Verifies that a list of variables are either all unitful or all unitless. Raises `TypeError` if mixed.
+
 _normal_dist(x, mean=0, sd=0.1, A=1)
     Computes the value of a normalized Gaussian distribution.
 
@@ -83,6 +86,7 @@ yaiv.grep             : File parsing functions that uses these utilities.
 yaiv.spectrum         : Core spectral class storing eigenvalues and k-points.
 """
 
+import warnings
 from types import SimpleNamespace
 from typing import Sequence, Any
 
@@ -110,6 +114,7 @@ __all__ = [
     "amplitude2order_parameter",
     "cumulative_integral",
     "auto_kgrid",
+    "eigen_projection",
 ]
 
 
@@ -1554,3 +1559,85 @@ def auto_kgrid(
         if n_atoms is not None:
             print(f"K-points per atom: {float(total)/n_atoms}")
     return kgrid
+
+
+def eigen_projection(
+    spectra_in: np.ndarray,
+    spectra_out: np.ndarray,
+    eigenvalues_out: np.ndarray | ureg.Quantity = None,
+) -> np.ndarray:
+    """
+    Projects initial spectra onto final spectra and optionally groups projections based
+    on a set of eigenvalues.
+
+    This function calculates the projection coefficients or their squared magnitudes
+    between two sets of spectra expressed in orthonormal bases. If eigenvalues are provided,
+    the squared projections of degenerate eigenvalues are summed and assigned to one of them.
+
+    Parameters
+    ----------
+    spectra_in : np.ndarray
+        Initial spectra (e.g., polarization vectors or waveform) to be projected, expressed in
+        an orthonormal basis. Shape (N,...), where N is the total number of vectors in `spectra_in`.
+    spectra_out : np.ndarray
+        Final spectra onto which the initial spectra are projected, also expressed in an orthonormal
+        basis. Shape (M,...) where M is the total number of vectors in `spectra_out`.
+    eigenvalues_out : np.ndarray | ureg.Quantity, optional
+        Set of eigenvalues corresponding to the final spectra. If provided, the projections
+        for degenerate eigenvalues are first squared and summed, and after assigned to a representative
+        of the degenerate subspace.
+
+    Returns
+    -------
+    projections : np.ndarray(N,M)
+        Projection coefficients (complex) if `eigenvalues_out` is None. Otherwise, the squared
+        magnitudes of projection coefficients are returned.
+
+    Notes
+    -----
+    * If `eigenvalues_out` is provided, the returned values are abs(coef)^2, not the coefficients
+      themselves.
+    * A sanity check is performed to ensure the projections' norm should be approximately 1.
+    """
+    if spectra_in.ndim == spectra_out.ndim:
+        N = spectra_in.shape[0]  # Number of spectra vectors
+    else:
+        N = 1
+        spectra_in = [spectra_in]  # Make it iterable
+
+    # Initialize the projection matrix
+    M = spectra_out.shape[0]
+    PROJ = np.zeros((N, M), dtype=complex)
+
+    # Calculate projection coefficients between initial and final spectra
+    for i, si in enumerate(spectra_in):
+        for j, so in enumerate(spectra_out):
+            PROJ[i, j] = np.matmul(si.flatten(), so.flatten())
+
+    # Perform a sanity check to ensure the projections have a norm approximately equal to 1
+    for i, projection in enumerate(PROJ):
+        norm_value = np.around(np.linalg.norm(projection), 4)
+        if norm_value != 1:
+            warnings.warn(
+                f"Projections norm is {norm_value}. Not close to 1 beyond numerical error of 1E-4",
+                UserWarning,
+            )
+
+    # If eigenvalues_out is provided, consolidate projections for degenerate eigenvalues
+    if eigenvalues_out is not None:
+        if isinstance(eigenvalues_out, ureg.Quantity):
+            eigenvalues_out = eigenvalues_out.magnitude
+        # Change format of the main output to squared magnitudes
+        PROJ = np.abs(PROJ) ** 2
+        # Identify and group degenerate eigenvalues
+        degeneracies = [
+            np.where(eigenvalues_out == x)[0] for x in np.unique(eigenvalues_out)
+        ]
+        for i in range(PROJ.shape[0]):
+            for deg in degeneracies:
+                if len(deg) > 1:
+                    for j in deg[1:]:
+                        PROJ[i, deg[0]] += PROJ[i, j]
+                        PROJ[i, j] = 0  # Zero out contributions from repeated indices
+
+    return PROJ

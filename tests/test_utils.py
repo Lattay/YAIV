@@ -588,3 +588,45 @@ def test_auto_kgrid_spacing_and_parity():
         / dk_target.magnitude
     )
     assert rel_err < 0.25
+
+
+def test_eigen_projection():
+    # BASIC projection
+    # Setup initial and final spectra
+    spectra_in = np.array([[1, 0], [0, 1]])
+    spectra_out = np.array([[1, 0], [0, 1]])
+
+    # Test without eigenvalues_out, expecting identity projections
+    proj = ut.eigen_projection(spectra_in, spectra_out)
+    expected_proj = np.array([[1, 0], [0, 1]], dtype=complex)
+    np.testing.assert_array_almost_equal(proj, expected_proj)
+
+    # BASIC projection with degenerate eigenvalues
+    spectra_in = np.array([[1, 0], [0, 1]])
+    spectra_out = np.array([[1, 0], [0, 1]])
+    eigenvalues_out = np.array([1.0, 1.0])  # Degenerate eigenvalues
+
+    proj = ut.eigen_projection(spectra_in, spectra_out, eigenvalues_out)
+    expected_proj = np.array([[1, 0], [1, 0]], dtype=float)
+    np.testing.assert_array_almost_equal(proj, expected_proj)
+
+    # Setup spectra with unitful eigenvalues using Pint
+    spectra_in = np.array([[1, 0], [0, 1]])
+    spectra_out = np.array([[1, 0], [0, 1]])
+    eigenvalues_out = np.array([1.0, 1.0]) * ureg.hertz
+
+    proj = ut.eigen_projection(spectra_in, spectra_out, eigenvalues_out)
+    expected_proj = np.array([[1, 0], [1, 0]], dtype=float)
+    np.testing.assert_array_almost_equal(proj, expected_proj)
+
+    # Setup spectra that violate norm condition
+    spectra_in = np.array([[1, 1] / np.sqrt(2), [0, 0]])
+    spectra_out = np.array([[1, 0], [0, 1]])
+
+    # Check that a warning is raised
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        ut.eigen_projection(spectra_in, spectra_out)
+        assert len(w) == 1
+        assert issubclass(w[-1].category, UserWarning)
+        assert "Projections norm is" in str(w[-1].message)
