@@ -951,6 +951,8 @@ def arrow3D(
         units = 1
     if origin is None:
         origin = np.zeros(3) * units
+    else:
+        vector = vector + origin
 
     # Pop user-level styling
     color = kwargs.pop("color", "black")
