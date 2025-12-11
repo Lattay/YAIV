@@ -1454,6 +1454,8 @@ def auto_kgrid(
         (e.g., angstrom). Unit handling is applied consistently to `delta_k`.  delta_k : float | pint.Quantity, optional
         Target k-point spacing in reciprocal space, with units of [1/length]. Default is 0.1 Å⁻¹.
         Used when `kpoints_per_atom` is None.
+    delta_k : float | ureg.Quantity, optional
+        Target reciprocal-space spacing. Default being 0.1 / ureg.ang.
     n_atoms : int | None, optional
         Number of atoms in the cell. If provided, KPPRA mode is used, with
         Nk_total ≈ kppra / n_atoms, instead of constant spacing.
