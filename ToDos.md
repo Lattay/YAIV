@@ -1,6 +1,7 @@
 List of ToDos...
 
 - Tutorial for phonon.py.
+- Tutorial for convergence.py.
 - Recover the convergence module.
     - [x] Self-consistent
     - [ ] Phonons
