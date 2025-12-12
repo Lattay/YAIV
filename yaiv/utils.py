@@ -711,7 +711,7 @@ def kernel_density(
 
         Parameters
         ----------
-        X : float | np.array | pint.Quantity
+        X : float | np.ndarray | pint.Quantity
             Evaluation points (same units as x).
         cutoff_sigmas : float, optional
             Cutoff in multiples of sigma; defaults to `default_cutoff_sigmas`

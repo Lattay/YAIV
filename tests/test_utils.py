@@ -324,7 +324,7 @@ def test_kernel_density_window_and_steps_defaults():
         assert out.grid.magnitude.shape == out.density.magnitude.shape
 
 
-def test_kernel_regresion_units_and_constant_recovery():
+def test_kernel_regression_units_and_constant_recovery():
     """
     Output units must match `values` units, and a constant `values` should be recovered.
     """
@@ -335,7 +335,7 @@ def test_kernel_regresion_units_and_constant_recovery():
     weights = np.ones(nk) / nk
 
     # Build regression callable
-    f = ut.kernel_regresion(
+    f = ut.kernel_regression(
         x=x,
         values=values,
         weights=weights,
@@ -356,7 +356,7 @@ def test_kernel_regresion_units_and_constant_recovery():
     assert_allclose(y.magnitude, 5.0, rtol=5e-2, atol=5e-2)
 
 
-def test_kernel_regresion_sigma_override_and_scalar_eval():
+def test_kernel_regression_sigma_override_and_scalar_eval():
     """
     The returned callable should accept scalar/array inputs and allow overriding sigma at call time.
     """
@@ -367,7 +367,7 @@ def test_kernel_regresion_sigma_override_and_scalar_eval():
     weights = np.ones(nk) / nk
 
     # Build callable with a default sigma
-    f = ut.kernel_regresion(
+    f = ut.kernel_regression(
         x=x,
         values=values,
         weights=weights,
