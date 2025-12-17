@@ -3,6 +3,7 @@ import numpy as np
 import pytest
 
 import spglib as spg
+import nglview as nv
 
 from yaiv import cell
 
@@ -89,6 +90,24 @@ def test_Cell_repr(data_dir, require, fname):
     assert str(len(c.spglib[2])) in r
 
 
+@pytest.mark.parametrize("fname", FILES, ids=IDS)
+def test_Cell_view(data_dir, require, fname):
+    f = data_dir / fname
+    require(f, f"Missing test data: {fname}")
+    c = cell.Cell.from_file(str(f))
+    widget = c.view()
+
+    # Test widget type
+    assert isinstance(widget, nv.NGLWidget)
+
+    # Test default widget layout size
+    assert widget.layout.width == "800px"
+    assert widget.layout.height == "500px"
+
+    # Test camera setting
+    assert widget.camera == "orthographic"
+
+
 @pytest.mark.parametrize("rep", ([1, 1, 1], [2, 1, 1], [2, 2, 1], [2, 2, 2]))
 @pytest.mark.parametrize("fname", FILES, ids=IDS)
 def test_get_supercell(data_dir, require, fname, rep):
@@ -113,7 +132,8 @@ def test_get_supercell(data_dir, require, fname, rep):
     assert np.all((pos1 >= -1e-9) & (pos1 <= 1 + 1e-9))
 
     # Same symmetries:
-    assert spg.get_spacegroup(c)==spg.get_spacegroup(sc)
+    assert spg.get_spacegroup(c) == spg.get_spacegroup(sc)
+
 
 @pytest.mark.parametrize("fname", FILES, ids=IDS)
 def test_get_wyckoff_positions(data_dir, require, fname):
@@ -132,6 +152,7 @@ def test_get_wyckoff_positions(data_dir, require, fname):
 
     total = sum(len(idx) for idx in w.indices)
     assert total == len(c.spglib[2])
+
 
 @pytest.mark.parametrize("fname", FILES, ids=IDS)
 def test_get_sym_info_prints(data_dir, require, fname, capsys):

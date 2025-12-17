@@ -29,3 +29,6 @@
 
 ### `plot`
 - Now the 3D Brillouin zone can be plotted with `plot.brillouinZone`.
+
+### `cell`
+- The `cell.Cell` object now has a `.view()` method that allows to visualize the structure in 3D.

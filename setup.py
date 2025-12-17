@@ -27,6 +27,7 @@ setuptools.setup(
         "ase",
         "spglib",
         "scipy",
+        "nglview",
     ],
     classifiers=[
         "Programming Language :: Python :: 3",
