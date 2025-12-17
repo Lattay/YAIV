@@ -574,10 +574,12 @@ class Cell:
                 np.asarray([vec / np.linalg.norm(vec) for vec in self.spglib[0]]) * 2
             )
             origin = [0, 0, 0]
-            colors = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]  # Color coding for vectors (RGB)
+            # Color coding and names for vectors (RGB)
+            colors = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+            names = ["a", "b", "c"]
             for i in range(3):
                 # Use arrow drawing capability to show lattice directions
-                widget.shape.add_arrow(origin, vectors[i], colors[i], 0.2)
+                widget.shape.add_arrow(origin, vectors[i], colors[i], 0.2, names[i])
 
         # Apply initial rotations and zoom for an optimal starting view perspective
         widget.control.spin([1, 0, 0], -np.pi / 4 - 0.25)  # Tilt forward 45 degrees
