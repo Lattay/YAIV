@@ -526,6 +526,7 @@ class Cell:
         lattice: bool = True,
         perspective: bool = False,
         size: float = 1,
+        radius: float = 0.1,
     ) -> nv.widget.NGLWidget:
         """
         Visualizes the atomic structure in 3D, with options for repeating, cell display, lattice vectors, and perspective adjustments.
@@ -548,14 +549,16 @@ class Cell:
             Defaults to False.
         size : float, optional
             Specifies the size multiplier for the widget dimensions. Larger values increase the pixel dimensions of the visualization. Defaults to 1.
+        radius : float, optional
+            Radius (size) of balls and bonds.
 
         Returns
         -------
         nv.widget.NGLWidget
             An interactive widget showing the atomic structure, complete with customizable features for user analysis and exploration.
         """
-        # Create the widget with repeated structure
-        widget = nv.show_ase(self.atoms.repeat(repeat), gui=True)
+        # Create the widget with optional repeated structure
+        widget = nv.show_ase(self.atoms.repeat(repeat), default=False)
 
         # Adjust widget dimensions using the `size` parameter
         widget.layout.width = f"{int(size * 800)}px"
@@ -567,7 +570,8 @@ class Cell:
             widget.camera = "orthographic"  # Set diagram-like camera perspective
         if cell:
             widget.add_unitcell()  # Add lattice box visualization
-        widget.add_representation("ball+stick")  # Display atoms and bonds clearly
+        # Display atoms and bonds clearly
+        widget.add_representation("ball+stick", radius=radius, aspectRatio=5)
         if lattice:
             # Calculate normalized lattice vectors for visual representation
             vectors = (
@@ -584,6 +588,7 @@ class Cell:
         # Apply initial rotations and zoom for an optimal starting view perspective
         widget.control.spin([1, 0, 0], -np.pi / 4 - 0.25)  # Tilt forward 45 degrees
         widget.control.spin([0, 0, 1], np.pi / 2)  # Rotate around Y-axis 45 degrees
+        widget.center(zoom=True)
         widget.control.zoom(0.1)  # Apply zoom factor for closer view
 
         return widget
