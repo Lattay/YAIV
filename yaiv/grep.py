@@ -1232,6 +1232,8 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
     ------
     NotImplementedError:
         The function is not currently implemeted for the provided filetype.
+    IndexError:
+        If the number of weights does not coincide with the number of bands.
     """
 
     filetype = _filetype(file)
@@ -1267,9 +1269,10 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
                     if len(WEIGHTS) == num_points:
                         READ_kpoints = False
                 elif READ_energies:
-                    if line.lstrip().startswith("k"):
+                    if line.lstrip().startswith("k ="):
                         OCCUPATIONS = False
                     elif OCCUPATIONS:
+                        # Currently not implemented
                         pass
                     elif line.strip() != "":
                         for e in re.findall(r"[-+]?\d*\.\d+|\d+", line):
@@ -1428,10 +1431,15 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
                             PROJECTIONS.add_poscar(i, l, m, mag, matrix)
         else:
             raise NotImplementedError("Unsupported filetype")
+    WEIGHTS = np.array(WEIGHTS)
+    if WEIGHTS.shape[0] != ENERGIES.shape[0] and len(WEIGHTS) != 0:
+        raise IndexError(
+            f"There should be as many `weights` ({WEIGHTS.shape[0]}) as bands ({ENERGIES.shape[0]})."
+        )
     return SimpleNamespace(
         energies=ENERGIES,
         kpoints=KPOINTS,
-        weights=np.array(WEIGHTS),
+        weights=WEIGHTS,
         projections=PROJECTIONS,
     )
 
