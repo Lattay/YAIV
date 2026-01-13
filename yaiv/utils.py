@@ -819,6 +819,7 @@ def kernel_regression(
         Defaults to yaiv.defaults.config.defaults.cutoff_sigmas.
     order : int, optional
         Kernel type: 0=Gaussian; >0=Methfessel–Paxton order; -1=Fermi-Dirac.
+        Default being Gaussian (0).
     default_reg : float | pint.Quantity, optional
         Default regularization added to the denominator DOS to prevent division
         by zero. If x is unitful, `default_reg` should have units 1/x. Defaults
