@@ -32,5 +32,8 @@ Homepage = "https://github.com/mgamigo/YAIV"
 [tool.setuptools_scm]
 version_file = "yaiv/__init__.py"
 
+[tool.setuptools.packages.find]
+exclude = ["tests*", "docs*"]
+
 [tool.setuptools.package-data]
 yaiv = ["defaults/extra_units.txt"]
