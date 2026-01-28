@@ -65,18 +65,13 @@ import warnings
 from types import SimpleNamespace
 
 import numpy as np
-import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.collections import PathCollection, LineCollection
-from scipy import interpolate, integrate
 
-from yaiv.defaults.config import ureg
+from yaiv.defaults.config import ureg, defaults, apply_plot_defaults
 from yaiv.defaults.config import plot_defaults as pdft
-from yaiv.defaults.config import defaults
 
 from yaiv import utils as ut
-from yaiv import grep as grep
-
 
 __all__ = ["Spectrum" "ElectronBands", "PhononBands", "Density"]
 
@@ -358,6 +353,10 @@ class Spectrum(_Has_lattice, _Has_kpath):
         """
         Pre plotting tool to avoid code duplication.
         """
+        import matplotlib.pyplot as plt
+
+        apply_plot_defaults()
+
         # Handle units
         if shift is not None:
             quantities = [self.eigenvalues, shift]
@@ -583,6 +582,8 @@ class Spectrum(_Has_lattice, _Has_kpath):
         line : matplotlib.collections.LineCollection
             The LineCollection for generating the colorbar.
         """
+        import matplotlib.pyplot as plt
+
         P = self._pre_plot(ax, shift, bands, patched, weights, window)
 
         # Remove some labels from kwargs
@@ -646,6 +647,8 @@ class ElectronBands(Spectrum):
         file : str
             File from which to extract the bands.
         """
+        from yaiv import grep
+
         if file is not None:
             self.filepath = file
             self.electron_num = grep.electron_num(self.filepath)
@@ -689,6 +692,8 @@ class PhononBands(Spectrum):
         file : str
             Path to the file containing phonon frequencies output.
         """
+        from yaiv import grep
+
         if file is not None:
             self.filepath = file
             try:
@@ -862,6 +867,8 @@ class Density:
         - The inverse integration (when `amount` is provided) uses a bisection-like search
           and can fail if the density is not strictly non-negative or not well-behaved.
         """
+        from scipy import interpolate, integrate
+
         if limit is None:
             limit = self.grid[-1]
 
@@ -944,6 +951,10 @@ class Density:
             The axes with the plot.
         """
         # Handle units
+        import matplotlib.pyplot as plt
+
+        apply_plot_defaults()
+
         if self.density is None or self.grid is None:
             raise ValueError("Both `density` and `grid` must be set to plot.")
         quantities = [self.density, self.grid, shift]

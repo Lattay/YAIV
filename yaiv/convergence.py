@@ -36,7 +36,6 @@ Examples
 """
 
 import glob
-import pickle
 from types import SimpleNamespace
 
 import numpy as np
@@ -159,6 +158,7 @@ class Self_consistent:
         filename : str, Optional
             Path to the output file. '.pkl' will be added if missing. Default `D_s.pkl`.
         """
+        import pickle
         if not filename.endswith(".pkl"):
             filename += ".pkl"
         with open(filename, "wb") as f:
@@ -179,6 +179,7 @@ class Self_consistent:
         Self_consistent
             Fully reconstructed Self_consistent object.
         """
+        import pickle
         with open(filename, "rb") as f:
             obj = pickle.load(f)
         return obj

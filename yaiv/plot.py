@@ -85,10 +85,10 @@ from matplotlib.figure import Figure
 
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.patches import FancyArrowPatch
-from mpl_toolkits.mplot3d import proj3d
 
 from yaiv.defaults.config import ureg
 from yaiv.defaults.config import plot_defaults as pdft
+from yaiv.defaults.config import apply_plot_defaults
 from yaiv import utils as ut
 from yaiv import spectrum as spec
 
@@ -105,6 +105,7 @@ __all__ = [
     "brillouinZone",
 ]
 
+apply_plot_defaults()
 
 def get_HSP_ticks(
     kpath: SimpleNamespace | np.ndarray,
@@ -908,6 +909,8 @@ class _Arrow3D(FancyArrowPatch):
             The minimum z-coordinate of the projected vertices, used for depth
             ordering.
         """
+        from mpl_toolkits.mplot3d import proj3d
+
         xs3d, ys3d, zs3d = self._verts3d
         xs, ys, zs = proj3d.proj_transform(xs3d, ys3d, zs3d, self.axes.M)
         self.set_positions((xs[0], ys[0]), (xs[1], ys[1]))

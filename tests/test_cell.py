@@ -142,7 +142,7 @@ def test_get_wyckoff_positions(data_dir, require, fname):
     c = cell.Cell.from_file(str(f))
 
     # Some structures or very low symprec may cause spglib to fail to find symmetry; skip then
-    c.get_wyckoff_positions(symprec=cell.dft.symprec)
+    c.get_wyckoff_positions(symprec=cell.defaults.symprec)
 
     w = c.wyckoff
     assert hasattr(w, "symbols")
@@ -159,7 +159,7 @@ def test_get_sym_info_prints(data_dir, require, fname, capsys):
     f = data_dir / fname
     require(f, f"Missing test data: {fname}")
     c = cell.Cell.from_file(str(f))
-    c.get_sym_info(symprec=cell.dft.symprec)
+    c.get_sym_info(symprec=cell.defaults.symprec)
 
     out = capsys.readouterr().out
     assert "SpaceGroup =" in out

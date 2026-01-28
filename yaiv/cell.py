@@ -63,20 +63,15 @@ yaiv.utils    : Utility functions for basis and vector transformations
 """
 
 from types import SimpleNamespace
-import re
-import os
-import sys
 
 import numpy as np
-import spglib as spg
 
-from ase.io import read, write
+# from ase.io import read, write
 from ase import Atoms
 import nglview as nv
 
-from yaiv.defaults.config import defaults as dft
-from yaiv.defaults.config import qe_defaults
 from yaiv import utils as ut
+from yaiv.defaults.config import defaults
 
 __all__ = ["read", "write", "read_spg", "ase2spglib", "spglib2ase", "Cell"]
 
@@ -171,6 +166,8 @@ class Cell:
         Cell
             A new Cell instance with Atoms and spglib data.
         """
+        from ase.io import read
+
         atoms = read(file)
         return cls(atoms=atoms)
 
@@ -205,7 +202,7 @@ class Cell:
         return f"<Cell with {len(self.spglib[2])} atoms>\n\n{self.spglib}"
         return f"\n{self.spglib}"
 
-    def get_sym_info(self, symprec: float = dft.symprec):
+    def get_sym_info(self, symprec: float = defaults.symprec):
         """
         Print a detailed report of symmetry information for the crystal structure.
 
@@ -227,9 +224,11 @@ class Cell:
         This is a diagnostic utility that gives insight into the symmetry content of the crystal.
         It is not meant for structured programmatic use, but rather for human-readable output.
         """
+        from spglib import get_symmetry_dataset
+
         atoms = spglib2ase(self.spglib)
         print(atoms.get_chemical_formula())
-        dataset = spg.get_symmetry_dataset(self.spglib, symprec=symprec)
+        dataset = get_symmetry_dataset(self.spglib, symprec=symprec)
         print("SpaceGroup =", dataset.international, "(" + str(dataset.number) + ")")
         print()
         print("ATOMS:")
@@ -258,7 +257,7 @@ class Cell:
             # _rot_name(rot, self.spglib[0])
             print(f"{rot} + {t}")
 
-    def get_wyckoff_positions(self, symprec: float = dft.symprec):
+    def get_wyckoff_positions(self, symprec: float = defaults.symprec):
         """
         Analyze the structure and store information about independent Wyckoff positions.
 
@@ -284,9 +283,11 @@ class Cell:
         symprec : float, optional
             Symmetry tolerance for spglib. Atoms closer than this value are considered equivalent.
         """
+        from spglib import get_symmetry_dataset
+
         spglib_data = self.spglib
         atoms = spglib2ase(spglib_data)
-        dataset = spg.get_symmetry_dataset(spglib_data, symprec=symprec)
+        dataset = get_symmetry_dataset(spglib_data, symprec=symprec)
 
         wyckoff_letters = dataset.wyckoffs
         equivalent_atoms = dataset.equivalent_atoms
@@ -389,6 +390,10 @@ class Cell:
         kgrid : list, optional
             Desiered number of kgrid [N1,N2,N3]. Defaults to the template or `qe_defaults`.
         """
+        import re, os
+        from ase.io import write
+        from yaiv.defaults.config import qe_defaults
+
         # Build dummy dictionary for pseudopotentials (needed from ASE 3.24)
         species = set(self.atoms.get_chemical_symbols())
         pseudopotentials = {}
@@ -498,13 +503,15 @@ class Cell:
         filename : str, optional
             Path to the file to write. If None, writes to stdout.
         """
+        from sys import stdout
+
         # Gather data from ASE Atoms
         cell = np.asarray(self.atoms.get_cell())
         positions = np.asarray(self.atoms.get_scaled_positions())
         symbols = self.atoms.get_chemical_symbols()
 
         # Decide output stream
-        out = sys.stdout if filename is None else open(filename, "w")
+        out = stdout if filename is None else open(filename, "w")
 
         try:
             # Write CELL (Angstrom)
@@ -516,7 +523,7 @@ class Cell:
             for s, (x, y, z) in zip(symbols, positions):
                 out.write(f"{s:<2} {x:14.9f} {y:14.9f} {z:14.9f}\n")
         finally:
-            if out is not sys.stdout:
+            if out is not stdout:
                 out.close()
 
     def view(
@@ -672,6 +679,8 @@ def read_spg(file: str) -> tuple:
         - positions : (N, 3) array of scaled atomic positions (fractional)
         - numbers : (N,) array of atomic numbers
     """
+    from ase.io import read
+
     cryst = read(file)
     spglib_cryst = ase2spglib(cryst)
     return spglib_cryst

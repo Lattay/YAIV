@@ -91,11 +91,8 @@ from types import SimpleNamespace
 from typing import Sequence, Any
 
 import numpy as np
-from scipy.special import factorial, hermite
-from scipy import integrate
 
-from yaiv.defaults.config import ureg
-from yaiv.defaults.config import defaults
+from yaiv.defaults.config import ureg, defaults
 
 __all__ = [
     "invQ",
@@ -468,6 +465,7 @@ def methpax_kernel(
     y : float
         Value(s) of the MP-smearing function evaluated at x.
     """
+    from scipy.special import factorial, hermite
 
     def A_n(n):
         return (-1) ** n / (factorial(n) * (4**n) * np.sqrt(np.pi))
@@ -1169,6 +1167,8 @@ def cumulative_integral(x: np.ndarray, y: np.ndarray):
     -----
     It uses scipy's cumulative_trapezoid method.
     """
+    from scipy import integrate
+
     units = 1
     if isinstance(x, ureg.Quantity):
         units *= x.units

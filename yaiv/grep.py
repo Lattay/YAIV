@@ -110,17 +110,12 @@ yaiv.utils    : Basis universal utilities
 
 import re
 import warnings
-import glob
 from types import SimpleNamespace
-import xml.etree.ElementTree as ET
 
 import numpy as np
-from ase import io
 
 from yaiv.defaults.config import ureg
 from yaiv import utils as ut
-from yaiv import grep
-from yaiv import phonon as ph
 
 __all__ = [
     "electron_num",
@@ -536,6 +531,8 @@ class _Qe_xml:
         NotImplementedError
             If the file type is not recognized as a QE XML file.
         """
+        import xml.etree.ElementTree as ET
+
         if _filetype(file) == "qe_xml":
             tree = ET.parse(file)
             self.root = tree.getroot()
@@ -817,6 +814,8 @@ def lattice(file: str, alat: bool = False) -> ureg.Quantity:
     NotImplementedError:
         The function is not currently implemeted for the provided filetype.
     """
+    from ase import io
+
     filetype = _filetype(file)
     READ = False
 
@@ -1282,7 +1281,7 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
                             E = []
                             OCCUPATIONS = True
             # Recover crystal units
-            lat = grep.lattice(file)
+            lat = lattice(file)
             lat = lat / np.linalg.norm(lat[0])
             Klat = ut.reciprocal_basis(lat).magnitude
             KPOINTS = ut.cartesian2cryst(KPOINTS, Klat) * (ureg._2pi / ureg.crystal)
@@ -1541,10 +1540,10 @@ def dyn_file(file: str) -> SimpleNamespace:
     NotImplementedError:
         The function is not currently implemeted for the provided filetype.
     """
-    filetype = grep._filetype(file)
+    filetype = _filetype(file)
     if filetype != "qe_dyn":
         raise NotImplementedError("Unsupported filetype")
-    lattice = grep.lattice(file)
+    lat = lattice(file)
     n_atoms = n_types = freqs = vec = alat = None
     vec, freqs = [], []
     species = []
@@ -1599,7 +1598,7 @@ def dyn_file(file: str) -> SimpleNamespace:
 
     return SimpleNamespace(
         q=q_point,
-        lattice=lattice,
+        lattice=lat,
         freqs=freqs,
         displacements=displacements,
         positions=positions,
@@ -1633,8 +1632,10 @@ def _find_dyn_file(q_cryst: np.ndarray | ureg.Quantity, results_ph_path: str) ->
     FileNotFoundError
         If no `.dyn*` file or no matching q-point is found in any of the `.dyn` files
     """
+    from glob import glob
+
     # Locate a reference .dyn file to extract lattice
-    dyn1 = glob.glob(results_ph_path + "/*dyn1") + glob.glob(results_ph_path + "/*dyn")
+    dyn1 = glob(results_ph_path + "/*dyn1") + glob(results_ph_path + "/*dyn")
     if not dyn1:
         raise FileNotFoundError(
             "No 'dyn1' or 'dyn' file found in the specified folder."
@@ -1646,7 +1647,7 @@ def _find_dyn_file(q_cryst: np.ndarray | ureg.Quantity, results_ph_path: str) ->
     k_basis = ut.reciprocal_basis(lattice)
 
     # Scan all .dyn* files (excluding matdyn if present)
-    dyn_files = glob.glob(results_ph_path + "/*.dyn*")
+    dyn_files = glob(results_ph_path + "/*.dyn*")
     dyn_files = [f for f in dyn_files if "results_matdyn" not in f]
 
     for file in dyn_files:
@@ -1717,6 +1718,8 @@ def dyn_q(
       This must be removed to obtain the physical matrix for diagonalization (ω² in Ry²/ħ²).
     - The units of the returned matrix are `_2m_e * Ry^2 / planck_constant^2` in QE format.
     """
+    from yaiv.phonon import _QEdyn2Realdyn
+
     # Normalize units
     if isinstance(q_cryst, ureg.Quantity):
         q_cryst = q_cryst.to("_2pi/crystal")
@@ -1773,7 +1776,7 @@ def dyn_q(
     delattr(system, "displacements")
     system.dyn = dyn_mat * ureg("_2m_e * Ry^2 / planck_constant^2")
     if not qe_format:
-        system.dyn = ph._QEdyn2Realdyn(system.dyn, system.masses)
+        system.dyn = _QEdyn2Realdyn(system.dyn, system.masses)
 
     return system
 
