@@ -206,8 +206,9 @@ class _OrbitalProjectionContainer:
     Container for orbital-resolved projection matrices.
 
     Supports projections stored from:
-      - POSCAR-style (VASP-like): keys (ion, l, m, M)
-      - QE (Quantum ESPRESSO) projwfc: keys (ion, l, j, mj, wfc)
+      - POSCAR-style (VASP-like): keys (ion, l, ml, M)
+      - QE (Quantum ESPRESSO) SOC projwfc: keys (ion, l, j, mj, wfc)
+      - QE (Quantum ESPRESSO) scalar projwfc: keys (ion, l, m, wfc)
 
     Each entry maps a quantum-number tuple → projection matrix of shape (nkpts, nbnds).
 
@@ -216,13 +217,16 @@ class _OrbitalProjectionContainer:
     _data : dict
         Internal mapping from quantum-number tuples to projection matrices.
         - POSCAR format: (ion, l, m, M) → np.ndarray (nkpts, nbnds)
-        - QE format:     (ion, l, j, mj, wfc) → np.ndarray (nkpts, nbnds)
+        - QE SOC format:     (ion, l, j, mj, wfc) → np.ndarray (nkpts, nbnds)
+        - QE scalar format:  (ion, l, m, wfc) → np.ndarray (nkpts, nbnds)
+    _code : str
+        Code according to which the code is formated. Options are "quantum_espresso" and "vasp".
 
     Methods
     -------
     add_poscar(ion, l, m, M, matrix)
         Store a projection matrix in POSCAR format.
-    add_qe(ion, l, j, mj, wfc, matrix)
+    add_qe(ion, l, wfc, matrix, m, j, mj)
         Store a projection matrix in QE projwfc format.
     __call__(...)
         Sum over matching entries with flexible indexing across both formats.
@@ -230,11 +234,17 @@ class _OrbitalProjectionContainer:
         Compact summary of stored channels (POSCAR or QE).
     """
 
-    def __init__(self):
+    def __init__(self, code=str):
         """
         Initialize an empty orbital projection container.
+
+        Parameters
+        ----------
+        code : str
+            Code according to which the code is formated. Options are "quantum_espresso" and "vasp".
         """
         self._data = {}
+        self._code = code
 
     def add_poscar(self, ion: int, l: int, m: int, M: int, matrix: np.ndarray):
         """
@@ -256,7 +266,14 @@ class _OrbitalProjectionContainer:
         self._data[(ion, l, m, M)] = matrix
 
     def add_qe(
-        self, ion: int, l: int, j: float, mj: float, wfc: int, matrix: np.ndarray
+        self,
+        ion: int,
+        l: int,
+        wfc: int,
+        matrix: np.ndarray,
+        m: int = None,
+        j: float = None,
+        mj: float = None,
     ):
         """
         Store a projection matrix for a specific QE projwfc channel.
@@ -267,42 +284,71 @@ class _OrbitalProjectionContainer:
             Ion index the projection refers to.
         l : int
             Orbital angular momentum (0=s, 1=p, 2=d, ...).
-        j : float
-            Total angular momentum (e.g., 0.5, 1.5, ...).
-        mj : float
-            Projection of total angular momentum (−j..+j, step 1).
         wfc : int
             Wavefunction index (QE projwfc channel identifier).
         matrix : np.ndarray, shape (nkpts, nbnds)
             Projection matrix.
+        m : int, optional
+            QE real-harmonic component index (1..2*l+1). Not a magnetic quantum number.
+            Used in scalar mode.
+        j : float, optional
+            Total angular momentum (e.g., 0.5, 1.5, ...). Used in SOC mode.
+        mj : float, optional
+            Projection of total angular momentum (−j..+j, step 1). Used in SOC mode.
+
+        Raises
+        ------
+        ValueError
+            If an invalid combination of (m, j, mj) is provided or values are out of range.
         """
-        self._data[(ion, l, j, mj, wfc)] = matrix
+        scalar_mode = (m is not None) and (j is None) and (mj is None)
+        soc_mode = (m is None) and (j is not None) and (mj is not None)
+
+        if scalar_mode:
+            self._data[(ion, l, m, wfc)] = matrix
+        elif soc_mode:
+            self._data[(ion, l, j, mj, wfc)] = matrix
+        else:
+            raise ValueError(
+                "Invalid QE projection description. "
+                "Provide either (m) for scalar calculations "
+                "or (j, mj) for spin–orbit calculations."
+            )
 
     def __repr__(self) -> str:
         keys = np.array(tuple(self._data.keys()), dtype=object)
-        # QE: keys of length 5 -> (ion, l, j, mj, wfc)
-        if len(keys[0]) == 5:
+        if self._code == "quantum_espresso":
             ions = int(max(int(k[0]) for k in keys) + 1)
             l_by_ion = {
                 ion: sorted({int(k[1]) for k in keys if int(k[0]) == ion})
                 for ion in range(ions)
             }
-            return (
-                f"_OrbitalProjectionContainer("
-                f"ions={ions}, \n"
-                f"l={l_by_ion} \n"
-                f"shape=(ion, l, j, mj, wfc))"
-            )
+            # QE_SOC: keys of length 5 -> (ion, l, j, mj, wfc)
+            if len(keys[0]) == 5:
+                return (
+                    f"_OrbitalProjectionContainer("
+                    f"ions={ions}, \n"
+                    f"l={l_by_ion} \n"
+                    f"shape=(ion, l, j, m_j, wfc))"
+                )
+            # QE_scalar: keys of length 5 -> (ion, l, m, wfc)
+            elif len(keys[0]) == 4:
+                return (
+                    f"_OrbitalProjectionContainer("
+                    f"ions={ions}, \n"
+                    f"l={l_by_ion} \n"
+                    f"shape=(ion, l, m[1,1+2l], wfc)"
+                )
         # POSCAR: keys of length 4 -> (ion, l, m, M)
-        elif len(keys[0]) == 4:
+        elif self._code == "vasp":
             keys = np.array(keys, dtype=int)
             ions = np.max(keys[:, 0]) + 1
             l = sorted(set(int(x) for x in keys[:, 1]))
             Mmax = int(np.max(keys[:, 3]))
             Mstr = f"[0-{Mmax}]" if Mmax > 0 else "0"
             return (
-                f"_OrbitalProjectionContainer(ions={ions}, l={l}, m=[-l,l], M={Mstr}\n"
-                f"shape=(ion, l, m, M))"
+                f"_OrbitalProjectionContainer(ions={ions}, l={l}, m_l=[-l,l], M={Mstr}\n"
+                f"shape=(ion, l, m_l, M))"
             )
         else:
             return f"_OrbitalProjectionContainer(keys_shape={len(keys[0])}, entries={len(keys)})"
@@ -330,8 +376,9 @@ class _OrbitalProjectionContainer:
             Ion index or indices. Default selects all ions.
         l : int | list | range | slice, optional
             Orbital angular momentum(s). Default selects all.
-        m : int | list | range | slice, optional (POSCAR)
-            Magnetic quantum number(s) (−l..+l). Only used for POSCAR data.
+        m : int | list | range | slice, optional
+            Magnetic quantum number(s) (−l..+l), for POSCAR data.
+            Real-harmonic component index [1,1+2l], for scalar QE.
         M : int | list | range | slice, optional (POSCAR)
             Magnetization channel (0 total, 1,2,3 for x,y,z). Default 0.
         j : float | list | tuple | slice, optional (QE)
@@ -365,13 +412,16 @@ class _OrbitalProjectionContainer:
         """
         keys = np.array(tuple(self._data.keys()), dtype=object)
         # QE keys length 5
-        if len(keys[0]) == 5:
-            query = (ion, l, j, mj, wfc)
-        # POSCAR keys length 4
-        elif len(keys[0]) == 4:
+        if self._code=="quantum_espresso":
+            if len(keys[0]) == 5:
+                query = (ion, l, j, mj, wfc)
+            elif len(keys[0]) == 4:
+                query = (ion, l, m, wfc)
+        elif self._code=="vasp":
+            # POSCAR keys length 4
             query = (ion, l, m, M)
         else:
-            raise KeyError("Unknown key format in container")
+            raise KeyError("Unknown code in container")
 
         def match(val, key):
             if isinstance(val, slice):
@@ -1298,15 +1348,27 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
                 # Scrape STATES info
                 if "state #" in line:
                     l = line.split()
-                    # atom, l, j, mj, wfc
-                    state = [
-                        int(l[4]) - 1,
-                        int(l[9][3:]),
-                        float(l[10][2:]),
-                        float(l[-1].split("=")[-1][:-1]),
-                        int(l[8]) - 1,
-                    ]
-                    STATES = STATES + [state]
+                    if "j=" in line:
+                        # atom, l, j, mj, wfc
+                        state = [
+                            int(l[4]) - 1,
+                            int(l[9][3:]),
+                            float(l[10][2:]),
+                            float(l[-1].split("=")[-1][:-1]),
+                            int(l[8]) - 1,
+                        ]
+                        STATES.append(state)
+                        soc_mode = True
+                    if "m=" in line:
+                        # atom, l, m, wfc
+                        state = [
+                            int(l[4]) - 1,
+                            int(l[9][3:]),
+                            int(l[-1][:-1]),
+                            int(l[8]) - 1,
+                        ]
+                        STATES.append(state)
+                        soc_mode = False
                 if "k =" in line:
                     k = [float(x) for x in line.split()[2:]]
                     KPOINTS.append(k)
@@ -1338,10 +1400,23 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
             # Save projections into the proper container
             PROJ = np.array(PROJECTIONS)
             STATES = np.array(STATES)
-            PROJECTIONS = _OrbitalProjectionContainer()
+            PROJECTIONS = _OrbitalProjectionContainer(code="quantum_espresso")
             N = 0
-            for i, S in enumerate(STATES):
-                PROJECTIONS.add_qe(S[0], S[1], S[2], S[3], S[4], PROJ[:, :, i])
+            if soc_mode:
+                for i, S in enumerate(STATES):
+                    PROJECTIONS.add_qe(
+                        ion=S[0],
+                        l=S[1],
+                        wfc=S[4],
+                        matrix=PROJ[:, :, i],
+                        j=S[2],
+                        mj=S[3],
+                    )
+            else:
+                for i, S in enumerate(STATES):
+                    PROJECTIONS.add_qe(
+                        ion=S[0], l=S[1], wfc=S[3], matrix=PROJ[:, :, i], m=S[3]
+                    )
         elif filetype == "eigenval":
             for i, line in enumerate(lines):
                 l = line.split()
@@ -1418,7 +1493,7 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
             # Save projections into the proper container
             PROJ = np.array(PROJ)
             M = round(PROJ.shape[0] / (np.prod(np.shape(ENERGIES)) * num_ions))
-            PROJECTIONS = _OrbitalProjectionContainer()
+            PROJECTIONS = _OrbitalProjectionContainer(code="vasp")
             for i in range(num_ions):
                 for l in range(3):
                     for m in range(-l, l + 1):
