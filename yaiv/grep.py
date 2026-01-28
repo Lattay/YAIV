@@ -1415,7 +1415,7 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
             else:
                 for i, S in enumerate(STATES):
                     PROJECTIONS.add_qe(
-                        ion=S[0], l=S[1], wfc=S[3], matrix=PROJ[:, :, i], m=S[3]
+                        ion=S[0], l=S[1], wfc=S[3], matrix=PROJ[:, :, i], m=S[2]
                     )
         elif filetype == "eigenval":
             for i, line in enumerate(lines):
