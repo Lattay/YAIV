@@ -348,12 +348,14 @@ class Spectrum(_Has_lattice, _Has_kpath):
         bands=None,
         patched=True,
         weights=None,
+        log=None,
         window=None,
     ):
         """
         Pre plotting tool to avoid code duplication.
         """
         import matplotlib.pyplot as plt
+        import matplotlib.colors as colors
 
         apply_plot_defaults()
 
@@ -383,19 +385,28 @@ class Spectrum(_Has_lattice, _Has_kpath):
                 if isinstance(window, ureg.Quantity)
                 else window
             )
-            if window is None:
-                vmin = np.min(W[:, band_indices])
-                vmax = np.max(W[:, band_indices])
-            else:
+            if window is not None:
                 vmin, vmax = window
+            else:
+                vals = W[:, band_indices]
+                if not log:
+                    vmin = np.min(vals)
+                    vmax = np.max(vals)
+                else:
+                    positive = vals[vals > 0]
+                    vmin = np.min(positive)
+                    vmax = np.max(vals)
+            if log:
+                norm = colors.LogNorm(vmin=vmin, vmax=vmax)
+            else:
+                norm = colors.Normalize(vmin=vmin, vmax=vmax)
             return SimpleNamespace(
                 ax=ax,
                 x=x,
                 eigen=eigen,
                 band_indices=band_indices,
                 weights=W,
-                vmin=vmin,
-                vmax=vmax,
+                norm=norm,
             )
         else:
             return SimpleNamespace(
@@ -452,6 +463,7 @@ class Spectrum(_Has_lattice, _Has_kpath):
         ax: Axes = None,
         size_change: bool = False,
         alpha_change: bool = False,
+        log: bool = False,
         shift: float | ureg.Quantity = None,
         patched: bool = True,
         bands: list[int] = None,
@@ -476,6 +488,8 @@ class Spectrum(_Has_lattice, _Has_kpath):
             Whether the size of the dots should also change (linked to the window).
         alpha_change : bool, optional
             Whether the transparency (alpha) of the dots should also change (linked to the window).
+        log : bool, optional
+            If True logaritmic scaling is applied. Default is False.
         shift : float | pint.Quantity, optional
             A constant shift applied to the eigenvalues (e.g., Fermi level).
             Default is zero.
@@ -495,18 +509,26 @@ class Spectrum(_Has_lattice, _Has_kpath):
         scatter : matplotlib.collections.PathCollection
             The PathCollection for generating the colorbar.
         """
-        P = self._pre_plot(ax, shift, bands, patched, weights, window)
+        P = self._pre_plot(
+            ax=ax,
+            shift=shift,
+            bands=bands,
+            patched=patched,
+            weights=weights,
+            log=log,
+            window=window,
+        )
 
         # Remove some labels from kwargs
         label = kwargs.pop("label", None)
         s = kwargs.pop("s", pdft.weights_s)
         alpha = kwargs.pop("alpha", 1)
         if alpha_change:
-            alpha = np.clip((P.weights - P.vmin) / (P.vmax - P.vmin), 0, 1)
+            alpha = np.clip((P.weights - P.norm.vmin) / (P.norm.vmax - P.norm.vmin), 0, 1)
         else:
             alpha = np.ones(P.weights.shape)
         if size_change:
-            s = np.clip((P.weights - P.vmin) / (P.vmax - P.vmin), 0, 1) * s
+            s = np.clip((P.weights - P.norm.vmin) / (P.norm.vmax - P.norm.vmin), 0, 1) * s
         else:
             s = np.ones(P.weights.shape) * s
 
@@ -516,8 +538,7 @@ class Spectrum(_Has_lattice, _Has_kpath):
             c=P.weights[:, P.band_indices[0]],
             s=s[:, P.band_indices[0]],
             alpha=alpha[:, P.band_indices[0]],
-            vmin=P.vmin,
-            vmax=P.vmax,
+            norm=P.norm,
             label=label,
             edgecolors="none",
             **kwargs,
@@ -529,8 +550,7 @@ class Spectrum(_Has_lattice, _Has_kpath):
                 c=P.weights[:, i],
                 s=s[:, i],
                 alpha=alpha[:, i],
-                vmin=P.vmin,
-                vmax=P.vmax,
+                norm=P.norm,
                 edgecolors="none",
                 **kwargs,
             )
@@ -543,6 +563,7 @@ class Spectrum(_Has_lattice, _Has_kpath):
         weights: np.ndarray,
         window: list[float, float] | ureg.Quantity = None,
         ax: Axes = None,
+        log: bool = False,
         shift: float | ureg.Quantity = None,
         patched: bool = True,
         bands: list[int] = None,
@@ -563,6 +584,8 @@ class Spectrum(_Has_lattice, _Has_kpath):
             Default is minimal of maximal values for the set of weights.
         ax : Axes, optional
             Axes to plot on. If None, a new figure and axes are created.
+        log : bool, optional
+            If True logaritmic scaling is applied. Default is False.
         shift : float | pint.Quantity, optional
             A constant shift applied to the eigenvalues (e.g., Fermi level).
             Default is zero.
@@ -584,13 +607,20 @@ class Spectrum(_Has_lattice, _Has_kpath):
         """
         import matplotlib.pyplot as plt
 
-        P = self._pre_plot(ax, shift, bands, patched, weights, window)
+        P = self._pre_plot(
+            ax=ax,
+            shift=shift,
+            bands=bands,
+            patched=patched,
+            weights=weights,
+            log=log,
+            window=window,
+        )
 
         # Remove some labels from kwargs
         label = kwargs.pop("label", None)
         linewidth = kwargs.pop("linewidth", pdft.gradcolor_w)
 
-        norm = plt.Normalize(P.vmin, P.vmax)
         # Plotting band by band
         points = np.array(
             [P.x.magnitude, P.eigen.magnitude[:, P.band_indices[0]]]
@@ -598,7 +628,7 @@ class Spectrum(_Has_lattice, _Has_kpath):
         segments = np.concatenate([points[:-1], points[1:]], axis=1)
         lc = LineCollection(
             segments,
-            norm=norm,
+            norm=P.norm,
             label=label,
             **kwargs,
         )
@@ -612,7 +642,7 @@ class Spectrum(_Has_lattice, _Has_kpath):
             segments = np.concatenate([points[:-1], points[1:]], axis=1)
             lc = LineCollection(
                 segments,
-                norm=norm,
+                norm=P.norm,
                 **kwargs,
             )
             lc.set_array(P.weights[:, P.band_indices[i]])

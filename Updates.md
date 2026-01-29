@@ -28,6 +28,7 @@
 
 ### `spectrum`
 - Implement Fermi-Dirac smearing for the calculation of the Densities.
+- Now `plot_fat` and `plot_color` admit logaritmic scaling for projection weights.
 
 ### `plot`
 - Now the 3D Brillouin zone can be plotted with `plot.brillouinZone`.
