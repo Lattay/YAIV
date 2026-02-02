@@ -11,8 +11,8 @@
 ## 📦 Module-Specific Updates
 
 ### `grep`
-- Energy decomposition of `grep.total_energy` now also works for fixed occuaption calcualtions and greps more energy components.
-- `grep.kpointsEnergies` also supports grepping non-relativistic calculations for Quantum Espresso.
+- Energy decomposition of `grep.total_energy` now also works for fixed occuaption calculations and greps more energy components.
+- `grep.kpointsEnergies` also supports grepping orbital projections in non-relativistic calculations for Quantum Espresso.
 
 - New grepping tools for the `convergence` module:
     - Added `grep.cutoff` to grep the cutoff energy used in calculations .
