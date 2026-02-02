@@ -107,6 +107,7 @@ __all__ = [
 
 apply_plot_defaults()
 
+
 def get_HSP_ticks(
     kpath: SimpleNamespace | np.ndarray,
     k_lattice: np.ndarray = None,
@@ -294,8 +295,10 @@ def _compare_spectra(
     ax : Axes
         Axes containing the plot.
     """
+    from itertools import cycle
 
-    cycle_iter = iter(pdft.color_cycle)
+    cycle_iter = cycle(plt.rcParams["axes.prop_cycle"].by_key()["color"])
+
     if len(np.shape(grid)) == 2 and np.shape(grid)[0] == len(spectra):
         GRID = True
     else:
@@ -550,6 +553,8 @@ def DOS(
     ax : Axes
         Axes containing the plot.
     """
+    from itertools import cycle
+
     # Extract first spectrum for defaults
     S = spectra[0] if isinstance(spectra, list) else spectra
 
@@ -583,7 +588,7 @@ def DOS(
         )
     else:
         # Multi plot
-        cycle_iter = iter(pdft.color_cycle)
+        cycle_iter = cycle(plt.rcParams["axes.prop_cycle"].by_key()["color"])
         zorder = 2
         for i, S in enumerate(spectra):
             color = (
