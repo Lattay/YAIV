@@ -371,7 +371,7 @@ def bands(
     user_color = kwargs.pop("color", None)  # user-defined color overrides all
     user_label = kwargs.pop("label", None)  # user-defined label
 
-    if type(electronBands) is not list:
+    if not isinstance(electronBands, list):
         band = electronBands
         indices = list(range(band.eigenvalues.shape[1]))
         # For non-spin orbit weights might add up to 2.
@@ -411,7 +411,7 @@ def bands(
         if isinstance(window, ureg.Quantity)
         else window
     )
-    if type(window) is int or type(window) is float:
+    if isinstance(window, int) or isinstance(window, float):
         window = [-window, window]
     ax.set_ylim(window[0], window[1])
 
@@ -461,7 +461,7 @@ def phonons(
     user_color = kwargs.pop("color", None)  # user-defined color overrides all
     user_label = kwargs.pop("label", None)  # user-defined label
 
-    if type(phononBands) is not list:
+    if not isinstance(phononBands, list):
         band = phononBands
         ax = band.plot(
             ax,
@@ -489,7 +489,7 @@ def phonons(
             if isinstance(window, ureg.Quantity)
             else window
         )
-        if type(window) is int or type(window) is float:
+        if isinstance(window, int) or isinstance(window, float):
             window = [-window, window]
         ax.set_ylim(window[0], window[1])
 
