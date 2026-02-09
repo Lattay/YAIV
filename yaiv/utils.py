@@ -41,7 +41,7 @@ analyze_distribution(x, y)
 kernel_density(x, values)
     Build a callable density(X) that returns the kernel-broadened density evaluated at arbitrary positions X.
 
-kernel_regresion(x, values)
+kernel_regression(x, values)
     Build a callable that performs 1D kernel regression (Nadaraya–Watson estimator) from samples.
 
 kernel_density_on_grid(x, values)
@@ -101,7 +101,7 @@ __all__ = [
     "methpax_delta",
     "analyze_distribution",
     "kernel_density",
-    "kernel_regresion",
+    "kernel_regression",
     "kernel_density_on_grid",
     "amplitude2order_parameter",
     "cumulative_integral",
@@ -741,7 +741,7 @@ def kernel_density(
     return density_func
 
 
-def kernel_regresion(
+def kernel_regression(
     x: np.ndarray | ureg.Quantity,
     values: np.ndarray | ureg.Quantity,
     weights: np.ndarray | None = None,
@@ -832,7 +832,7 @@ def kernel_regresion(
     )
 
     # Build callable
-    def kernel_regresion_func(
+    def kernel_regression_func(
         X: float | np.ndarray | ureg.Quantity,
         cutoff_sigmas: float = None,
         sigma: float | ureg.Quantity = None,
@@ -871,7 +871,7 @@ def kernel_regresion(
         OUT = A / (B + reg)
         return OUT
 
-    return kernel_regresion_func
+    return kernel_regression_func
 
 
 def kernel_density_on_grid(
