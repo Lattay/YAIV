@@ -854,6 +854,7 @@ class Density:
         self,
         limit: float | ureg.Quantity = None,
         amount: float = None,
+        bound: int = 100,
     ) -> (float | ureg.Quantity, float | ureg.Quantity):
         """
         Integrate the density up to a given limit, or invert the integral.
@@ -877,6 +878,8 @@ class Density:
             Target integral value (dimensionless number in magnitude space).
             If provided, the method returns the grid value X* where the integral
             equals `amount` (within the integration error tolerance).
+        bound : int, optional
+            Upper bound in number of subintervals used in the integrate.quad algorithm.
 
         Returns
         -------
@@ -925,7 +928,7 @@ class Density:
 
         if amount is None:
             # Plain integration from X[0] to X_max
-            integral, error = integrate.quad(f, X[0], X_max, limit=100)
+            integral, error = integrate.quad(f, X[0], X_max, limit=bound)
             # Units: (density units) * (grid units) -> dimensionless if DOS
             return integral * integral_units, error * integral_units
         else:
@@ -936,7 +939,7 @@ class Density:
 
             for _ in range(max_iter):
                 X_mid = 0.5 * (X_low + X_high)
-                integral, error = integrate.quad(f, X[0], X_mid, limit=100)
+                integral, error = integrate.quad(f, X[0], X_mid, limit=bound)
                 if abs(integral - amount) < error:
                     # Converged
                     return X_mid * grid_units, error * grid_units
