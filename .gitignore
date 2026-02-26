@@ -7,3 +7,4 @@ dist/
 .ipynb_check*
 __pycache__/
 tests/data
+devtools/
