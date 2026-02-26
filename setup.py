@@ -15,18 +15,19 @@ setuptools.setup(
     name="yaiv",  # Replace with your username
     version=get_version(),
     author="Martin Gutierrez-Amigo",
-    author_email="<martin00gutierrez@outlook.com>",
+    author_email="<martin.gutierrez.amigo@gmail.com>",
     description="Yet another Ab Initio Visualizer with a variety of tools",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/mgamigo/YAIV",
-    packages=setuptools.find_packages(),
+    packages=setuptools.find_packages(exclude=("tests", "docs")),
     install_requires=[
         "ipympl",
         "pint",
         "ase",
         "spglib",
         "scipy",
+        "nglview",
     ],
     classifiers=[
         "Programming Language :: Python :: 3",

@@ -4,6 +4,7 @@ import pytest
 
 from yaiv import grep
 from yaiv.defaults.config import ureg
+from yaiv import cell
 
 # ----------------------------------------------------------------------
 # Supported kinds per function (centralized)
@@ -28,6 +29,8 @@ SUPPORTED_KPTS_E = {"qe_xml", "qe_scf_out", "outcar", "eigenval", "procar", "qe_
 SUPPORTED_PROJ = {"procar", "qe_proj_out"}
 SUPPORTED_FREQS = {"qe_freq_out"}
 SUPPORTED_SYMS = {"qe_xml"}
+SUPPORTED_CUTOFF = {"qe_xml", "qe_scf_out"}
+SUPPORTED_KGRID = {"qe_scf_out"}
 
 # ----------------------------------------------------------------------
 # External data matrix (filename relative to tests/data, expected kind)
@@ -254,3 +257,89 @@ def test_symmetries_and_symmetry_class(data_dir, require, fname, kind):
         assert np.allclose(s1.R, new.R, rtol=1e-15)
         assert np.allclose(s1.t, new.t, rtol=1e-15)
         assert s1.units == new.units
+
+
+@pytest.mark.parametrize("fname, kind", FILES, ids=IDS)
+def test_cutoff(data_dir, require, fname, kind):
+    f = data_dir / fname
+    require(f, f"Missing test data: {fname}")
+
+    if kind in SUPPORTED_CUTOFF:
+        q = grep.cutoff(str(f))
+        assert isinstance(q, ureg.Quantity)
+        assert isinstance(q.magnitude, float)
+        assert q.units.dimensionality == ureg.eV.dimensionality
+    else:
+        with pytest.raises(NotImplementedError):
+            grep.cutoff(str(f))
+
+@pytest.mark.parametrize("fname, kind", FILES, ids=IDS)
+def test_smearing(data_dir, require, fname, kind):
+    f = data_dir / fname
+    require(f, f"Missing test data: {fname}")
+
+    if kind in SUPPORTED_CUTOFF:
+        q = grep.smearing(str(f))
+        assert isinstance(q, ureg.Quantity)
+        assert isinstance(q.magnitude, float)
+        assert q.units.dimensionality == ureg.eV.dimensionality
+    else:
+        with pytest.raises(NotImplementedError):
+            grep.smearing(str(f))
+
+@pytest.mark.parametrize("fname, kind", FILES, ids=IDS)
+def test_runtime(data_dir, require, fname, kind):
+    f = data_dir / fname
+    require(f, f"Missing test data: {fname}")
+
+    if kind in SUPPORTED_CUTOFF:
+        q = grep.runtime(str(f))
+        assert isinstance(q, ureg.Quantity)
+        assert isinstance(q.magnitude, float)
+        assert q.units.dimensionality == ureg.second.dimensionality
+    else:
+        with pytest.raises(NotImplementedError):
+            grep.runtime(str(f))
+
+@pytest.mark.parametrize("fname, kind", FILES, ids=IDS)
+def test_k_grid(data_dir, require, fname, kind):
+    f = data_dir / fname
+    require(f, f"Missing test data: {fname}")
+
+    if kind in SUPPORTED_KGRID:
+        q = grep.k_grid(str(f))
+        assert isinstance(q, list)
+        assert len(q) == 3
+        assert np.all([isinstance(x, int) for x in q])
+
+
+@pytest.mark.parametrize("fname, kind", FILES, ids=IDS)
+def test_ram(data_dir, require, fname, kind):
+    f = data_dir / fname
+    require(f, f"Missing test data: {fname}")
+
+    if kind in SUPPORTED_KGRID:
+        q = grep.ram(str(f))
+        assert isinstance(q, ureg.Quantity)
+        assert q.units.dimensionality == ureg.MB.dimensionality
+    else:
+        with pytest.raises(NotImplementedError):
+            grep.ram(str(f))
+
+@pytest.mark.parametrize("fname, kind", FILES, ids=IDS)
+def test_atomic_forces(data_dir, require, fname, kind):
+    f = data_dir / fname
+    require(f, f"Missing test data: {fname}")
+
+    if kind in SUPPORTED_KGRID:
+        q = grep.atomic_forces(str(f))
+        assert isinstance(q.per_atom, ureg.Quantity)
+        assert isinstance(q.per_atom.magnitude, np.ndarray)
+        assert isinstance(q.total, ureg.Quantity)
+        assert isinstance(q.total.magnitude, float)
+        assert q.total.units.dimensionality == ureg('Ry/bohr').dimensionality
+        atom_num=len(cell.read_spg(f)[1])
+        assert q.per_atom.shape == (atom_num,3)
+    else:
+        with pytest.raises(NotImplementedError):
+            grep.atomic_forces(str(f))

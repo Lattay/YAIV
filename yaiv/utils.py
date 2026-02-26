@@ -8,9 +8,6 @@ workflows, especially when combined with the data extraction tools.
 
 Functions
 ---------
-_check_unit_consistency(quantities, names=None)
-    Verifies that a list of variables are either all unitful or all unitless. Raises `TypeError` if mixed.
-
 invQ(matrix)
     Returns the inverse of a matrix, preserving units if present.
 
@@ -32,8 +29,11 @@ voigt2cartesian(voigt)
 grid_generator(grid, periodic=False)
     Generates a uniform D-dimensional grid in either periodic or bounded mode.
 
-methpax_delta(x, mean=0.0, smearing=0.1, order=1, A=1.0)
-    Evaluates the Methfessel–Paxton delta approximation up to a given order.
+methpax_kernel(x, mean=0.0, smearing=0.1, order=1, A=1.0)
+    Evaluates the Methfessel–Paxton brodening kernel approximation to the delta function up to a given order.
+
+fermidirac_kernel(x, mean=0.0, smearing=0.1)
+    Fermi–Dirac (FD) broadening kernel.
 
 analyze_distribution(x, y)
     Computes the mean, std, skewness, kurtosis and normalization of a distribution defined over `X`.
@@ -63,8 +63,14 @@ symmetry_orbit_kpoints(kpoints,symmetries)
 auto_kgrid(lattice)
     Compute a k-grid from a target k-point spacing or target kpoints-per-reciprocal-atom (KPPRA).
 
+eigen_projection(spectra_in, spectra_out)
+    Projects initial spectra onto final spectra.
+
 Private Utilities
 -----------------
+_check_unit_consistency(quantities, names=None)
+    Verifies that a list of variables are either all unitful or all unitless. Raises `TypeError` if mixed.
+
 _normal_dist(x, mean=0, sd=0.1, A=1)
     Computes the value of a normalized Gaussian distribution.
 
@@ -80,15 +86,13 @@ yaiv.grep             : File parsing functions that uses these utilities.
 yaiv.spectrum         : Core spectral class storing eigenvalues and k-points.
 """
 
+import warnings
 from types import SimpleNamespace
 from typing import Sequence, Any
 
 import numpy as np
-from scipy.special import factorial, hermite
-from scipy import integrate
 
-from yaiv.defaults.config import ureg
-from yaiv.defaults.config import defaults
+from yaiv.defaults.config import ureg, defaults
 
 __all__ = [
     "invQ",
@@ -98,7 +102,8 @@ __all__ = [
     "cartesian2voigt",
     "voigt2cartesian",
     "grid_generator",
-    "methpax_delta",
+    "methpax_kernel",
+    "fermidirac_kernel",
     "analyze_distribution",
     "kernel_density",
     "kernel_regression",
@@ -106,6 +111,7 @@ __all__ = [
     "amplitude2order_parameter",
     "cumulative_integral",
     "auto_kgrid",
+    "eigen_projection",
 ]
 
 
@@ -428,11 +434,11 @@ def _normal_dist(x, mean=0, sd=0.1, A=1):
     return y
 
 
-def methpax_delta(
+def methpax_kernel(
     x: float, mean: float = 0.0, smearing: float = 0.1, order: int = 1, A: float = 1.0
 ) -> float:
     """
-    Methfessel-Paxton (MP) approximation to the delta fuction δ(x).
+    Methfessel-Paxton (MP) broadening kernel approximation to the delta fuction δ(x).
 
     The MP impulse function generalizes a Gaussian by adding Hermite polynomial
     corrections to improve convergence in electronic structure integrations.
@@ -459,6 +465,7 @@ def methpax_delta(
     y : float
         Value(s) of the MP-smearing function evaluated at x.
     """
+    from scipy.special import factorial, hermite
 
     def A_n(n):
         return (-1) ** n / (factorial(n) * (4**n) * np.sqrt(np.pi))
@@ -473,6 +480,35 @@ def methpax_delta(
 
     normalization = A / smearing  # Restores scale in physical units
     return normalization * y
+
+
+def fermidirac_kernel(x: float, mean: float = 0.0, smearing: float = 0.1) -> float:
+    """
+    Fermi–Dirac (FD) broadening kernel.
+
+    This function is the (positive) derivative of the Fermi–Dirac occupation
+    with respect to energy and acts as a normalized impulse:
+        g(x; μ, s) = exp((x - μ)/s) / [ s · (1 + exp((x - μ)/s))^2 ]
+    where μ = mean and s = smearing (often k_B T in energy units).
+    It satisfies ∫ g(x; μ, s) dx = 1, and as s → 0, g → δ(x − μ).
+
+    Parameters
+    ----------
+    x : float or array-like
+        Point(s) at which to evaluate the broadening kernel.
+    mean : float, optional
+        Center μ of the kernel. Default is 0.
+    smearing : float, optional
+        Width parameter s (> 0), typically corresponding to thermal smearing
+        (e.g., k_B·T if x is in energy units). Default is 0.1.
+
+    Returns
+    -------
+    y : float
+        Fermi-Dirac kernel evaluated at x. Returns an ndarray if x is array-like.
+    """
+    exp = np.exp((x - mean) / smearing)
+    return (exp / smearing) / (exp + 1) ** 2
 
 
 def analyze_distribution(X, Y):
@@ -578,7 +614,7 @@ def kernel_density(
         Default cutoff in units of sigma used when density(X) is called without an explicit cutoff.
         Defaults to yaiv.defaults.config.defaults.cutoff_sigmas.
     order : int, optional
-        Kernel type: 0=Gaussian; >0=Methfessel–Paxton order.
+        Kernel type: 0=Gaussian; >0=Methfessel–Paxton order; -1=Fermi-Dirac.
 
     Returns
     -------
@@ -658,7 +694,9 @@ def kernel_density(
     def kernel(xloc, X, sig):
         if order == 0:
             return _normal_dist(xloc, mean=X, sd=sig)
-        return methpax_delta(xloc, mean=X, smearing=sig, order=order)
+        elif order == -1:
+            return fermidirac_kernel(xloc, mean=X, smearing=sig)
+        return methpax_kernel(xloc, mean=X, smearing=sig, order=order)
 
     # Build callable
     def density_func(
@@ -671,7 +709,7 @@ def kernel_density(
 
         Parameters
         ----------
-        X : float | np.array | pint.Quantity
+        X : float | np.ndarray | pint.Quantity
             Evaluation points (same units as x).
         cutoff_sigmas : float, optional
             Cutoff in multiples of sigma; defaults to `default_cutoff_sigmas`
@@ -759,7 +797,7 @@ def kernel_regression(
     where:
       - density(X) = sum_i values_i * K_sigma(X - x_i) * w_i
       - DOS(X)     = sum_i 1         * K_sigma(X - x_i) * w_i
-      - K is Gaussian (order=0) or Methfessel–Paxton (order>0).
+      - K is Gaussian (order=0), Methfessel–Paxton (order>0) or Fermi-Dirac (order=-1).
       - reg is a small regularization to avoid division by ~0.
 
     Parameters
@@ -778,7 +816,8 @@ def kernel_regression(
         Default cutoff in units of sigma used when f(X) is called without an explicit cutoff.
         Defaults to yaiv.defaults.config.defaults.cutoff_sigmas.
     order : int, optional
-        Kernel type: 0=Gaussian; >0=Methfessel–Paxton order.
+        Kernel type: 0=Gaussian; >0=Methfessel–Paxton order; -1=Fermi-Dirac.
+        Default being Gaussian (0).
     default_reg : float | pint.Quantity, optional
         Default regularization added to the denominator DOS to prevent division
         by zero. If x is unitful, `default_reg` should have units 1/x. Defaults
@@ -890,7 +929,7 @@ def kernel_density_on_grid(
 
     This implements a DOS-like convolution:
         density(X) = sum_i values_i * K_sigma(X - x_i) * w_k(i)
-    where K is either a Gaussian (order=0) or a Methfessel–Paxton kernel (order>=0).
+    where K is either a Gaussian (order=0), Methfessel–Paxton (order>0) or Fermi-Dirac (order=-1).
 
     Parameters
     ----------
@@ -913,7 +952,7 @@ def kernel_density_on_grid(
     steps : int, optional
         Number of grid points. Defaults to int(4 * (window_size / sigma)), with a minimum of 128.
     order : int, optional
-        Kernel type: 0=Gaussian; >0=Methfessel–Paxton order.
+        Kernel type: 0=Gaussian; >0=Methfessel–Paxton order; -1=Fermi-Dirac.
     cutoff_sigmas : float, optional
         Truncate kernel support to [-cutoff_sigmas * sigma, +cutoff_sigmas * sigma]
         when summing contributions. Default yaiv.defaults.config.defaults.cutoff_sigmas.
@@ -1128,6 +1167,8 @@ def cumulative_integral(x: np.ndarray, y: np.ndarray):
     -----
     It uses scipy's cumulative_trapezoid method.
     """
+    from scipy import integrate
+
     units = 1
     if isinstance(x, ureg.Quantity):
         units *= x.units
@@ -1414,6 +1455,8 @@ def auto_kgrid(
         (e.g., angstrom). Unit handling is applied consistently to `delta_k`.  delta_k : float | pint.Quantity, optional
         Target k-point spacing in reciprocal space, with units of [1/length]. Default is 0.1 Å⁻¹.
         Used when `kpoints_per_atom` is None.
+    delta_k : float | ureg.Quantity, optional
+        Target reciprocal-space spacing. Default being 0.1 / ureg.ang.
     n_atoms : int | None, optional
         Number of atoms in the cell. If provided, KPPRA mode is used, with
         Nk_total ≈ kppra / n_atoms, instead of constant spacing.
@@ -1519,3 +1562,85 @@ def auto_kgrid(
         if n_atoms is not None:
             print(f"K-points per atom: {float(total)/n_atoms}")
     return kgrid
+
+
+def eigen_projection(
+    spectra_in: np.ndarray,
+    spectra_out: np.ndarray,
+    eigenvalues_out: np.ndarray | ureg.Quantity = None,
+) -> np.ndarray:
+    """
+    Projects initial spectra onto final spectra and optionally groups projections based
+    on a set of eigenvalues.
+
+    This function calculates the projection coefficients or their squared magnitudes
+    between two sets of spectra expressed in orthonormal bases. If eigenvalues are provided,
+    the squared projections of degenerate eigenvalues are summed and assigned to one of them.
+
+    Parameters
+    ----------
+    spectra_in : np.ndarray
+        Initial spectra (e.g., polarization vectors or waveform) to be projected, expressed in
+        an orthonormal basis. Shape (N,...), where N is the total number of vectors in `spectra_in`.
+    spectra_out : np.ndarray
+        Final spectra onto which the initial spectra are projected, also expressed in an orthonormal
+        basis. Shape (M,...) where M is the total number of vectors in `spectra_out`.
+    eigenvalues_out : np.ndarray | ureg.Quantity, optional
+        Set of eigenvalues corresponding to the final spectra. If provided, the projections
+        for degenerate eigenvalues are first squared and summed, and after assigned to a representative
+        of the degenerate subspace.
+
+    Returns
+    -------
+    projections : np.ndarray(N,M)
+        Projection coefficients (complex) if `eigenvalues_out` is None. Otherwise, the squared
+        magnitudes of projection coefficients are returned.
+
+    Notes
+    -----
+    * If `eigenvalues_out` is provided, the returned values are abs(coef)^2, not the coefficients
+      themselves.
+    * A sanity check is performed to ensure the projections' norm should be approximately 1.
+    """
+    if spectra_in.ndim == spectra_out.ndim:
+        N = spectra_in.shape[0]  # Number of spectra vectors
+    else:
+        N = 1
+        spectra_in = [spectra_in]  # Make it iterable
+
+    # Initialize the projection matrix
+    M = spectra_out.shape[0]
+    PROJ = np.zeros((N, M), dtype=complex)
+
+    # Calculate projection coefficients between initial and final spectra
+    for i, si in enumerate(spectra_in):
+        for j, so in enumerate(spectra_out):
+            PROJ[i, j] = np.matmul(si.flatten(), so.flatten())
+
+    # Perform a sanity check to ensure the projections have a norm approximately equal to 1
+    for i, projection in enumerate(PROJ):
+        norm_value = np.around(np.linalg.norm(projection), 4)
+        if norm_value != 1:
+            warnings.warn(
+                f"Projections norm is {norm_value}. Not close to 1 beyond numerical error of 1E-4",
+                UserWarning,
+            )
+
+    # If eigenvalues_out is provided, consolidate projections for degenerate eigenvalues
+    if eigenvalues_out is not None:
+        if isinstance(eigenvalues_out, ureg.Quantity):
+            eigenvalues_out = eigenvalues_out.magnitude
+        # Change format of the main output to squared magnitudes
+        PROJ = np.abs(PROJ) ** 2
+        # Identify and group degenerate eigenvalues
+        degeneracies = [
+            np.where(eigenvalues_out == x)[0] for x in np.unique(eigenvalues_out)
+        ]
+        for i in range(PROJ.shape[0]):
+            for deg in degeneracies:
+                if len(deg) > 1:
+                    for j in deg[1:]:
+                        PROJ[i, deg[0]] += PROJ[i, j]
+                        PROJ[i, j] = 0  # Zero out contributions from repeated indices
+
+    return PROJ

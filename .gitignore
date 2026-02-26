@@ -3,6 +3,7 @@
 build/
 dist/
 tmp/
+importtimes/
 *.swp
 *egg-info/
 .ipynb_check*

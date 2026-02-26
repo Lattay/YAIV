@@ -30,6 +30,7 @@ PhononBands
 Density
     General container for a scalar density defined on a 1D grid.
     Provides:
+    - from_data(): Initialize a Density object with kernel-broadening from a set of discreate data.
     - integrate(): Computes the integral of the density or finds the intagration limit
                     corresponding to certain integral value.
     - plot(): Plots the density curve with optional fill and orientation options.
@@ -64,18 +65,13 @@ import warnings
 from types import SimpleNamespace
 
 import numpy as np
-import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.collections import PathCollection, LineCollection
-from scipy import interpolate, integrate
 
-from yaiv.defaults.config import ureg
+from yaiv.defaults.config import ureg, defaults, apply_plot_defaults
 from yaiv.defaults.config import plot_defaults as pdft
-from yaiv.defaults.config import defaults
 
 from yaiv import utils as ut
-from yaiv import grep as grep
-
 
 __all__ = ["Spectrum" "ElectronBands", "PhononBands", "Density"]
 
@@ -295,7 +291,7 @@ class Spectrum(_Has_lattice, _Has_kpath):
         cutoff_sigmas: float = defaults.cutoff_sigmas,
     ):
         """
-        Compute a density of states (DOS) using Gaussian or Methfessel-Paxton (MP)
+        Compute a density of states (DOS) using Gaussian, Fermi-Dirac or Methfessel-Paxton (MP)
         smearing of any order.
 
         This implementation uses a MP delta function to smear each eigenvalue and
@@ -314,7 +310,8 @@ class Spectrum(_Has_lattice, _Has_kpath):
         steps : int, optional
             Number of grid points for DOS sampling. Default is 4 * (window_size/smearing).
         order : int, optional
-            Order of the Methfessel-Paxton expansion. Default is 0, which recovers a Gaussian smearing.
+            Kernel type: 0=Gaussian; >0=Methfessel–Paxton order; -1=Fermi-Dirac.
+            Default is 0, which recovers a Gaussian smearing.
         cutoff_sigmas : float, optional
             Number of smearing widths to use for truncation (e.g., 3 means ±3σ).
             Default yaiv.defaults.defaults.cutoff_sigmas.
@@ -351,11 +348,17 @@ class Spectrum(_Has_lattice, _Has_kpath):
         bands=None,
         patched=True,
         weights=None,
+        log=None,
         window=None,
     ):
         """
         Pre plotting tool to avoid code duplication.
         """
+        import matplotlib.pyplot as plt
+        import matplotlib.colors as colors
+
+        apply_plot_defaults()
+
         # Handle units
         if shift is not None:
             quantities = [self.eigenvalues, shift]
@@ -382,19 +385,28 @@ class Spectrum(_Has_lattice, _Has_kpath):
                 if isinstance(window, ureg.Quantity)
                 else window
             )
-            if window is None:
-                vmin = np.min(W[:, band_indices])
-                vmax = np.max(W[:, band_indices])
-            else:
+            if window is not None:
                 vmin, vmax = window
+            else:
+                vals = W[:, band_indices]
+                if not log:
+                    vmin = np.min(vals)
+                    vmax = np.max(vals)
+                else:
+                    positive = vals[vals > 0]
+                    vmin = np.min(positive)
+                    vmax = np.max(vals)
+            if log:
+                norm = colors.LogNorm(vmin=vmin, vmax=vmax)
+            else:
+                norm = colors.Normalize(vmin=vmin, vmax=vmax)
             return SimpleNamespace(
                 ax=ax,
                 x=x,
                 eigen=eigen,
                 band_indices=band_indices,
                 weights=W,
-                vmin=vmin,
-                vmax=vmax,
+                norm=norm,
             )
         else:
             return SimpleNamespace(
@@ -451,6 +463,7 @@ class Spectrum(_Has_lattice, _Has_kpath):
         ax: Axes = None,
         size_change: bool = False,
         alpha_change: bool = False,
+        log: bool = False,
         shift: float | ureg.Quantity = None,
         patched: bool = True,
         bands: list[int] = None,
@@ -475,6 +488,8 @@ class Spectrum(_Has_lattice, _Has_kpath):
             Whether the size of the dots should also change (linked to the window).
         alpha_change : bool, optional
             Whether the transparency (alpha) of the dots should also change (linked to the window).
+        log : bool, optional
+            If True logaritmic scaling is applied. Default is False.
         shift : float | pint.Quantity, optional
             A constant shift applied to the eigenvalues (e.g., Fermi level).
             Default is zero.
@@ -494,18 +509,26 @@ class Spectrum(_Has_lattice, _Has_kpath):
         scatter : matplotlib.collections.PathCollection
             The PathCollection for generating the colorbar.
         """
-        P = self._pre_plot(ax, shift, bands, patched, weights, window)
+        P = self._pre_plot(
+            ax=ax,
+            shift=shift,
+            bands=bands,
+            patched=patched,
+            weights=weights,
+            log=log,
+            window=window,
+        )
 
         # Remove some labels from kwargs
         label = kwargs.pop("label", None)
         s = kwargs.pop("s", pdft.weights_s)
         alpha = kwargs.pop("alpha", 1)
         if alpha_change:
-            alpha = np.clip((P.weights - P.vmin) / (P.vmax - P.vmin), 0, 1)
+            alpha = np.clip((P.weights - P.norm.vmin) / (P.norm.vmax - P.norm.vmin), 0, 1)
         else:
             alpha = np.ones(P.weights.shape)
         if size_change:
-            s = np.clip((P.weights - P.vmin) / (P.vmax - P.vmin), 0, 1) * s
+            s = np.clip((P.weights - P.norm.vmin) / (P.norm.vmax - P.norm.vmin), 0, 1) * s
         else:
             s = np.ones(P.weights.shape) * s
 
@@ -515,8 +538,7 @@ class Spectrum(_Has_lattice, _Has_kpath):
             c=P.weights[:, P.band_indices[0]],
             s=s[:, P.band_indices[0]],
             alpha=alpha[:, P.band_indices[0]],
-            vmin=P.vmin,
-            vmax=P.vmax,
+            norm=P.norm,
             label=label,
             edgecolors="none",
             **kwargs,
@@ -528,8 +550,7 @@ class Spectrum(_Has_lattice, _Has_kpath):
                 c=P.weights[:, i],
                 s=s[:, i],
                 alpha=alpha[:, i],
-                vmin=P.vmin,
-                vmax=P.vmax,
+                norm=P.norm,
                 edgecolors="none",
                 **kwargs,
             )
@@ -542,6 +563,7 @@ class Spectrum(_Has_lattice, _Has_kpath):
         weights: np.ndarray,
         window: list[float, float] | ureg.Quantity = None,
         ax: Axes = None,
+        log: bool = False,
         shift: float | ureg.Quantity = None,
         patched: bool = True,
         bands: list[int] = None,
@@ -562,6 +584,8 @@ class Spectrum(_Has_lattice, _Has_kpath):
             Default is minimal of maximal values for the set of weights.
         ax : Axes, optional
             Axes to plot on. If None, a new figure and axes are created.
+        log : bool, optional
+            If True logaritmic scaling is applied. Default is False.
         shift : float | pint.Quantity, optional
             A constant shift applied to the eigenvalues (e.g., Fermi level).
             Default is zero.
@@ -581,13 +605,22 @@ class Spectrum(_Has_lattice, _Has_kpath):
         line : matplotlib.collections.LineCollection
             The LineCollection for generating the colorbar.
         """
-        P = self._pre_plot(ax, shift, bands, patched, weights, window)
+        import matplotlib.pyplot as plt
+
+        P = self._pre_plot(
+            ax=ax,
+            shift=shift,
+            bands=bands,
+            patched=patched,
+            weights=weights,
+            log=log,
+            window=window,
+        )
 
         # Remove some labels from kwargs
         label = kwargs.pop("label", None)
         linewidth = kwargs.pop("linewidth", pdft.gradcolor_w)
 
-        norm = plt.Normalize(P.vmin, P.vmax)
         # Plotting band by band
         points = np.array(
             [P.x.magnitude, P.eigen.magnitude[:, P.band_indices[0]]]
@@ -595,7 +628,7 @@ class Spectrum(_Has_lattice, _Has_kpath):
         segments = np.concatenate([points[:-1], points[1:]], axis=1)
         lc = LineCollection(
             segments,
-            norm=norm,
+            norm=P.norm,
             label=label,
             **kwargs,
         )
@@ -609,7 +642,7 @@ class Spectrum(_Has_lattice, _Has_kpath):
             segments = np.concatenate([points[:-1], points[1:]], axis=1)
             lc = LineCollection(
                 segments,
-                norm=norm,
+                norm=P.norm,
                 **kwargs,
             )
             lc.set_array(P.weights[:, P.band_indices[i]])
@@ -644,6 +677,8 @@ class ElectronBands(Spectrum):
         file : str
             File from which to extract the bands.
         """
+        from yaiv import grep
+
         if file is not None:
             self.filepath = file
             self.electron_num = grep.electron_num(self.filepath)
@@ -687,6 +722,8 @@ class PhononBands(Spectrum):
         file : str
             Path to the file containing phonon frequencies output.
         """
+        from yaiv import grep
+
         if file is not None:
             self.filepath = file
             try:
@@ -767,7 +804,7 @@ class Density:
 
         This implements a DOS-like convolution:
             density(X) = sum_i values_i * K_sigma(X - x_i) * w_k(i)
-        where K is either a Gaussian (order=0) or a Methfessel–Paxton kernel (order>=0).
+        where K is either a Gaussian (order=0), Methfessel–Paxton (order>0) or Fermi-Dirac (order=-1).
 
         Parameters
         ----------
@@ -790,7 +827,8 @@ class Density:
         steps : int, optional
             Number of grid points. Defaults to int(4 * (window_size / sigma)), with a minimum of 128.
         order : int, optional
-            Order of the Methfessel-Paxton kernel. Default is 0, which recovers a Gaussian kernel.
+            Kernel type: 0=Gaussian; >0=Methfessel–Paxton order; -1=Fermi-Dirac.
+            Default is 0, which recovers a Gaussian smearing.
         cutoff_sigmas : float, optional
             Truncate kernel support to [-cutoff_sigmas * sigma, +cutoff_sigmas * sigma]
             when summing contributions. Default yaiv.defaults.config.defaults.cutoff_sigmas.
@@ -816,6 +854,7 @@ class Density:
         self,
         limit: float | ureg.Quantity = None,
         amount: float = None,
+        bound: int = 100,
     ) -> (float | ureg.Quantity, float | ureg.Quantity):
         """
         Integrate the density up to a given limit, or invert the integral.
@@ -839,6 +878,8 @@ class Density:
             Target integral value (dimensionless number in magnitude space).
             If provided, the method returns the grid value X* where the integral
             equals `amount` (within the integration error tolerance).
+        bound : int, optional
+            Upper bound in number of subintervals used in the integrate.quad algorithm.
 
         Returns
         -------
@@ -859,6 +900,8 @@ class Density:
         - The inverse integration (when `amount` is provided) uses a bisection-like search
           and can fail if the density is not strictly non-negative or not well-behaved.
         """
+        from scipy import interpolate, integrate
+
         if limit is None:
             limit = self.grid[-1]
 
@@ -885,7 +928,7 @@ class Density:
 
         if amount is None:
             # Plain integration from X[0] to X_max
-            integral, error = integrate.quad(f, X[0], X_max, limit=100)
+            integral, error = integrate.quad(f, X[0], X_max, limit=bound)
             # Units: (density units) * (grid units) -> dimensionless if DOS
             return integral * integral_units, error * integral_units
         else:
@@ -896,7 +939,7 @@ class Density:
 
             for _ in range(max_iter):
                 X_mid = 0.5 * (X_low + X_high)
-                integral, error = integrate.quad(f, X[0], X_mid, limit=100)
+                integral, error = integrate.quad(f, X[0], X_mid, limit=bound)
                 if abs(integral - amount) < error:
                     # Converged
                     return X_mid * grid_units, error * grid_units
@@ -941,6 +984,10 @@ class Density:
             The axes with the plot.
         """
         # Handle units
+        import matplotlib.pyplot as plt
+
+        apply_plot_defaults()
+
         if self.density is None or self.grid is None:
             raise ValueError("Both `density` and `grid` must be set to plot.")
         quantities = [self.density, self.grid, shift]
