@@ -17,14 +17,12 @@ These settings are also used to update matplotlib's global `rcParams`.
 
 from types import SimpleNamespace
 from importlib.resources import files
+from functools import lru_cache
 
 import pint
-import matplotlib
-import matplotlib.pyplot as plt
 
 # === Units ===
 ureg = pint.UnitRegistry()
-ureg.setup_matplotlib(True)
 ureg.load_definitions(files("yaiv") / "defaults/extra_units.txt")
 pint.set_application_registry(ureg)
 
@@ -32,15 +30,12 @@ pint.set_application_registry(ureg)
 defaults = SimpleNamespace(
     symprec=1e-5,  # Default symmetry precision
     CDW_amplitude=0.5 * ureg.ang,  # Default CDW amplitude
-    cutoff_sigmas = 4  # Truncate smearings
+    cutoff_sigmas=4,  # Truncate smearings
 )
 
 # === Plotting defaults ===
 
 plot_defaults = SimpleNamespace(
-    color_cycle=plt.get_cmap(
-        "tab10"
-    ).colors,  # Default color cycle for matplotlib plots
     vline_w=0.4,  # Vertical high-symmetry lines width
     vline_c="gray",  # Vertical high-symmetry lines color
     vline_s="--",  # Vertical high-symmetry lines style
@@ -67,16 +62,26 @@ plot_defaults = SimpleNamespace(
     #    dpi=100,
 )
 
-# Optional: override matplotlib rcParams directly if desired
-matplotlib.rcParams["axes.prop_cycle"] = plt.cycler(color=plot_defaults.color_cycle)
-matplotlib.rcParams["image.cmap"] = "plasma"
-# matplotlib.rcParams["lines.linewidth"] = plot_defaults.linewidth
-# matplotlib.rcParams["font.size"] = plot_defaults.font_size
-# matplotlib.rcParams["axes.labelsize"] = plot_defaults.label_size
-# matplotlib.rcParams["xtick.labelsize"] = plot_defaults.tick_size
-# matplotlib.rcParams["ytick.labelsize"] = plot_defaults.tick_size
-# matplotlib.rcParams["axes.linewidth"] = plot_defaults.axis_linewidth
-# matplotlib.rcParams["figure.dpi"] = plot_defaults.dpi
+
+@lru_cache(maxsize=1)
+def apply_plot_defaults() -> None:
+    import matplotlib
+    import matplotlib.pyplot as plt
+
+    ureg.setup_matplotlib(True)
+    # Default color cycle for matplotlib plots
+    colors = plt.get_cmap("tab10").colors
+    matplotlib.rcParams["axes.prop_cycle"] = plt.cycler(color=colors)
+    matplotlib.rcParams["image.cmap"] = "plasma"
+    # Optional: override matplotlib rcParams directly if desired
+    # matplotlib.rcParams["lines.linewidth"] = plot_defaults.linewidth
+    # matplotlib.rcParams["font.size"] = plot_defaults.font_size
+    # matplotlib.rcParams["axes.labelsize"] = plot_defaults.label_size
+    # matplotlib.rcParams["xtick.labelsize"] = plot_defaults.tick_size
+    # matplotlib.rcParams["ytick.labelsize"] = plot_defaults.tick_size
+    # matplotlib.rcParams["axes.linewidth"] = plot_defaults.axis_linewidth
+    # matplotlib.rcParams["figure.dpi"] = plot_defaults.dpi
+
 
 # === Quantum Espresso input_data defaults ===
 qe_defaults = SimpleNamespace(

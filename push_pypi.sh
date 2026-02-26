@@ -111,7 +111,7 @@ read -p "Do you want to proceed with updating the main branch from pip? (yes/no)
 if [[ "$proceed" == "yes" ]]; then
     # Update main branch from pip and push
     git switch main
-    git checkout pip -- . ':!new_test_env.sh' ':!push_pypi.sh' ':!pyproject.toml' ':!Updates.md' ':!ToDos.md' ':!pytest_wrap.sh'
+    git checkout pip -- . ':!new_test_env.sh' ':!push_pypi.sh' ':!pyproject.toml' ':!Updates.md' ':!ToDos.md' ':!pytest_wrap.sh' ':!importtimes.sh'
     git status
 
     # Verify the differences (should only be yaiv/dev)

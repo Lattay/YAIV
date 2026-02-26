@@ -39,6 +39,12 @@ bandsDOS(electronBands, fig=None, axes=None, ...)
 phononDOS(phononBands, fig=None, axes=None, ...)
     Plots a phonon band structure and its corresponding DOS side-by-side.
 
+arrow3D(ax, vector, ...)
+    Add a 3D arrow to a plot.
+
+brillouinZone(lattice, ...)
+    Plots a 3D Brillouin zone using lattice vectors.
+
 Private Utilities
 -----------------
 _compare_spectra(spectra, ax, ...)
@@ -46,6 +52,15 @@ _compare_spectra(spectra, ax, ...)
 
 _spectra_DOS(spectra, plot_func, ...)
     Internal helper to produce spectrum + DOS panels for electronic or vibrational bands.
+
+_Arrow3D(FancyArrowPatch):
+    A class to create 3D arrows in matplotlib plots.
+
+_get_wigner_seitz(cell):
+    Generates the Wigner-Seitz cell for a given lattice.
+
+_axisEqual3D(ax):
+    Adjusts the 3D plot axes to have equal scale, ensuring uniform aspect ratios.
 
 Examples
 --------
@@ -68,8 +83,12 @@ import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
+from mpl_toolkits.mplot3d import Axes3D
+from matplotlib.patches import FancyArrowPatch
+
 from yaiv.defaults.config import ureg
 from yaiv.defaults.config import plot_defaults as pdft
+from yaiv.defaults.config import apply_plot_defaults
 from yaiv import utils as ut
 from yaiv import spectrum as spec
 
@@ -82,7 +101,11 @@ __all__ = [
     "DOS",
     "bandsDOS",
     "phononDOS",
+    "arrow3D",
+    "brillouinZone",
 ]
+
+apply_plot_defaults()
 
 
 def get_HSP_ticks(
@@ -122,7 +145,7 @@ def get_HSP_ticks(
         path_array = kpath
         label_list = None
     if grid is not None:
-        grid = ut.grid_generator(grid, periodic=True) * ureg('_2pi/crystal')
+        grid = ut.grid_generator(grid, periodic=True) * ureg("_2pi/crystal")
         grid = ut._expand_zone_border(grid)
 
     # Handle units
@@ -272,8 +295,10 @@ def _compare_spectra(
     ax : Axes
         Axes containing the plot.
     """
+    from itertools import cycle
 
-    cycle_iter = iter(pdft.color_cycle)
+    cycle_iter = cycle(plt.rcParams["axes.prop_cycle"].by_key()["color"])
+
     if len(np.shape(grid)) == 2 and np.shape(grid)[0] == len(spectra):
         GRID = True
     else:
@@ -346,7 +371,7 @@ def bands(
     user_color = kwargs.pop("color", None)  # user-defined color overrides all
     user_label = kwargs.pop("label", None)  # user-defined label
 
-    if type(electronBands) is not list:
+    if not isinstance(electronBands, list):
         band = electronBands
         indices = list(range(band.eigenvalues.shape[1]))
         # For non-spin orbit weights might add up to 2.
@@ -386,7 +411,7 @@ def bands(
         if isinstance(window, ureg.Quantity)
         else window
     )
-    if type(window) is int or type(window) is float:
+    if isinstance(window, int) or isinstance(window, float):
         window = [-window, window]
     ax.set_ylim(window[0], window[1])
 
@@ -436,7 +461,7 @@ def phonons(
     user_color = kwargs.pop("color", None)  # user-defined color overrides all
     user_label = kwargs.pop("label", None)  # user-defined label
 
-    if type(phononBands) is not list:
+    if not isinstance(phononBands, list):
         band = phononBands
         ax = band.plot(
             ax,
@@ -464,7 +489,7 @@ def phonons(
             if isinstance(window, ureg.Quantity)
             else window
         )
-        if type(window) is int or type(window) is float:
+        if isinstance(window, int) or isinstance(window, float):
             window = [-window, window]
         ax.set_ylim(window[0], window[1])
 
@@ -528,6 +553,8 @@ def DOS(
     ax : Axes
         Axes containing the plot.
     """
+    from itertools import cycle
+
     # Extract first spectrum for defaults
     S = spectra[0] if isinstance(spectra, list) else spectra
 
@@ -561,7 +588,7 @@ def DOS(
         )
     else:
         # Multi plot
-        cycle_iter = iter(pdft.color_cycle)
+        cycle_iter = cycle(plt.rcParams["axes.prop_cycle"].by_key()["color"])
         zorder = 2
         for i, S in enumerate(spectra):
             color = (
@@ -840,3 +867,319 @@ def phononsDOS(
 
     plt.tight_layout()
     return ax, ax_DOS
+
+
+class _Arrow3D(FancyArrowPatch):
+    """
+    A class to create 3D arrows in matplotlib plots.
+
+    This class extends FancyArrowPatch to allow the creation of arrows in 3D
+    space by using projections. It maintains the vertices in 3D and computes
+    their 2D projection for rendering.
+
+    Parameters
+    ----------
+    xs, ys, zs : array-like or ureg.Quantity
+        Coordinates of the arrow's start and end points in 3D space.
+    *args, **kwargs :
+        Additional arguments and keyword arguments passed to FancyArrowPatch.
+
+    Methods
+    -------
+    do_3d_projection(renderer=None)
+        Projects 3D coordinates into 2D space and sets the arrow positions
+        accordingly.
+    """
+
+    def __init__(self, xs, ys, zs, *args, **kwargs):
+        super().__init__((0, 0), (0, 0), *args, **kwargs)
+        self._verts3d = xs, ys, zs
+
+    def do_3d_projection(self, renderer=None):
+        """
+        Project 3D coordinates onto the plot's 2D surface.
+
+        Uses the current matplotlib axes' transform matrix to compute 2D
+        positions from 3D coordinates, updating the arrow accordingly.
+
+        Parameters
+        ----------
+        renderer : object, optional
+            A rendering object that handles drawing operations. Uses the
+            renderer associated with the current plot if None.
+
+        Returns
+        -------
+        float
+            The minimum z-coordinate of the projected vertices, used for depth
+            ordering.
+        """
+        from mpl_toolkits.mplot3d import proj3d
+
+        xs3d, ys3d, zs3d = self._verts3d
+        xs, ys, zs = proj3d.proj_transform(xs3d, ys3d, zs3d, self.axes.M)
+        self.set_positions((xs[0], ys[0]), (xs[1], ys[1]))
+        return np.min(zs)
+
+
+def arrow3D(
+    ax: Axes3D,
+    vector: np.ndarray | ureg.Quantity,
+    origin: np.ndarray | ureg.Quantity = None,
+    **kwargs,
+):
+    """
+    Add a 3D arrow to a plot.
+
+    This function plots a 3D arrow on the given axis, originating from a
+    specified point and extending toward a given vector. It handles unit
+    consistency if provided through pint.
+
+    Parameters
+    ----------
+    ax : Axes3D
+        The 3D axis on which to draw the arrow.
+    vector : np.ndarray or ureg.Quantity
+        The direction and length of the arrow. If using ureg.Quantity, units are
+        ensured to be consistent with the origin.
+    origin : np.ndarray or ureg.Quantity, optional
+        The start point for the arrow. Defaults to the origin of the 3D space.
+    **kwargs :
+        Additional styling parameters like 'color', 'mutation_scale', 'linewidth',
+        and 'arrowstyle' for appearance customization.
+    """
+    # Handle units
+    quantities = [vector, origin]
+    names = ["vector", "origin"]
+    ut._check_unit_consistency(quantities, names)
+    if isinstance(vector, ureg.Quantity) and origin is not None:
+        units = vector.units
+        origin = origin.to(units)
+    else:
+        units = 1
+    if origin is None:
+        origin = np.zeros(3) * units
+    else:
+        vector = vector + origin
+
+    # Pop user-level styling
+    color = kwargs.pop("color", "black")
+    mutation_scale = kwargs.pop("mutation_scale", 10)
+    linewidth = kwargs.pop("linewidth", 1)
+    arrowstyle = kwargs.pop("arrowstyle", "-|>")
+
+    a = _Arrow3D(
+        [origin[0], vector[0]],
+        [origin[1], vector[1]],
+        [origin[2], vector[2]],
+        mutation_scale=mutation_scale,
+        linewidth=linewidth,
+        arrowstyle=arrowstyle,
+        color=color,
+    )
+    ax.add_artist(a)
+
+
+def _get_wigner_seitz(cell: np.ndarray | ureg.Quantity) -> tuple:
+    """
+    Generates the Wigner-Seitz cell for a given lattice.
+
+    This function constructs the Wigner-Seitz cell of the lattice specified by
+    the input matrix. The Wigner-Seitz cell is formed using a Voronoi decomposition
+    of points in space that define the lattice. For a reciprocal lattice, this cell
+    is equivalent to the Brillouin zone.
+
+    Parameters
+    ----------
+    cell : np.ndarray | ureg.Quantity
+        A 3x3 matrix representing the lattice vectors. Each row corresponds to a
+        lattice vector in 3D space.
+
+    Returns
+    -------
+    tuple
+        A tuple containing:
+        - vertices : np.ndarray
+          The vertices of the Wigner-Seitz cell.
+        - ridges : list of np.ndarray
+          The ridge lines of the Wigner-Seitz cell.
+        - facets : list of np.ndarray
+          The facet faces of the Wigner-Seitz cell.
+
+    Notes
+    -----
+    - The function uses a Voronoi decomposition, which divides space into regions
+      closest to each point in a given set. The function specifically identifies
+      facets and ridges that are relevant for the origin-centered Voronoi cell of the
+      provided lattice.
+    - The point [0, 0, 0] is considered the center of the Wigner-Seitz cell in the
+      Voronoi diagram, and computation relies on identifying boundaries formed
+      orthogonally to lattice vectors.
+    - The number 13 corresponds to the central point in the generated grid that
+      represents [0, 0, 0] after indexing mgrid.
+    """
+    cell = np.asarray(cell, dtype=float)
+
+    if cell.shape != (3, 3):
+        raise ValueError("Input cell must be a 3x3 matrix.")
+    from scipy.spatial import Voronoi
+
+    # Generate grid points within a 3x3x3 cube centered at the origin.
+    px, py, pz = np.tensordot(cell, np.mgrid[-1:2, -1:2, -1:2], axes=[0, 0])
+    points = np.c_[px.ravel(), py.ravel(), pz.ravel()]
+
+    # Compute the Voronoi diagram for the set of points.
+    vor = Voronoi(points)
+
+    bz_facets = []
+    bz_ridges = []
+    bz_vertices = []
+
+    for pid, rid in zip(vor.ridge_points, vor.ridge_vertices):
+        if pid[0] == 13 or pid[1] == 13:
+            bz_ridges.append(vor.vertices[np.r_[rid, [rid[0]]]])
+            bz_facets.append(vor.vertices[rid])
+            bz_vertices += rid
+
+    # Deduplicate vertex indices.
+    bz_vertices = list(set(bz_vertices))
+    return vor.vertices[bz_vertices], bz_ridges, bz_facets
+
+
+def _axisEqual3D(ax):
+    """
+    Adjusts the 3D plot axes to have equal scale, ensuring uniform aspect ratios.
+
+    This function modifies the axis limits to make the scales equal across all
+    three dimensions in a 3D plot. This adjustment aims to maintain true
+    proportional representation of the data and geometric relationships within
+    the plot space.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes._subplots.Axes3DSubplot
+        The 3D subplot axis object from Matplotlib to be adjusted. The axis should
+        have preconfigured limits that may need equalization.
+    """
+    # Calculate current extents for x, y, z dimensions
+    extents = np.array([getattr(ax, "get_{}lim".format(dim))() for dim in "xyz"])
+    sz = extents[:, 1] - extents[:, 0]  # Size of each dimension
+    centers = np.mean(extents, axis=1)  # Center points of each dimension
+    maxsize = max(abs(sz))  # Determine max size for uniform scaling
+    r = maxsize / 2  # Half of max size for symmetric limits
+    # Apply symmetric limits centered at computed centers
+    for ctr, dim in zip(centers, "xyz"):
+        getattr(ax, "set_{}lim".format(dim))(ctr - r, ctr + r)
+
+
+def brillouinZone(
+    lattice: np.ndarray | ureg.Quantity,
+    axis: Axes3D = None,
+    basis: bool = True,
+    sides: bool = True,
+    facecolors: str = "cyan",
+    **kwargs,
+) -> Axes3D:
+    """
+    Plots a 3D Brillouin zone using lattice vectors.
+
+    This function visualizes the Brillouin zone based on given lattice vectors,
+    which may be specified either in real space or reciprocal space units. It
+    supports rendering on a specified matplotlib 3D axis, with customizable
+    styling for facets and basis vectors.
+
+    Parameters
+    ----------
+    lattice : ureg.Quantity or np.ndarray (shape=(3,3))
+        Lattice vectors used as input. If provided as a ureg.Quantity, units
+        must be consistent with spatial or reciprocal measures.
+    axis : matplotlib.axes._subplots.Axes3DSubplot, optional
+        The axis on which the plot will be rendered. If None, a new figure and
+        axis are created.
+    basis : bool, optional
+        If True, plots the basis vectors of the lattice.
+    sides : bool, optional
+        If True, plots the facet sides of the Brillouin Zone.
+    facecolors : str or tuple, optional
+        Color specification for the sides of the 3D facets. Defaults to "cyan".
+    **kwargs :
+        Additional keyword styling arguments passed to ridge plots,
+        such as 'color' and 'linewidth'.
+
+    Raises
+    ------
+    ValueError
+        Raised if the units of the lattice are incompatible with plotting the
+        Brillouin zone.
+
+    Returns
+    -------
+    Axes3D
+        The axis object containing the Brillouin zone plot.
+
+    Notes
+    -----
+    - Handles unit conversion if the input is a ureg.Quantity, ensuring that
+      lattice vectors are appropriately transformed in reciprocal space.
+    - Uses a default unit of "au" if lattice is provided as np.ndarray.
+    - Incorporates a utility to normalize axis scale after plotting.
+    """
+    if isinstance(lattice, ureg.Quantity):
+        if lattice.dimensionality in [
+            ureg.m.dimensionality,
+            ureg.crystal.dimensionality,
+            ureg.alat.dimensionality,
+        ]:
+            lattice = ut.reciprocal_basis(lattice)
+            units = lattice.units
+            K_vec = lattice.magnitude
+        elif lattice.dimensionality in [
+            (1 / ureg.m).dimensionality,
+            (1 / ureg.crystal).dimensionality,
+            (1 / ureg.alat).dimensionality,
+        ]:
+            units = lattice.units
+            K_vec = lattice.magnitude
+        else:
+            raise ValueError(
+                f"Invalid units ({lattice.units}) for plotting Brillouin zone"
+            )
+    else:
+        units = "au"
+        K_vec = np.asarray(lattice)
+
+    if axis is None:
+        plt.figure()
+        ax = plt.axes(projection="3d")
+    else:
+        ax = axis
+
+    from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+
+    # Style settings from user input
+    color = kwargs.pop("color", "black")
+    linewidth = kwargs.pop("linewidth", 1.2)
+
+    v, r, f = _get_wigner_seitz(K_vec)
+    for xx in r:
+        ax.plot(
+            xx[:, 0], xx[:, 1], xx[:, 2], color=color, linewidth=linewidth, **kwargs
+        )
+    if sides:
+        ax.add_collection3d(
+            Poly3DCollection(r, facecolors=facecolors, linewidths=0, alpha=0.05)
+        )
+
+    if basis:
+        arrow3D(ax, K_vec[0], color="red", linewidth=1.5, mutation_scale=12)
+        arrow3D(ax, K_vec[1], color="green", linewidth=1.5, mutation_scale=12)
+        arrow3D(ax, K_vec[2], color="blue", linewidth=1.5, mutation_scale=12)
+
+    ax.set_xlabel(f"$k_x$ ({units})")
+    ax.set_ylabel(f"$k_y$ ({units})")
+    ax.set_zlabel(f"$k_z$ ({units})")
+    if axis is None:
+        plt.show()
+    _axisEqual3D(ax)
+    plt.tight_layout()
+    return ax

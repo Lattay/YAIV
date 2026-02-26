@@ -25,6 +25,7 @@ Cell
     - get_supercell(supercell): Return a repeated Cell object.
     - write_espresso_in(...): Write Quantum ESPRESSO input file.
     - print(...): Write the crystal structure in a human‑readable text format.
+    - view(...): Visualize the atomic structure in 3D.
 
 Functions
 ---------
@@ -62,19 +63,15 @@ yaiv.utils    : Utility functions for basis and vector transformations
 """
 
 from types import SimpleNamespace
-import re
-import os
-import sys
 
 import numpy as np
-import spglib as spg
 
-from ase.io import read, write
+# from ase.io import read, write
 from ase import Atoms
+import nglview as nv
 
-from yaiv.defaults.config import defaults as dft
-from yaiv.defaults.config import qe_defaults
 from yaiv import utils as ut
+from yaiv.defaults.config import defaults
 
 __all__ = ["read", "write", "read_spg", "ase2spglib", "spglib2ase", "Cell"]
 
@@ -111,6 +108,8 @@ class Cell:
         Write Quantum ESPRESSO input file using either default parameters or a template.
     print(...)
         Write the crystal structure in a human‑readable text format.
+    view(...)
+        Visualizes the atomic structure in 3D.
     """
 
     def __init__(
@@ -167,6 +166,8 @@ class Cell:
         Cell
             A new Cell instance with Atoms and spglib data.
         """
+        from ase.io import read
+
         atoms = read(file)
         return cls(atoms=atoms)
 
@@ -201,7 +202,7 @@ class Cell:
         return f"<Cell with {len(self.spglib[2])} atoms>\n\n{self.spglib}"
         return f"\n{self.spglib}"
 
-    def get_sym_info(self, symprec: float = dft.symprec):
+    def get_sym_info(self, symprec: float = defaults.symprec):
         """
         Print a detailed report of symmetry information for the crystal structure.
 
@@ -223,9 +224,11 @@ class Cell:
         This is a diagnostic utility that gives insight into the symmetry content of the crystal.
         It is not meant for structured programmatic use, but rather for human-readable output.
         """
+        from spglib import get_symmetry_dataset
+
         atoms = spglib2ase(self.spglib)
         print(atoms.get_chemical_formula())
-        dataset = spg.get_symmetry_dataset(self.spglib, symprec=symprec)
+        dataset = get_symmetry_dataset(self.spglib, symprec=symprec)
         print("SpaceGroup =", dataset.international, "(" + str(dataset.number) + ")")
         print()
         print("ATOMS:")
@@ -254,7 +257,7 @@ class Cell:
             # _rot_name(rot, self.spglib[0])
             print(f"{rot} + {t}")
 
-    def get_wyckoff_positions(self, symprec: float = dft.symprec):
+    def get_wyckoff_positions(self, symprec: float = defaults.symprec):
         """
         Analyze the structure and store information about independent Wyckoff positions.
 
@@ -280,9 +283,11 @@ class Cell:
         symprec : float, optional
             Symmetry tolerance for spglib. Atoms closer than this value are considered equivalent.
         """
+        from spglib import get_symmetry_dataset
+
         spglib_data = self.spglib
         atoms = spglib2ase(spglib_data)
-        dataset = spg.get_symmetry_dataset(spglib_data, symprec=symprec)
+        dataset = get_symmetry_dataset(spglib_data, symprec=symprec)
 
         wyckoff_letters = dataset.wyckoffs
         equivalent_atoms = dataset.equivalent_atoms
@@ -385,6 +390,17 @@ class Cell:
         kgrid : list, optional
             Desiered number of kgrid [N1,N2,N3]. Defaults to the template or `qe_defaults`.
         """
+        import re, os
+        from ase.io import write
+        from yaiv.defaults.config import qe_defaults
+
+        # Build dummy dictionary for pseudopotentials (needed from ASE 3.24)
+        species = set(self.atoms.get_chemical_symbols())
+        pseudopotentials = {}
+        for s in species:
+            pseudopotentials[s] = f"{s}.upf"
+        print(pseudopotentials)
+
         # Pass a valid kgrid tuple.
         if isinstance(kgrid, list):
             kpts = kgrid = tuple(kgrid)
@@ -399,11 +415,18 @@ class Cell:
                 input_data=qe_defaults.input_data,
                 kpts=kpts,
                 format="espresso-in",
+                pseudopotentials=pseudopotentials,
             )
             return
 
         # Write a temporary QE input from the structure to extract updated geometry
-        write(".tmp.pwi", self.atoms, format="espresso-in")
+        print(pseudopotentials)
+        write(
+            ".tmp.pwi",
+            self.atoms,
+            format="espresso-in",
+            pseudopotentials=pseudopotentials,
+        )
 
         # Extract updated geometry info: CELL_PARAMETERS, ATOMIC_POSITIONS, nat
         basis = []
@@ -480,13 +503,15 @@ class Cell:
         filename : str, optional
             Path to the file to write. If None, writes to stdout.
         """
+        from sys import stdout
+
         # Gather data from ASE Atoms
         cell = np.asarray(self.atoms.get_cell())
         positions = np.asarray(self.atoms.get_scaled_positions())
         symbols = self.atoms.get_chemical_symbols()
 
         # Decide output stream
-        out = sys.stdout if filename is None else open(filename, "w")
+        out = stdout if filename is None else open(filename, "w")
 
         try:
             # Write CELL (Angstrom)
@@ -498,8 +523,82 @@ class Cell:
             for s, (x, y, z) in zip(symbols, positions):
                 out.write(f"{s:<2} {x:14.9f} {y:14.9f} {z:14.9f}\n")
         finally:
-            if out is not sys.stdout:
+            if out is not stdout:
                 out.close()
+
+    def view(
+        self,
+        repeat: tuple[int] = (1, 1, 1),
+        cell: bool = True,
+        lattice: bool = True,
+        perspective: bool = False,
+        size: float = 1,
+        radius: float = 0.1,
+    ) -> nv.widget.NGLWidget:
+        """
+        Visualizes the atomic structure in 3D, with options for repeating, cell display, lattice vectors, and perspective adjustments.
+
+        This method uses the NGL Viewer to render an interactive 3D model of the atomic structure, allowing users to customize the visualization
+        by adjusting the repetition of the unit cell, displaying lattice information, choosing between orthographic and perspective views, and
+        resizing the widget.
+
+        Parameters
+        ----------
+        repeat : tuple[int], optional
+            Defines the number of repetitions along each crystallographic axis (x, y, z) to be shown. Defaults to (1, 1, 1), showing only the
+            original unit cell.
+        cell : bool, optional
+            Indicates whether the unit cell box should be displayed within the visualization. Defaults to True.
+        lattice : bool, optional
+            Specifies whether the lattice vectors should be visualized using arrows. Defaults to True.
+        perspective : bool, optional
+            If True, sets the camera to perspective mode for a more realistic view. If False, uses orthographic mode for diagram-like accuracy.
+            Defaults to False.
+        size : float, optional
+            Specifies the size multiplier for the widget dimensions. Larger values increase the pixel dimensions of the visualization. Defaults to 1.
+        radius : float, optional
+            Radius (size) of balls and bonds.
+
+        Returns
+        -------
+        nv.widget.NGLWidget
+            An interactive widget showing the atomic structure, complete with customizable features for user analysis and exploration.
+        """
+        # Create the widget with optional repeated structure
+        widget = nv.show_ase(self.atoms.repeat(repeat), default=False)
+
+        # Adjust widget dimensions using the `size` parameter
+        widget.layout.width = f"{int(size * 800)}px"
+        widget.layout.height = f"{int(size * 500)}px"
+        widget.handle_resize()  # Update to apply new sizes
+
+        # Configure camera view settings
+        if not perspective:
+            widget.camera = "orthographic"  # Set diagram-like camera perspective
+        if cell:
+            widget.add_unitcell()  # Add lattice box visualization
+        # Display atoms and bonds clearly
+        widget.add_representation("ball+stick", radius=radius, aspectRatio=5)
+        if lattice:
+            # Calculate normalized lattice vectors for visual representation
+            vectors = (
+                np.asarray([vec / np.linalg.norm(vec) for vec in self.spglib[0]]) * 2
+            )
+            origin = [0, 0, 0]
+            # Color coding and names for vectors (RGB)
+            colors = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+            names = ["a", "b", "c"]
+            for i in range(3):
+                # Use arrow drawing capability to show lattice directions
+                widget.shape.add_arrow(origin, vectors[i], colors[i], 0.2, names[i])
+
+        # Apply initial rotations and zoom for an optimal starting view perspective
+        widget.control.spin([1, 0, 0], -np.pi / 4 - 0.25)  # Tilt forward 45 degrees
+        widget.control.spin([0, 0, 1], np.pi / 2)  # Rotate around Y-axis 45 degrees
+        widget.center(zoom=True)
+        widget.control.zoom(0.1)  # Apply zoom factor for closer view
+
+        return widget
 
 
 def ase2spglib(crystal_ase: Atoms) -> tuple:
@@ -553,7 +652,9 @@ def spglib2ase(spglib_crystal: tuple) -> Atoms:
     lattice = spglib_crystal[0]
     positions = spglib_crystal[1]
     numbers = spglib_crystal[2]
-    ase_crystal = Atoms(scaled_positions=positions, numbers=numbers, cell=lattice)
+    ase_crystal = Atoms(
+        scaled_positions=positions, numbers=numbers, cell=lattice, pbc=True
+    )
     return ase_crystal
 
 
@@ -578,6 +679,8 @@ def read_spg(file: str) -> tuple:
         - positions : (N, 3) array of scaled atomic positions (fractional)
         - numbers : (N,) array of atomic numbers
     """
+    from ase.io import read
+
     cryst = read(file)
     spglib_cryst = ase2spglib(cryst)
     return spglib_cryst

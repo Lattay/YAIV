@@ -77,18 +77,13 @@ yaiv.utils        : Unit management and basis transformation utilities
 """
 
 from types import SimpleNamespace
-from math import gcd
 import warnings
-import os
-import pickle
 
 import numpy as np
 import spglib as spg
 
-from yaiv.defaults.config import ureg
+from yaiv.defaults.config import ureg, defaults
 
-from yaiv.defaults.config import defaults
-from yaiv.defaults.config import qe_defaults
 from yaiv import utils as ut
 from yaiv import grep
 from yaiv import cell
@@ -393,6 +388,8 @@ def _find_supercell(
         If q-points do not have units of 2π/crystal, or if no commensurate supercell
         is found in a direction within 100 lattice multiples.
     """
+    from math import gcd
+
     # Normalize input to list of np.ndarray
     if len(np.shape(q_cryst)) == 1:
         q_cryst = [q_cryst]
@@ -834,6 +831,8 @@ class BOES:
         BOES
             Fully reconstructed BOES object.
         """
+        import pickle
+
         with open(filename, "rb") as f:
             obj = pickle.load(f)
         return obj
@@ -847,6 +846,8 @@ class BOES:
         filename : str, Optional
             Path to the output file. '.pkl' will be added if missing. Default `BOES.pkl`.
         """
+        import pickle
+
         if not filename.endswith(".pkl"):
             filename += ".pkl"
         with open(filename, "wb") as f:
@@ -1048,6 +1049,9 @@ class BOES:
             Symmetry tolerance used by spglib to define the primitive cell.
             Default is `yaiv.defaults.config.defaults.symprec`.
         """
+        import os
+        from yaiv.defaults.config import qe_defaults
+
         if not os.path.exists(dest_folder):
             os.makedirs(dest_folder)
             print("Folder created...")
@@ -1095,15 +1099,16 @@ class BOES:
 
         if isinstance(energies[0], SimpleNamespace):
             units = energies[0].F.units
-            energies = SimpleNamespace(
-                F=[X.F.magnitude for X in energies] * units,
-                TS=[X.TS.magnitude for X in energies] * units,
-                U=[X.U.magnitude for X in energies] * units,
-                U_one_electron=[X.U_one_electron.magnitude for X in energies] * units,
-                U_hartree=[X.U_hartree.magnitude for X in energies] * units,
-                U_xc=[X.U_xc.magnitude for X in energies] * units,
-                U_ewald=[X.U_ewald.magnitude for X in energies] * units,
-            )
+            data = {}
+            for atr in energies[0].__dict__:
+                data = dict(
+                    data,
+                    **{
+                        atr: [X.__getattribute__(atr).magnitude for X in energies]
+                        * units
+                    },
+                )
+            energies = SimpleNamespace(**data)
         else:
             energies = [X.magnitude for X in energies] * energies[0].units
         self.energies = energies

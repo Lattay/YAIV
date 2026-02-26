@@ -130,22 +130,38 @@ def test_grid_generator_periodic():
     assert np.all(coords[:, 1] > -0.5 - 1e-12) and np.all(coords[:, 1] <= 0.5 + 1e-12)
 
 
-def test_methpax_delta_integrates_to_A():
+def test_methpax_kernel_integrates_to_A():
     # Order 0 should integrate to A. Numerically approximate over a wide range.
     A = 1.7
     s = 0.2  # smearing
     xs = np.linspace(-5 * s, 5 * s, 2001)
     # order 0
-    ys = np.array([ut.methpax_delta(x, mean=0.0, smearing=s, order=0, A=A) for x in xs])
+    ys = np.array(
+        [ut.methpax_kernel(x, mean=0.0, smearing=s, order=0, A=A) for x in xs]
+    )
     integral = np.trapezoid(ys, xs)
     assert_allclose(
         integral, A, rtol=5e-3, atol=5e-3
     )  # loose tolerance due to finite range
     # order 1
-    ys = np.array([ut.methpax_delta(x, mean=0.0, smearing=s, order=0, A=A) for x in xs])
+    ys = np.array(
+        [ut.methpax_kernel(x, mean=0.0, smearing=s, order=0, A=A) for x in xs]
+    )
     integral = np.trapezoid(ys, xs)
     assert_allclose(
         integral, A, rtol=5e-3, atol=5e-3
+    )  # loose tolerance due to finite range
+
+
+def test_fermidirac_kernel_integrates_to_one():
+    # Order 0 should integrate to A. Numerically approximate over a wide range.
+    s = 0.2  # smearing
+    xs = np.linspace(-10 * s, 10 * s, 2001)
+    # order 0
+    ys = ut.fermidirac_kernel(xs, mean=0.0, smearing=s)
+    integral = np.trapezoid(ys, xs)
+    assert_allclose(
+        integral, 1, rtol=5e-3, atol=5e-3
     )  # loose tolerance due to finite range
 
 
@@ -367,7 +383,7 @@ def test_kernel_regression_sigma_override_and_scalar_eval():
     y1 = f(X, sigma=0.02)
 
     # Outputs are numeric, shapes as expected
-    assert np.all(y0!=y1)
+    assert np.all(y0 != y1)
     assert np.isscalar(y0) or getattr(y0, "shape", ()) == ()
     assert isinstance(y1, np.ndarray)
 
@@ -572,3 +588,45 @@ def test_auto_kgrid_spacing_and_parity():
         / dk_target.magnitude
     )
     assert rel_err < 0.25
+
+
+def test_eigen_projection():
+    # BASIC projection
+    # Setup initial and final spectra
+    spectra_in = np.array([[1, 0], [0, 1]])
+    spectra_out = np.array([[1, 0], [0, 1]])
+
+    # Test without eigenvalues_out, expecting identity projections
+    proj = ut.eigen_projection(spectra_in, spectra_out)
+    expected_proj = np.array([[1, 0], [0, 1]], dtype=complex)
+    np.testing.assert_array_almost_equal(proj, expected_proj)
+
+    # BASIC projection with degenerate eigenvalues
+    spectra_in = np.array([[1, 0], [0, 1]])
+    spectra_out = np.array([[1, 0], [0, 1]])
+    eigenvalues_out = np.array([1.0, 1.0])  # Degenerate eigenvalues
+
+    proj = ut.eigen_projection(spectra_in, spectra_out, eigenvalues_out)
+    expected_proj = np.array([[1, 0], [1, 0]], dtype=float)
+    np.testing.assert_array_almost_equal(proj, expected_proj)
+
+    # Setup spectra with unitful eigenvalues using Pint
+    spectra_in = np.array([[1, 0], [0, 1]])
+    spectra_out = np.array([[1, 0], [0, 1]])
+    eigenvalues_out = np.array([1.0, 1.0]) * ureg.hertz
+
+    proj = ut.eigen_projection(spectra_in, spectra_out, eigenvalues_out)
+    expected_proj = np.array([[1, 0], [1, 0]], dtype=float)
+    np.testing.assert_array_almost_equal(proj, expected_proj)
+
+    # Setup spectra that violate norm condition
+    spectra_in = np.array([[1, 1] / np.sqrt(2), [0, 0]])
+    spectra_out = np.array([[1, 0], [0, 1]])
+
+    # Check that a warning is raised
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        ut.eigen_projection(spectra_in, spectra_out)
+        assert len(w) == 1
+        assert issubclass(w[-1].category, UserWarning)
+        assert "Projections norm is" in str(w[-1].message)

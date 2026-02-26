@@ -2,31 +2,36 @@
 
 ## ✅ General Improvements
 
-OLD - AS TEMPLATE:
-- Improved and expanded documentation across the entire code.
-- New `phonon` module with phonon handling utilities.
-- Added `tests`.
+- New `convergence` module with tools to collect, organize, and visualize convergence data from ab initio calculations.
+- Fermi-Dirac included as a possible smearing for all methods (along with Gaussian and Methfessel-Paxton).
+- Import times have been improved.
 
 ---
 
 ## 📦 Module-Specific Updates
 
 ### `grep`
-- Added `grep.symmetires`, currently only supporting QE xml files.
-- Expanded `grep.kpointsEnergies` to grep projection over orbitals from Quantum Espresso's `projwfc.x`
+- Energy decomposition of `grep.total_energy` now also works for fixed occuaption calculations and greps more energy components.
+- `grep.kpointsEnergies` also supports grepping orbital projections in non-relativistic calculations for Quantum Espresso.
+
+- New grepping tools for the `convergence` module:
+    - Added `grep.cutoff` to grep the cutoff energy used in calculations .
+    - Added `grep.smearing` to get smearings used in calculations.
+    - Added `grep.runtime` to get computational runtimes.
+    - Added `grep.ram` to get required RAM memory in calculations.
+    - Added `grep.k_grid` to get the k-grid used in calculations.
+    - Added `grep.atomic_forces` to grep atomic forces.
 
 ### `utils`
-- Added `utils.symmetry_orbit_kpoints`, for applying all symmetry rotations to a set of k-points and returning a unique set.
-- Added `find_little_group` for finding the little group of a given set of points.
-- Now `voigt2cartesian` and `cartesian2voigt` can transform full arrays.
-- Added `kernel_density` for  building a callable density(X) that returns the kernel-broadened density evaluated at arbitrary positions X.
-- Added `auto_kgrid`, which allows to comput a k-grid from a target k-point spacing or target kpoints-per-reciprocal-atom (KPPRA).
-- Added `kernel_regresion` to build callables that perform 1D kernel regression (Nadaraya–Watson estimator) from samples.
+- Include and implement a `utils.fermidirac_kernel` accross different utilities in order to get Fermi-Dirac statistics (along with Gaussian and Methfessel-Paxton).
+- Added `eigen_projection`, utility for projection an initial spectra onto an different spectra and optionally groups projections based on a set of eigenvalues.
+
+### `spectrum`
+- Implement Fermi-Dirac smearing for the calculation of the Densities.
+- Now `plot_fat` and `plot_color` admit logaritmic scaling for projection weights.
+
+### `plot`
+- Now the 3D Brillouin zone can be plotted with `plot.brillouinZone`.
 
 ### `cell`
-- The `write_espresso_in` method inside the `Cell` class now allows for overwritting the kpoints.
-- `Cell.print()` to write the structure in human-readable format.
-
-### `phonons`
-- The `BOES.save_jobs_pwi` now allows for overwritting the kpoints. Usefull as different BOES arising from different phonons will usually share all computational parameters except for the kpoints.
-- Added automatic kgrid scaling to `BOES.save_jobs_pwi`.
+- The `cell.Cell` object now has a `.view()` method that allows to visualize the structure in 3D.

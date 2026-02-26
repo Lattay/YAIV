@@ -13,6 +13,8 @@ The functions in this module perform low-level parsing (i.e., grepping) of data 
 - Lattice vectors and stress tensors
 - Number of electrons and total energies
 - Fermi level and reciprocal space paths
+- Computational cost (runtime, RAM)
+- DFT parameters as cutoff, smearing or K-grid
 
 Supported formats include:
 - Quantum ESPRESSO output/input: `pw.x`, `ph.x`, `bands.in`, `projwfc.x`, `matdyn.x`, `.xml`
@@ -50,8 +52,26 @@ dyn_file(file)
 dyn_q(q_cryst, results_ph_path, qe_format=True)
     Locates and reads `.dyn*` file for a given q-point, returning the full dynamical matrix (3Nx3N).
 
-def symmetries(file)
+symmetries(file)
     Grep symmetry operations and return them as rotation/translation pairs.
+
+cutoff(file)
+    Greps the cutoff energy from a variety of filetypes.
+
+smearing(file)
+    Greps the smearing used in calculation from a variety of filetypes.
+
+runtime(file)
+    Greps the computational runtime from a variety of filetypes.
+
+ram(file)
+    Greps the RAM needed in the computation from a variety of filetypes.
+
+k_grid(file)
+    Greps the k-grid from a variety of filetypes.
+
+atomic_forces(file)
+    Greps the atomic forces from a variety of filetypes.
 
 Private Utilities
 -----------------
@@ -90,17 +110,12 @@ yaiv.utils    : Basis universal utilities
 
 import re
 import warnings
-import glob
 from types import SimpleNamespace
-import xml.etree.ElementTree as ET
 
 import numpy as np
-from ase import io
 
 from yaiv.defaults.config import ureg
 from yaiv import utils as ut
-from yaiv import grep
-from yaiv import phonon as ph
 
 __all__ = [
     "electron_num",
@@ -113,6 +128,13 @@ __all__ = [
     "kpointsFrequencies",
     "dyn_file",
     "dyn_q",
+    "symmetries",
+    "cutoff",
+    "smearing",
+    "k_grid",
+    "atomic_forces",
+    "runtime",
+    "ram",
 ]
 
 
@@ -184,8 +206,9 @@ class _OrbitalProjectionContainer:
     Container for orbital-resolved projection matrices.
 
     Supports projections stored from:
-      - POSCAR-style (VASP-like): keys (ion, l, m, M)
-      - QE (Quantum ESPRESSO) projwfc: keys (ion, l, j, mj, wfc)
+      - POSCAR-style (VASP-like): keys (ion, l, ml, M)
+      - QE (Quantum ESPRESSO) SOC projwfc: keys (ion, l, j, mj, wfc)
+      - QE (Quantum ESPRESSO) scalar projwfc: keys (ion, l, m, wfc)
 
     Each entry maps a quantum-number tuple → projection matrix of shape (nkpts, nbnds).
 
@@ -194,13 +217,16 @@ class _OrbitalProjectionContainer:
     _data : dict
         Internal mapping from quantum-number tuples to projection matrices.
         - POSCAR format: (ion, l, m, M) → np.ndarray (nkpts, nbnds)
-        - QE format:     (ion, l, j, mj, wfc) → np.ndarray (nkpts, nbnds)
+        - QE SOC format:     (ion, l, j, mj, wfc) → np.ndarray (nkpts, nbnds)
+        - QE scalar format:  (ion, l, m, wfc) → np.ndarray (nkpts, nbnds)
+    _code : str
+        Code according to which the code is formated. Options are "quantum_espresso" and "vasp".
 
     Methods
     -------
     add_poscar(ion, l, m, M, matrix)
         Store a projection matrix in POSCAR format.
-    add_qe(ion, l, j, mj, wfc, matrix)
+    add_qe(ion, l, wfc, matrix, m, j, mj)
         Store a projection matrix in QE projwfc format.
     __call__(...)
         Sum over matching entries with flexible indexing across both formats.
@@ -208,11 +234,17 @@ class _OrbitalProjectionContainer:
         Compact summary of stored channels (POSCAR or QE).
     """
 
-    def __init__(self):
+    def __init__(self, code=str):
         """
         Initialize an empty orbital projection container.
+
+        Parameters
+        ----------
+        code : str
+            Code according to which the code is formated. Options are "quantum_espresso" and "vasp".
         """
         self._data = {}
+        self._code = code
 
     def add_poscar(self, ion: int, l: int, m: int, M: int, matrix: np.ndarray):
         """
@@ -234,7 +266,14 @@ class _OrbitalProjectionContainer:
         self._data[(ion, l, m, M)] = matrix
 
     def add_qe(
-        self, ion: int, l: int, j: float, mj: float, wfc: int, matrix: np.ndarray
+        self,
+        ion: int,
+        l: int,
+        wfc: int,
+        matrix: np.ndarray,
+        m: int = None,
+        j: float = None,
+        mj: float = None,
     ):
         """
         Store a projection matrix for a specific QE projwfc channel.
@@ -245,42 +284,71 @@ class _OrbitalProjectionContainer:
             Ion index the projection refers to.
         l : int
             Orbital angular momentum (0=s, 1=p, 2=d, ...).
-        j : float
-            Total angular momentum (e.g., 0.5, 1.5, ...).
-        mj : float
-            Projection of total angular momentum (−j..+j, step 1).
         wfc : int
             Wavefunction index (QE projwfc channel identifier).
         matrix : np.ndarray, shape (nkpts, nbnds)
             Projection matrix.
+        m : int, optional
+            QE real-harmonic component index (1..2*l+1). Not a magnetic quantum number.
+            Used in scalar mode.
+        j : float, optional
+            Total angular momentum (e.g., 0.5, 1.5, ...). Used in SOC mode.
+        mj : float, optional
+            Projection of total angular momentum (−j..+j, step 1). Used in SOC mode.
+
+        Raises
+        ------
+        ValueError
+            If an invalid combination of (m, j, mj) is provided or values are out of range.
         """
-        self._data[(ion, l, j, mj, wfc)] = matrix
+        scalar_mode = (m is not None) and (j is None) and (mj is None)
+        soc_mode = (m is None) and (j is not None) and (mj is not None)
+
+        if scalar_mode:
+            self._data[(ion, l, m, wfc)] = matrix
+        elif soc_mode:
+            self._data[(ion, l, j, mj, wfc)] = matrix
+        else:
+            raise ValueError(
+                "Invalid QE projection description. "
+                "Provide either (m) for scalar calculations "
+                "or (j, mj) for spin–orbit calculations."
+            )
 
     def __repr__(self) -> str:
         keys = np.array(tuple(self._data.keys()), dtype=object)
-        # QE: keys of length 5 -> (ion, l, j, mj, wfc)
-        if len(keys[0]) == 5:
+        if self._code == "quantum_espresso":
             ions = int(max(int(k[0]) for k in keys) + 1)
             l_by_ion = {
                 ion: sorted({int(k[1]) for k in keys if int(k[0]) == ion})
                 for ion in range(ions)
             }
-            return (
-                f"_OrbitalProjectionContainer("
-                f"ions={ions}, \n"
-                f"l={l_by_ion} \n"
-                f"shape=(ion, l, j, mj, wfc))"
-            )
+            # QE_SOC: keys of length 5 -> (ion, l, j, mj, wfc)
+            if len(keys[0]) == 5:
+                return (
+                    f"_OrbitalProjectionContainer("
+                    f"ions={ions}, \n"
+                    f"l={l_by_ion} \n"
+                    f"shape=(ion, l, j, m_j, wfc))"
+                )
+            # QE_scalar: keys of length 5 -> (ion, l, m, wfc)
+            elif len(keys[0]) == 4:
+                return (
+                    f"_OrbitalProjectionContainer("
+                    f"ions={ions}, \n"
+                    f"l={l_by_ion} \n"
+                    f"shape=(ion, l, m[1,1+2l], wfc)"
+                )
         # POSCAR: keys of length 4 -> (ion, l, m, M)
-        elif len(keys[0]) == 4:
+        elif self._code == "vasp":
             keys = np.array(keys, dtype=int)
             ions = np.max(keys[:, 0]) + 1
             l = sorted(set(int(x) for x in keys[:, 1]))
             Mmax = int(np.max(keys[:, 3]))
             Mstr = f"[0-{Mmax}]" if Mmax > 0 else "0"
             return (
-                f"_OrbitalProjectionContainer(ions={ions}, l={l}, m=[-l,l], M={Mstr}\n"
-                f"shape=(ion, l, m, M))"
+                f"_OrbitalProjectionContainer(ions={ions}, l={l}, m_l=[-l,l], M={Mstr}\n"
+                f"shape=(ion, l, m_l, M))"
             )
         else:
             return f"_OrbitalProjectionContainer(keys_shape={len(keys[0])}, entries={len(keys)})"
@@ -308,8 +376,9 @@ class _OrbitalProjectionContainer:
             Ion index or indices. Default selects all ions.
         l : int | list | range | slice, optional
             Orbital angular momentum(s). Default selects all.
-        m : int | list | range | slice, optional (POSCAR)
-            Magnetic quantum number(s) (−l..+l). Only used for POSCAR data.
+        m : int | list | range | slice, optional
+            Magnetic quantum number(s) (−l..+l), for POSCAR data.
+            Real-harmonic component index [1,1+2l], for scalar QE.
         M : int | list | range | slice, optional (POSCAR)
             Magnetization channel (0 total, 1,2,3 for x,y,z). Default 0.
         j : float | list | tuple | slice, optional (QE)
@@ -343,13 +412,16 @@ class _OrbitalProjectionContainer:
         """
         keys = np.array(tuple(self._data.keys()), dtype=object)
         # QE keys length 5
-        if len(keys[0]) == 5:
-            query = (ion, l, j, mj, wfc)
-        # POSCAR keys length 4
-        elif len(keys[0]) == 4:
+        if self._code=="quantum_espresso":
+            if len(keys[0]) == 5:
+                query = (ion, l, j, mj, wfc)
+            elif len(keys[0]) == 4:
+                query = (ion, l, m, wfc)
+        elif self._code=="vasp":
+            # POSCAR keys length 4
             query = (ion, l, m, M)
         else:
-            raise KeyError("Unknown key format in container")
+            raise KeyError("Unknown code in container")
 
         def match(val, key):
             if isinstance(val, slice):
@@ -509,6 +581,8 @@ class _Qe_xml:
         NotImplementedError
             If the file type is not recognized as a QE XML file.
         """
+        import xml.etree.ElementTree as ET
+
         if _filetype(file) == "qe_xml":
             tree = ET.parse(file)
             self.root = tree.getroot()
@@ -546,7 +620,7 @@ class _Qe_xml:
 
     def fermi(self) -> float:
         """
-        Greps the Fermi energy from a variety of filetypes.
+        Greps the Fermi energy.
 
         Returns
         -------
@@ -662,6 +736,60 @@ class _Qe_xml:
             OUT.append(_Symmetry(R=R, t=t, units=ureg.crystal))
         return OUT
 
+    def cutoff(self) -> ureg.Quantity:
+        """
+        Greps the cutoff energy.
+
+        Returns
+        -------
+        cutoff : ureg.Quantity
+            Cutoff energy with attached units (ureg.Quantity).
+        """
+        cutoff = float(self.root.find(".//ecutwfc").text) * ureg.Ry
+        return cutoff
+
+    def smearing(self) -> ureg.Quantity:
+        """
+        Greps the smearing.
+
+        Returns
+        -------
+        smearing : ureg.Quantity
+            Smearing with attached units (ureg.Quantity).
+        """
+        smearing = float(self.root.find(".//smearing").attrib["degauss"]) * ureg.Ry
+        return smearing
+
+    def runtime(self) -> ureg.Quantity:
+        """
+        Greps the computational runtime.
+
+        Returns
+        -------
+        runtime : ureg.Quantity
+            Computational runtime with attached units (ureg.Quantity).
+        """
+        lines = self.root.find(".//timing_info")
+        runtime = float(lines.find(".//total").find(".//cpu").text)
+        return runtime * ureg.second
+
+    def k_grid(self) -> ureg.Quantity:
+        """
+        Greps the k-grid from a variety of filetypes.
+
+        Returns
+        -------
+        k_grid : list(int)
+            K-grid used in the computation.
+        """
+        lines = self.root.find(".//k_points_IBZ").find(".//monkhorst_pack")
+        kgrid = [
+            int(lines.attrib["nk1"]),
+            int(lines.attrib["nk2"]),
+            int(lines.attrib["nk3"]),
+        ]
+        return kgrid
+
 
 def electron_num(file: str) -> int:
     """
@@ -736,6 +864,8 @@ def lattice(file: str, alat: bool = False) -> ureg.Quantity:
     NotImplementedError:
         The function is not currently implemeted for the provided filetype.
     """
+    from ase import io
+
     filetype = _filetype(file)
     READ = False
 
@@ -885,6 +1015,8 @@ def total_energy(file: str, decomposition: bool = False) -> float | SimpleNamesp
                 -  U_hartree
                 -  U_exchange-correlational
                 -  U_ewald
+                -  U_paw -> One center paw contribution
+                -  U_correction -> Empirical correction (VdW for example.)
 
     Raises
     ------
@@ -898,36 +1030,33 @@ def total_energy(file: str, decomposition: bool = False) -> float | SimpleNamesp
         if filetype == "qe_xml":
             energy = _Qe_xml(file).total_energy(decomposition)
         elif filetype == "qe_scf_out":
+            data = {}
             for line in reversed(list(lines)):
                 if "!" in line:
-                    F = float(line.split()[4]) * ureg("Ry")
+                    data["F"] = float(line.split()[4]) * ureg("Ry")
                     break
                 elif "smearing contrib" in line:
-                    TS = float(line.split()[4]) * ureg("Ry")
+                    data["TS"] = float(line.split()[4]) * ureg("Ry")
                 elif "internal energy" in line:
-                    U = float(line.split()[4]) * ureg("Ry")
+                    data["U"] = float(line.split()[4]) * ureg("Ry")
                 elif "one-electron" in line:
-                    U_one_electron = float(line.split()[3]) * ureg("Ry")
+                    data["U_one_electron"] = float(line.split()[3]) * ureg("Ry")
                 elif "hartree contribution" in line:
-                    U_h = float(line.split()[3]) * ureg("Ry")
+                    data["U_hartree"] = float(line.split()[3]) * ureg("Ry")
                 elif "xc contribution" in line:
-                    U_xc = float(line.split()[3]) * ureg("Ry")
+                    data["U_xc"] = float(line.split()[3]) * ureg("Ry")
                 elif "ewald" in line:
-                    U_ewald = float(line.split()[3]) * ureg("Ry")
+                    data["U_ewald"] = float(line.split()[3]) * ureg("Ry")
+                elif "Dispersion Correction" in line:
+                    data["U_correction"] = float(line.split()[3]) * ureg("Ry")
+                elif "one-center paw" in line:
+                    data["U_paw"] = float(line.split()[4]) * ureg("Ry")
                 elif "convergence NOT achieved" in line:
                     raise NameError(f"Convergence not achieved in {file}")
-            if decomposition and "TS" in locals():
-                energy = SimpleNamespace(
-                    F=F,
-                    TS=TS,
-                    U=U,
-                    U_one_electron=U_one_electron,
-                    U_hartree=U_h,
-                    U_xc=U_xc,
-                    U_ewald=U_ewald,
-                )
+            if decomposition:
+                energy = SimpleNamespace(**data)
             else:
-                energy = F
+                energy = data["F"]
         elif filetype == "outcar":
             for line in reversed(list(lines)):
                 if "sigma->" in line:
@@ -1152,6 +1281,8 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
     ------
     NotImplementedError:
         The function is not currently implemeted for the provided filetype.
+    IndexError:
+        If the number of weights does not coincide with the number of bands.
     """
 
     filetype = _filetype(file)
@@ -1187,9 +1318,10 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
                     if len(WEIGHTS) == num_points:
                         READ_kpoints = False
                 elif READ_energies:
-                    if line.lstrip().startswith("k"):
+                    if line.lstrip().startswith("k ="):
                         OCCUPATIONS = False
                     elif OCCUPATIONS:
+                        # Currently not implemented
                         pass
                     elif line.strip() != "":
                         for e in re.findall(r"[-+]?\d*\.\d+|\d+", line):
@@ -1199,7 +1331,7 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
                             E = []
                             OCCUPATIONS = True
             # Recover crystal units
-            lat = grep.lattice(file)
+            lat = lattice(file)
             lat = lat / np.linalg.norm(lat[0])
             Klat = ut.reciprocal_basis(lat).magnitude
             KPOINTS = ut.cartesian2cryst(KPOINTS, Klat) * (ureg._2pi / ureg.crystal)
@@ -1216,15 +1348,27 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
                 # Scrape STATES info
                 if "state #" in line:
                     l = line.split()
-                    # atom, l, j, mj, wfc
-                    state = [
-                        int(l[4]) - 1,
-                        int(l[9][3:]),
-                        float(l[10][2:]),
-                        float(l[-1].split("=")[-1][:-1]),
-                        int(l[8]) - 1,
-                    ]
-                    STATES = STATES + [state]
+                    if "j=" in line:
+                        # atom, l, j, mj, wfc
+                        state = [
+                            int(l[4]) - 1,
+                            int(l[9][3:]),
+                            float(l[10][2:]),
+                            float(l[-1].split("=")[-1][:-1]),
+                            int(l[8]) - 1,
+                        ]
+                        STATES.append(state)
+                        soc_mode = True
+                    if "m=" in line:
+                        # atom, l, m, wfc
+                        state = [
+                            int(l[4]) - 1,
+                            int(l[9][3:]),
+                            int(l[-1][:-1]),
+                            int(l[8]) - 1,
+                        ]
+                        STATES.append(state)
+                        soc_mode = False
                 if "k =" in line:
                     k = [float(x) for x in line.split()[2:]]
                     KPOINTS.append(k)
@@ -1239,7 +1383,11 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
                     l = line.split("=")[-1].split("]")[:-1]
                     for x in l:
                         split = x.split("*[#")
-                        proj = float(split[0])
+                        try:
+                            proj = float(split[0])
+                        except ValueError:
+                            print(f"ValueError with {split[0]} at {k}, defaulted to 0.")
+                            proj = 0
                         index = int(split[1]) - 1
                         P[index] = proj
                 if "|psi|" in line:
@@ -1252,10 +1400,23 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
             # Save projections into the proper container
             PROJ = np.array(PROJECTIONS)
             STATES = np.array(STATES)
-            PROJECTIONS = _OrbitalProjectionContainer()
+            PROJECTIONS = _OrbitalProjectionContainer(code="quantum_espresso")
             N = 0
-            for i, S in enumerate(STATES):
-                PROJECTIONS.add_qe(S[0], S[1], S[2], S[3], S[4], PROJ[:, :, i])
+            if soc_mode:
+                for i, S in enumerate(STATES):
+                    PROJECTIONS.add_qe(
+                        ion=S[0],
+                        l=S[1],
+                        wfc=S[4],
+                        matrix=PROJ[:, :, i],
+                        j=S[2],
+                        mj=S[3],
+                    )
+            else:
+                for i, S in enumerate(STATES):
+                    PROJECTIONS.add_qe(
+                        ion=S[0], l=S[1], wfc=S[3], matrix=PROJ[:, :, i], m=S[2]
+                    )
         elif filetype == "eigenval":
             for i, line in enumerate(lines):
                 l = line.split()
@@ -1332,7 +1493,7 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
             # Save projections into the proper container
             PROJ = np.array(PROJ)
             M = round(PROJ.shape[0] / (np.prod(np.shape(ENERGIES)) * num_ions))
-            PROJECTIONS = _OrbitalProjectionContainer()
+            PROJECTIONS = _OrbitalProjectionContainer(code="vasp")
             for i in range(num_ions):
                 for l in range(3):
                     for m in range(-l, l + 1):
@@ -1344,10 +1505,15 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
                             PROJECTIONS.add_poscar(i, l, m, mag, matrix)
         else:
             raise NotImplementedError("Unsupported filetype")
+    WEIGHTS = np.array(WEIGHTS)
+    if WEIGHTS.shape[0] != ENERGIES.shape[0] and len(WEIGHTS) != 0:
+        raise IndexError(
+            f"There should be as many `weights` ({WEIGHTS.shape[0]}) as bands ({ENERGIES.shape[0]})."
+        )
     return SimpleNamespace(
         energies=ENERGIES,
         kpoints=KPOINTS,
-        weights=np.array(WEIGHTS),
+        weights=WEIGHTS,
         projections=PROJECTIONS,
     )
 
@@ -1449,10 +1615,10 @@ def dyn_file(file: str) -> SimpleNamespace:
     NotImplementedError:
         The function is not currently implemeted for the provided filetype.
     """
-    filetype = grep._filetype(file)
+    filetype = _filetype(file)
     if filetype != "qe_dyn":
         raise NotImplementedError("Unsupported filetype")
-    lattice = grep.lattice(file)
+    lat = lattice(file)
     n_atoms = n_types = freqs = vec = alat = None
     vec, freqs = [], []
     species = []
@@ -1507,7 +1673,7 @@ def dyn_file(file: str) -> SimpleNamespace:
 
     return SimpleNamespace(
         q=q_point,
-        lattice=lattice,
+        lattice=lat,
         freqs=freqs,
         displacements=displacements,
         positions=positions,
@@ -1541,8 +1707,10 @@ def _find_dyn_file(q_cryst: np.ndarray | ureg.Quantity, results_ph_path: str) ->
     FileNotFoundError
         If no `.dyn*` file or no matching q-point is found in any of the `.dyn` files
     """
+    from glob import glob
+
     # Locate a reference .dyn file to extract lattice
-    dyn1 = glob.glob(results_ph_path + "/*dyn1") + glob.glob(results_ph_path + "/*dyn")
+    dyn1 = glob(results_ph_path + "/*dyn1") + glob(results_ph_path + "/*dyn")
     if not dyn1:
         raise FileNotFoundError(
             "No 'dyn1' or 'dyn' file found in the specified folder."
@@ -1554,7 +1722,7 @@ def _find_dyn_file(q_cryst: np.ndarray | ureg.Quantity, results_ph_path: str) ->
     k_basis = ut.reciprocal_basis(lattice)
 
     # Scan all .dyn* files (excluding matdyn if present)
-    dyn_files = glob.glob(results_ph_path + "/*.dyn*")
+    dyn_files = glob(results_ph_path + "/*.dyn*")
     dyn_files = [f for f in dyn_files if "results_matdyn" not in f]
 
     for file in dyn_files:
@@ -1625,6 +1793,8 @@ def dyn_q(
       This must be removed to obtain the physical matrix for diagonalization (ω² in Ry²/ħ²).
     - The units of the returned matrix are `_2m_e * Ry^2 / planck_constant^2` in QE format.
     """
+    from yaiv.phonon import _QEdyn2Realdyn
+
     # Normalize units
     if isinstance(q_cryst, ureg.Quantity):
         q_cryst = q_cryst.to("_2pi/crystal")
@@ -1681,7 +1851,7 @@ def dyn_q(
     delattr(system, "displacements")
     system.dyn = dyn_mat * ureg("_2m_e * Ry^2 / planck_constant^2")
     if not qe_format:
-        system.dyn = ph._QEdyn2Realdyn(system.dyn, system.masses)
+        system.dyn = _QEdyn2Realdyn(system.dyn, system.masses)
 
     return system
 
@@ -1717,3 +1887,263 @@ def symmetries(file: str) -> list[SimpleNamespace]:
     else:
         raise NotImplementedError("Unsupported filetype")
     return symmetries
+
+
+def cutoff(file: str) -> ureg.Quantity:
+    """
+    Greps the cutoff energy from a variety of filetypes.
+
+    Parameters
+    ----------
+    file : str
+        File from which to extract the cutoff energy.
+
+    Returns
+    -------
+    cutoff : ureg.Quantity
+        Cutoff energy with attached units (ureg.Quantity).
+
+    Raises
+    ------
+    NotImplementedError:
+        The function is not currently implemeted for the provided filetype.
+    NameError:
+        The cutoff energy was not found.
+    """
+    filetype = _filetype(file)
+    with open(file, "r") as lines:
+        if filetype == "qe_xml":
+            cutoff = _Qe_xml(file).cutoff()
+        elif filetype == "qe_scf_out":
+            for line in lines:
+                # If smearing is used
+                if "kinetic-energy cutoff" in line:
+                    cutoff = float(line.split()[-2])
+                    break
+            cutoff *= ureg("Ry")
+        else:
+            raise NotImplementedError("Unsupported filetype")
+    if "cutoff" not in locals():
+        raise NameError("Cutoff energy not found.")
+    return cutoff
+
+
+def smearing(file: str) -> ureg.Quantity:
+    """
+    Greps the smearing from a variety of filetypes.
+
+    Parameters
+    ----------
+    file : str
+        File from which to extract the smearing.
+
+    Returns
+    -------
+    smearing : ureg.Quantity
+        Smearing with attached units (ureg.Quantity).
+
+    Raises
+    ------
+    NotImplementedError:
+        The function is not currently implemeted for the provided filetype.
+    NameError:
+        The smearing was not found.
+    """
+    filetype = _filetype(file)
+    with open(file, "r") as lines:
+        if filetype == "qe_xml":
+            smearing = _Qe_xml(file).smearing()
+        elif filetype == "qe_scf_out":
+            for line in lines:
+                if "smearing, width" in line:
+                    smearing = float(line.split()[-1])
+                    break
+            smearing *= ureg("Ry")
+        else:
+            raise NotImplementedError("Unsupported filetype")
+    if "smearing" not in locals():
+        raise NameError("Smearing energy not found.")
+    return smearing
+
+
+def k_grid(file: str) -> list[int]:
+    """
+    Greps the k-grid from a variety of filetypes.
+
+    Parameters
+    ----------
+    file : str
+        File from which to extract the k-grid.
+
+    Returns
+    -------
+    k_grid : list(int)
+        K-grid used in the computation.
+
+    Raises
+    ------
+    NotImplementedError:
+        The function is not currently implemeted for the provided filetype.
+    NameError:
+        The k-grid was not found.
+    """
+    filetype = _filetype(file)
+    with open(file, "r") as lines:
+        if filetype == "qe_xml":
+            kgrid = _Qe_xml(file).k_grid()
+        elif filetype == "qe_scf_in":
+            READ = False
+            for line in lines:
+                if "K_POINTS" in line:
+                    READ = True
+                elif READ:
+                    l = line.split()
+                    if len(l) >= 3:
+                        kgrid = [int(x) for x in l[:3]]
+                        break
+        elif filetype == "qe_scf_out":
+            # Try to find the corresponding input file
+            kgrid = k_grid(file[:-1] + "i")
+        else:
+            raise NotImplementedError("Unsupported filetype")
+    if "kgrid" not in locals():
+        raise NameError("K-grid not found.")
+    return kgrid
+
+
+def atomic_forces(file: str) -> SimpleNamespace:
+    """
+    Greps the atomic forces from a variety of filetypes.
+
+    Parameters
+    ----------
+    file : str
+        File from which to extract the atomic forces.
+
+    Returns
+    -------
+    forces : SimpleNamespace
+        SimpleNamespace class with the following attributes:
+        SimpleNamespace with atomic forces with attached units (ureg.Quantity).
+        - per_atom : np.ndarray | ureg.Quantity
+            List of foces per atom with shape (N,3) where N is the number of atoms.
+        - total : np.ndarray | ureg.Quantity
+            Total average force.
+
+    Raises
+    ------
+    NotImplementedError:
+        The function is not currently implemeted for the provided filetype.
+    NameError:
+        The atomic forces were not found.
+    """
+    filetype = _filetype(file)
+    with open(file, "r") as lines:
+        if filetype == "qe_scf_out":
+            READ, WRITE = False, False
+            forces = []
+            for line in lines:
+                if "Forces acting on atoms" in line:
+                    READ, WRITE = True, True
+                elif READ:
+                    l = line.split()
+                    if "atom" in line and WRITE:
+                        f = [float(x) for x in l[6 : 6 + 3]]
+                        forces.append(f)
+                    elif "Total force" in line:
+                        total_force = float(l[3])
+                        break
+                    elif len(forces) != 0:
+                        WRITE = False
+            forces = np.asarray(forces) * ureg("Ry/bohr")
+            total_force *= ureg("Ry/bohr")
+        else:
+            raise NotImplementedError("Unsupported filetype")
+    if "forces" not in locals():
+        raise NameError("Atomic forces not found.")
+    return SimpleNamespace(per_atom=forces, total=total_force)
+
+
+def runtime(file: str) -> ureg.Quantity:
+    """
+    Greps the computational runtime from a variety of filetypes.
+
+    Parameters
+    ----------
+    file : str
+        File from which to extract the computational runtime.
+
+    Returns
+    -------
+    runtime : ureg.Quantity
+        Computational runtime with attached units (ureg.Quantity).
+
+    Raises
+    ------
+    NotImplementedError:
+        The function is not currently implemeted for the provided filetype.
+    NameError:
+        The computational runtime was not found.
+    """
+    filetype = _filetype(file)
+    with open(file, "r") as lines:
+        if filetype == "qe_xml":
+            runtime = _Qe_xml(file).runtime()
+        elif filetype == "qe_scf_out":
+            for line in reversed(list(lines)):
+                # If smearing is used
+                if "PWSCF" in line:
+                    h, m, s = 0, 0, 0
+                    runtime = line.split()[2]
+                    if "h" in runtime:
+                        h = int(runtime.split("h")[0])
+                        runtime = runtime.split("h")[1]
+                    if "m" in runtime:
+                        m = int(runtime.split("m")[0])
+                        runtime = runtime.split("m")[1]
+                    if "s" in runtime:
+                        s = float(runtime.split("s")[0])
+                    runtime = s * ureg.second + m * ureg.minute + h * ureg.hour
+                    break
+        else:
+            raise NotImplementedError("Unsupported filetype")
+    if "runtime" not in locals():
+        raise NameError("Computation runtime not found.")
+    return runtime
+
+
+def ram(file: str) -> ureg.Quantity:
+    """
+    Greps the RAM needed in the computation from a variety of filetypes.
+
+    Parameters
+    ----------
+    file : str
+        File from which to extract the RAM.
+
+    Returns
+    -------
+    RAM : ureg.Quantity
+        RAM with attached units (ureg.Quantity).
+
+    Raises
+    ------
+    NotImplementedError:
+        The function is not currently implemeted for the provided filetype.
+    NameError:
+        The RAM was not found.
+    """
+    filetype = _filetype(file)
+    with open(file, "r") as lines:
+        if filetype == "qe_scf_out":
+            for line in lines:
+                if "total dynamical RAM" in line:
+                    RAM = float(line.split()[5])
+                    units = ureg(line.split()[6])
+                    break
+            RAM *= units
+        else:
+            raise NotImplementedError("Unsupported filetype")
+    if "RAM" not in locals():
+        raise NameError("RAM not found.")
+    return RAM
