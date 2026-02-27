@@ -110,6 +110,8 @@ __all__ = [
     "kernel_density_on_grid",
     "amplitude2order_parameter",
     "cumulative_integral",
+    "find_little_group",
+    "symmetry_orbit_kpoints",
     "auto_kgrid",
     "eigen_projection",
 ]
@@ -1319,7 +1321,7 @@ def find_little_group(
 def symmetry_orbit_kpoints(
     kpoints: np.ndarray | ureg.Quantity,
     symmetries: list,
-    tol: float = 1e-8,
+    tol: float = 8,
     mod_G: bool = True,
 ) -> SimpleNamespace:
     """
@@ -1341,7 +1343,7 @@ def symmetry_orbit_kpoints(
     tol : float, optional
         Numerical tolerance used for detecting duplicates (after rounding). Default 1e-8.
     mod_G : bool, optional
-        If True (default), identify k ≡ k + G via wrapping to (-0.5, 0.5]:
+        If True (default), identify k ≡ k + G via wrapping to [-0.5, 0.5):
         k -> k - floor(k + 0.5). This maps -0.5 to +0.5 so boundary points are
         handled consistently.
 
@@ -1378,6 +1380,12 @@ def symmetry_orbit_kpoints(
         units = 1
         kpts = np.asarray(kpoints, dtype=float)
 
+    if mod_G and units != 1 and units != ureg("_2pi/crystal"):
+        raise ValueError(
+            "mod_G=True requires kpoints in crystal units (2π/crystal). "
+            "Convert your k-points before calling or set mod_G=False."
+        )
+
     if kpts.ndim == 1:
         kpts = np.asarray([kpoints], dtype=float)
     if kpts.ndim != 2 or kpts.shape[1] != 3:
@@ -1391,19 +1399,17 @@ def symmetry_orbit_kpoints(
             expanded.append(k @ sym.R)  # row-vector convention
             idx_pairs.append([i, j])
     expanded = np.asarray(expanded)  # shape (S*N, 3)
+    # Wrap to [-0.5,0.5)
+    if mod_G:
+        expanded = expanded - np.floor(expanded + 0.5)
 
     # Order-preserving uniqueness via rounding to tolerance
     rounded = np.round(expanded / tol) * tol
-
-    # Wrap modulo reciprocal lattice vectors: (-0.5, 0.5]
+    # Wrap to [-0.5,0.5)
     if mod_G:
-        if units != 1 and units != ureg("_2pi/crystal"):
-            raise ValueError(
-                "mod_G=True requires kpoints in crystal units (2π/crystal). "
-                "Convert your k-points before calling or set mod_G=False."
-            )
         rounded = rounded - np.floor(rounded + 0.5)
 
+    # Find unique values and store in keep_idx
     seen = set()
     keep_idx = []
     for idx, row in enumerate(rounded):
