@@ -1321,7 +1321,7 @@ def find_little_group(
 def symmetry_orbit_kpoints(
     kpoints: np.ndarray | ureg.Quantity,
     symmetries: list,
-    tol: float = 8,
+    tol: float = 1e-8,
     mod_G: bool = True,
 ) -> SimpleNamespace:
     """
