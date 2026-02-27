@@ -29,8 +29,8 @@ classifiers = [
 Homepage = "https://github.com/mgamigo/YAIV"
 "Bug Tracker" = "https://github.com/mgamigo/YAIV/issues"
 
-[tool.setuptools_scm]
-version_file = "yaiv/__init__.py"
+[tool.setuptools.dynamic]
+version = {attr = "yaiv.__version__"}
 
 [tool.setuptools.packages.find]
 exclude = ["tests*", "docs*"]
