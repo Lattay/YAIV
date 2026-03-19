@@ -22,7 +22,7 @@ FILES = [
     ("qe/results/Si.dyn1", "qe_dyn"),
     ("qe/results/Si.freq", "qe_freq_out"),
     ("qe/results/Si.proj.pwo", "qe_proj_out"),
-    ("qe/results/Si.xml", "qe_xml"),
+    ("qe/results/bands.xml", "qe_xml"),
     ("vasp/RESULTS/PROCAR", "procar"),
     ("vasp/RESULTS/OUTCAR_BS", "outcar"),
     ("vasp/RESULTS/EIGENVAL_BS", "eigenval"),

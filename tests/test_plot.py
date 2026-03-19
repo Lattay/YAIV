@@ -29,7 +29,7 @@ BANDS_CASES = [
     ),
     SimpleNamespace(
         name="qe_xml_bands_in",
-        bands="qe/results/Si.xml",
+        bands="qe/results/bands.xml",
         kpath="qe/results/Si.bands.pwi",
         window_eV=5,
     ),
