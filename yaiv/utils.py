@@ -1463,7 +1463,7 @@ def symmetry_orbit_kpoints(
 
     Notes
     -----
-    - Row-vector convention: k' = k @ R.
+    - Row-vector convention: k' = k @ inv(R).
     - First occurrence order is preserved when removing duplicates (identity wins).
     - Little group checks use full equivalence: (k @ R) ≈ k, not k + G.
     """
@@ -1488,13 +1488,18 @@ def symmetry_orbit_kpoints(
         raise ValueError("kpoints must be of shape (N, DIM)")
 
     # Expand via symmetries (identity first)
+    Nk = len(kpts)
     expanded = []
     idx_pairs = []
     for i, sym in enumerate(symmetries):
-        for j, k in enumerate(kpts):
-            expanded.append(rotate(k, sym.R, covariant=True))
-            idx_pairs.append([i, j])
-    expanded = np.asarray(expanded)  # shape (S*N, DIM)
+        expanded.append(rotate(kpts, sym.R, covariant=True))
+        idx_pairs.append(
+            np.column_stack(
+                (np.full(Nk, i), np.arange(Nk))  # i repeated Nk times  # j = 0 ... Nk-1
+            )
+        )
+    expanded = np.concatenate(expanded)  # shape (S*N, DIM)
+    idx_pairs = np.concatenate(idx_pairs)
     # Wrap to [-0.5,0.5)
     if mod_G:
         expanded = wrap_fractional(expanded)
