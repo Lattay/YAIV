@@ -198,6 +198,10 @@ def rotate(
     """
     Rotate vectors using a symmetry rotation matrix.
 
+    The function differs between contravariant and covariant/dual vectors:
+    - contravariant → R @ x
+    - covariant → R^{-T} @ x
+
     Parameters
     ----------
     coords : np.ndarray | ureg.Quantity
@@ -1322,15 +1326,15 @@ def find_little_group(
     Compute the little group for each input k-point.
 
     For each k (row vector), returns the indices i of symmetry operations R_i
-    that leave k invariant, using the row-vector convention k' = k @ R.
+    that leave k invariant, using the row-vector convention k' = R^{-T} k.
 
     Parameters
     ----------
-    kpoints : np.ndarray | ureg.Quantity, shape (N, 3)
+    kpoints : np.ndarray | ureg.Quantity, shape (N, DIM)
         Input k-points as row vectors. If a Quantity, units are preserved internally.
         If `mod_G=True`, kpoints must be in crystal units (2π/crystal).
     symmetries : list
-        List of symmetry objects, each with attribute `R` (3×3 rotation matrix).
+        List of symmetry objects, each with attribute `R` (DIM×DIM rotation matrix).
         Translations (if present) are ignored for k.
     tol : float, optional
         Numerical tolerance for invariance checks. Default 1e-8.
@@ -1366,7 +1370,7 @@ def find_little_group(
     if kpts.ndim == 1:
         kpts = np.asarray([kpoints], dtype=float)
     if kpts.ndim != 2 or kpts.shape[1] != 3:
-        raise ValueError("kpoints must be of shape (N, 3)")
+        raise ValueError("kpoints must be of shape (N, DIM)")
 
     little_group = []
 
@@ -1383,9 +1387,9 @@ def find_little_group(
 
         for i, sym in enumerate(symmetries):
             R = np.asarray(sym.R, dtype=float)
-            kR = k @ R
+            kR = rotate(k, R, covariant=True)
             if mod_G:
-                kR_wr = ut.wrap_fractional(kR)
+                kR_wr = wrap_fractional(kR)
                 d = kR_wr - k_wr
                 # modulo-1 closeness: subtract nearest integers
                 d = d - np.round(d)
