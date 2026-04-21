@@ -63,8 +63,10 @@ find_little_group(kpoints,symmetries)
     Compute the little group for each input k-point.
 
 symmetry_orbit_kpoints(kpoints,symmetries)
-    Apply all symmetry rotations to a set of k-points (row vectors) and return the unique set as well
-    as the little group of the original points.
+    Apply all symmetry rotations to a set of k-points (row vectors) and return the unique full set.
+
+expand_irreducible_bz(kpoints, grid, symmetries)
+    Expand a set of irreducible k-points to the full Brillouin zone using symmetry operations.
 
 auto_kgrid(lattice)
     Compute a k-grid from a target k-point spacing or target kpoints-per-reciprocal-atom (KPPRA).
@@ -116,8 +118,10 @@ __all__ = [
     "kernel_density_on_grid",
     "amplitude2order_parameter",
     "cumulative_integral",
-    "wrap_fractional" "find_little_group",
+    "wrap_fractional",
+    "find_little_group",
     "symmetry_orbit_kpoints",
+    "expand_irreducible_bz",
     "auto_kgrid",
     "eigen_projection",
 ]
@@ -1413,7 +1417,7 @@ def find_little_group(
 def symmetry_orbit_kpoints(
     kpoints: np.ndarray | ureg.Quantity,
     symmetries: list,
-    tol: float = 1e-8,
+    tol: float = 1e-6,
     mod_G: bool = True,
 ) -> SimpleNamespace:
     """
@@ -1421,7 +1425,7 @@ def symmetry_orbit_kpoints(
     the unique set.
 
     This treats k-points as row vectors and multiplies on the right by the
-    rotation matrices (k' = k @ R). It preserves first occurrence so identity-
+    rotation matrices (k' = k @ inv(R)). It preserves first occurrence so identity-
     generated points are kept when duplicates occur.
 
     Parameters
@@ -1525,6 +1529,108 @@ def symmetry_orbit_kpoints(
         sym=idx_map[:, 0],
         origin=idx_map[:, 1],
         weights=origin_weights,
+    )
+
+
+def expand_irreducible_bz(
+    kpoints: np.ndarray | ureg.Quantity,
+    grid: list[int],
+    symmetries: list,
+    tol: float = 1e-6,
+) -> SimpleNamespace:
+    """
+    Expand a set of irreducible k-points to the full Brillouin zone using symmetry operations.
+
+    Given a set of k-points in the irreducible Brillouin zone (IBZ), this function applies
+    all symmetry operations to generate the full set of k-points on a uniform grid, matching
+    them against a reference grid and avoiding duplicates.
+
+    Parameters
+    ----------
+    kpoints : np.ndarray | pint.Quantity
+        Array of shape (Nk, d) containing k-points in fractional (crystal) coordinates.
+        If a Quantity, units must be compatible with reciprocal lattice units (2π/crystal).
+    grid : list[int]
+        Number of grid points along each reciprocal lattice direction, e.g. [Nx, Ny, Nz].
+        Defines the full Brillouin zone sampling grid.
+    symmetries : list
+        List of symmetry operations. Each symmetry must have:
+            - sym.R : rotation matrix (d × d)
+            - sym.units : must be in crystal units (ureg.crystal)
+    tol : float, optional
+        Tolerance used to identify matching k-points modulo reciprocal lattice vectors.
+
+    Returns
+    -------
+    SimpleNamespace
+        Object with attributes:
+            kpoints : np.ndarray or pint.Quantity
+                Expanded k-points covering the full Brillouin zone.
+            sym : np.ndarray
+                Index of the symmetry operation used to generate each k-point.
+            origin : np.ndarray
+                Index of the original irreducible k-point from which each expanded point originates.
+
+    Raises
+    ------
+    ValueError
+        If symmetry operations are not expressed in crystal units.
+    ValueError
+        If kpoints are not in crystal reciprocal units (2π/crystal).
+    ValueError
+        If identity symmetry does not map kpoints onto the grid within tolerance.
+    ValueError
+        Not all grid points are matched by symmetry expansion.
+    """
+
+    # Units handling
+    if isinstance(kpoints, ureg.Quantity):
+        units = kpoints.units
+        kpts = np.asarray(kpoints.magnitude, dtype=float)
+    else:
+        units = 1
+        kpts = np.asarray(kpoints, dtype=float)
+
+    if not np.all([sym.units == ureg.crystal for sym in symmetries]):
+        raise ValueError("Symmetries must be in crystal units.")
+    elif units != 1 and units != ureg("_2pi/crystal"):
+        raise ValueError("kpoints are required in crystal units (2π/crystal).")
+    grid_points = grid_generator(grid, periodic=True)
+    expanded, origin_indices, sym_indices = [], [], []
+
+    for i, sym in enumerate(symmetries):
+        Rk = rotate(kpts, sym.R, covariant=True)
+        Rk = wrap_fractional(Rk)
+        diff = Rk[:, None, :] - grid_points[None, :, :]
+        # modulo-1 closeness:
+        diff = diff - np.round(diff)
+        mask = np.all(np.abs(diff) < tol, axis=2)
+        # Identity sanity check:
+        if np.allclose(sym.R, np.eye(len(sym.R))):
+            if np.sum(mask) != len(kpts):
+                raise ValueError(
+                    "Identity symmetry check failed: input k-points do not match the target grid within the given tolerance. "
+                    "Check that kpoints belong to the grid or increase `tol`."
+                )
+        idRk, idGP = np.where(mask)
+        # append rotated points
+        expanded.append(Rk[idRk])
+        origin_indices.append(idRk)
+        sym_indices.append([i] * len(idRk))
+        # remove used grid points
+        keep = np.ones(len(grid_points), dtype=bool)
+        keep[idGP] = False
+        grid_points = grid_points[keep]
+        if len(grid_points) == 0:
+            break
+
+    if len(grid_points) != 0:
+        raise ValueError("Not all grid points were matched by symmetry expansion.")
+
+    return SimpleNamespace(
+        kpoints=np.concatenate(expanded) * units,
+        sym=np.concatenate(sym_indices),
+        origin=np.concatenate(origin_indices),
     )
 
 

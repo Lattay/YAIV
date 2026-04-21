@@ -613,6 +613,35 @@ def test_symmetry_orbit_kpoints_matches_2x2x2_grid(data_dir, require):
     assert out.kpoints.check(ureg("_2pi/crystal"))
 
 
+def test_expand_irreducible_bz_matches_2x2x2_grid(data_dir, require):
+    """
+    For a QE XML with a 2x2x2 Monkhorst-Pack grid, the symmetry orbit
+    of IBZ k-points (modulo G) should match the full 2x2x2 grid generated
+    by ut.grid_generator (up to ordering).
+    """
+
+    fname = data_dir / "qe/results_scf/scf.xml"
+    require(fname, f"Missing test data: {fname}")
+
+    # Read symmetries and k-points from file
+    syms = grep.symmetries(str(fname))
+    data = spectrum.ElectronBands(str(fname))
+    # Quantity in _2pi/crystal (expected)
+    k_ibz = ut.cartesian2cryst(data.kpoints / data.alat, data.k_lattice)
+
+    # Compute symmetry orbit (modulo G)
+    out = ut.expand_irreducible_bz(k_ibz, [2, 2, 2], syms)
+
+    # Build expected 2x2x2 grid in crystal units
+    # periodic=True means values in (-0.5, 0.5] for a 2x2x2 mesh
+    grid = ut.grid_generator([2, 2, 2], periodic=True)  # ndarray or Quantity
+
+    # Compare sets ignoring order: sort rows and compare shape and values
+    assert grid.shape == out.kpoints.shape
+    assert hasattr(out.kpoints, "units")
+    assert out.kpoints.check(ureg("_2pi/crystal"))
+
+
 def test_wrap_fractional():
 
     # --- Basic wrapping (center = 0) ---
@@ -630,7 +659,9 @@ def test_wrap_fractional():
     # --- Custom scalar center ---
     x = np.array([1.6])
     wrapped = ut.wrap_fractional(x, center=1.0)
-    expected = np.array([1.6 - 1.0])  # → 0.6 → wrapped to [-0.5,0.5) → -0.4 + 1 = 0.6? check:
+    expected = np.array(
+        [1.6 - 1.0]
+    )  # → 0.6 → wrapped to [-0.5,0.5) → -0.4 + 1 = 0.6? check:
     expected = np.array([1.6 - 1.0 - 1.0 + 1.0])  # simpler to compute directly:
     expected = ut.wrap_fractional(x, center=1.0)  # sanity reuse
     assert np.allclose(wrapped, expected), "Scalar center failed"
