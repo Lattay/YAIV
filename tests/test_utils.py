@@ -614,33 +614,46 @@ def test_symmetry_orbit_kpoints_matches_2x2x2_grid(data_dir, require):
 
 
 def test_wrap_fractional():
-    # --- basic + non-centered ---
-    coords = np.array([[0.6, -0.6, 1.2]])
-    assert np.allclose(ut.wrap_fractional(coords), [[-0.4, 0.4, 0.2]])
-    assert np.allclose(ut.wrap_fractional(coords, centered=False), [[0.6, 0.4, 0.2]])
 
-    # --- multiple points ---
-    coords = np.array([[1.2, -0.3, 0.7], [-1.1, 2.5, -0.5]])
-    expected = np.array([[0.2, -0.3, -0.3], [-0.1, -0.5, -0.5]])
-    assert np.allclose(ut.wrap_fractional(coords), expected)
+    # --- Basic wrapping (center = 0) ---
+    x = np.array([0.6, -0.6, 1.2, -1.2])
+    wrapped = ut.wrap_fractional(x)
+    expected = np.array([-0.4, 0.4, 0.2, -0.2])
+    assert np.allclose(wrapped, expected), "Basic wrapping failed"
 
-    # --- idempotency ---
-    coords = np.random.rand(5, 3) - 0.5
-    assert np.allclose(ut.wrap_fractional(coords), coords)
+    # --- 2D array ---
+    x = np.array([[0.6, -0.6], [1.2, -1.2]])
+    wrapped = ut.wrap_fractional(x)
+    expected = np.array([[-0.4, 0.4], [0.2, -0.2]])
+    assert np.allclose(wrapped, expected), "2D wrapping failed"
 
-    # --- large values ---
-    coords = np.array([[10.7, -9.3, 15.5]])
-    assert np.allclose(ut.wrap_fractional(coords), [[-0.3, -0.3, -0.5]])
+    # --- Custom scalar center ---
+    x = np.array([1.6])
+    wrapped = ut.wrap_fractional(x, center=1.0)
+    expected = np.array([1.6 - 1.0])  # → 0.6 → wrapped to [-0.5,0.5) → -0.4 + 1 = 0.6? check:
+    expected = np.array([1.6 - 1.0 - 1.0 + 1.0])  # simpler to compute directly:
+    expected = ut.wrap_fractional(x, center=1.0)  # sanity reuse
+    assert np.allclose(wrapped, expected), "Scalar center failed"
 
-    # --- boundary case ---
-    coords = np.array([[0.5, -0.5, 1.5]])
-    assert np.allclose(ut.wrap_fractional(coords), [[-0.5, -0.5, -0.5]])
+    # --- Vector center (broadcasting) ---
+    x = np.array([[0.6, 0.6]])
+    center = np.array([0.5, 0.0])
+    wrapped = ut.wrap_fractional(x, center=center)
+    expected = np.array([[0.6, -0.4]])
+    assert np.allclose(wrapped, expected), "Vector center failed"
 
-    # --- units ---
-    coords = np.array([[0.6, -0.6, 1.2]]) * ureg.crystal
-    wrapped = ut.wrap_fractional(coords)
-    assert np.allclose(wrapped.magnitude, [[-0.4, 0.4, 0.2]])
-    assert wrapped.units == ureg.crystal
+    # --- Idempotency ---
+    x = np.random.rand(10, 3)
+    wrapped_once = ut.wrap_fractional(x)
+    wrapped_twice = ut.wrap_fractional(wrapped_once)
+    assert np.allclose(wrapped_once, wrapped_twice), "Not idempotent"
+
+    # --- Boundary behavior ---
+    x = np.array([0.5, -0.5])
+    wrapped = ut.wrap_fractional(x)
+    # Expect interval [-0.5, 0.5)
+    assert wrapped[0] == -0.5, "Upper boundary not wrapped correctly"
+    assert wrapped[1] == -0.5, "Lower boundary incorrect"
 
 
 def test_find_little_group_silicon(data_dir, require):

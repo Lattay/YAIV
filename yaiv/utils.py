@@ -1282,23 +1282,28 @@ def _point_to_segment_distance(
 
 def wrap_fractional(
     coords: np.ndarray | ureg.Quantity,
-    centered: bool = True,
+    center: np.ndarray | float = 0.0,
 ) -> np.ndarray | ureg.Quantity:
     """
-    Wrap fractional coordinates into a periodic unit cell.
+    Wrap fractional coordinates into a periodic unit cell centered at `center`.
+
+    The wrapping interval is:
+        [center - 0.5, center + 0.5)
 
     Parameters
     ----------
-    coords : np.ndarray | ureg.Quantity
-        Fractional coordinates.
-    centered : bool, optional
-        If True, wrap to [-0.5, 0.5). If False, wrap to [0, 1).
+    coords : np.ndarray or pint.Quantity
+        Fractional coordinates of shape (..., d).
+    center : float or np.ndarray, optional
+        Center of the wrapping interval. Can be a scalar or
+        array broadcastable to `coords`. Default is 0.
 
     Returns
     -------
-    np.ndarray | ureg.Quantity
-        Wrapped coordinates with same shape and units.
+    np.ndarray or pint.Quantity
+        Wrapped coordinates with same shape and units as input.
     """
+    # Extract units if needed
     if isinstance(coords, ureg.Quantity):
         units = coords.units
         x = np.asarray(coords.magnitude, dtype=float)
@@ -1306,11 +1311,13 @@ def wrap_fractional(
         units = None
         x = np.asarray(coords, dtype=float)
 
-    if centered:
-        x_wrapped = x - np.floor(x + 0.5)
-    else:
-        x_wrapped = x - np.floor(x)
+    # Ensure center is array for broadcasting
+    center = np.asarray(center, dtype=float)
 
+    # Wrap to [center - 0.5, center + 0.5)
+    x_wrapped = x - np.floor(x - center + 0.5)
+
+    # Restore units
     if units is not None:
         return x_wrapped * units
     return x_wrapped
