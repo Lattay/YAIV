@@ -400,7 +400,7 @@ def voigt2cartesian(voigt: np.ndarray | ureg.Quantity) -> np.ndarray | ureg.Quan
 
 def grid_generator(grid: list[int], periodic: bool = False) -> np.ndarray:
     """
-    Generate a uniform real-space grid of points within [-1, 1]^D or [0, 1)^D,
+    Generate a uniform real-space grid of points within [-1, 1]^D or [-0.5, 0.5)^D,
     where D is the grid dimensionality.
 
     This function constructs a D-dimensional mesh by specifying the number of
@@ -413,8 +413,8 @@ def grid_generator(grid: list[int], periodic: bool = False) -> np.ndarray:
         List of integers specifying the number of points along each dimension.
         For example, [10, 10, 10] creates a 10×10×10 grid.
     periodic : bool, optional
-        If True, the grid will in periodic boundary style. Centered at 0(Γ) with
-        values (-0.5,0.5] avoiding duplicate zone borders.
+        If True, the grid will in periodic boundary style. Centered at 0 (Γ) with
+        values [-0.5,0.5) avoiding duplicate zone borders.
         If False (default), the grid spans from -1 to 1 (inclusive).
 
     Returns
@@ -447,7 +447,7 @@ def grid_generator(grid: list[int], periodic: bool = False) -> np.ndarray:
             coords = c
     if periodic == True:
         for c in coords:
-            c[c > 0.5] -= 1  # remove 1 to all values above 0.5
+            c[c >= 0.5] -= 1  # remove 1 to all values above or equal 0.5
     return coords
 
 

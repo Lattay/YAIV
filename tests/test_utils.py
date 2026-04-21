@@ -160,15 +160,53 @@ def test_voigt_cartesian_conversion():
 
 
 @pytest.mark.parametrize(
-    "grid,expected_shape",
-    [([1], (1, 1)), ([2], (2, 1)), ([2, 3], (6, 2)), ([2, 3, 4], (24, 3))],
+    "grid,periodic,expected_shape",
+    [
+        ([1], True, (1, 1)),
+        ([2], False, (2, 1)),
+        ([2, 3], False, (6, 2)),
+        ([2, 3, 4], False, (24, 3)),
+        ([2, 3], True, (6, 2)),
+    ],
 )
-def test_grid_generator_nonperiodic(grid, expected_shape):
-    coords = ut.grid_generator(grid, periodic=False)
+def test_grid_generator(grid, periodic, expected_shape):
+    coords = ut.grid_generator(grid, periodic=periodic)
+
+    # --- shape ---
     assert coords.shape == expected_shape
-    # Nonperiodic default spans [-1, 1], endpoints included (unless g==1)
-    assert np.all(coords <= 1.0 + 1e-12)
-    assert np.all(coords >= -1.0 - 1e-12)
+
+    # --- bounds ---
+    if periodic:
+        assert np.all(coords < 0.5 + 1e-12)
+        assert np.all(coords >= -0.5 - 1e-12)
+    else:
+        assert np.all(coords <= 1.0 + 1e-12)
+        assert np.all(coords >= -1.0 - 1e-12)
+
+    # --- uniqueness (no duplicate points) ---
+    coords_view = np.ascontiguousarray(coords).view(
+        np.dtype((np.void, coords.dtype.itemsize * coords.shape[1]))
+    )
+    assert len(np.unique(coords_view)) == len(coords)
+
+    # --- origin presence (if symmetric grid) ---
+    if (
+        all(g % 2 == 1 for g in grid) or periodic
+    ):  # odd and periodic grids should include 0
+        assert np.any(np.all(np.isclose(coords, 0.0), axis=1))
+
+    # --- periodic consistency (no endpoint duplication) ---
+    if periodic:
+        # Check that 0.5 is not present
+        assert not np.any(np.isclose(coords, 0.5))
+
+    # --- non-periodic endpoints ---
+    if not periodic:
+        for d, g in enumerate(grid):
+            if g > 1:
+                vals = coords[:, d]
+                assert np.isclose(vals.min(), -1.0)
+                assert np.isclose(vals.max(), 1.0)
 
 
 def test_grid_generator_periodic():
