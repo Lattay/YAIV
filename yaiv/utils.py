@@ -1463,6 +1463,8 @@ def symmetry_orbit_kpoints(
 
     Notes
     -----
+    - WARNING: This may generate more points than the ones on the grid, for that use
+    `expand_irreducible_bz`.
     - Row-vector convention: k' = k @ inv(R).
     - First occurrence order is preserved when removing duplicates (identity wins).
     - Little group checks use full equivalence: (k @ R) ≈ k, not k + G.
