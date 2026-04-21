@@ -53,6 +53,9 @@ amplitude2order_parameter(amplitudes, masses, displacements)
 cumulative_integral(X, Y)
     Compute the cumulative integral of a function defined by discrete x and y values.
 
+wrap_fractional(coords)
+    Wrap fractional coordinates into a periodic unit cell.
+
 find_little_group(kpoints,symmetries)
     Compute the little group for each input k-point.
 
@@ -110,6 +113,7 @@ __all__ = [
     "kernel_density_on_grid",
     "amplitude2order_parameter",
     "cumulative_integral",
+    "wrap_fractional"
     "find_little_group",
     "symmetry_orbit_kpoints",
     "auto_kgrid",
@@ -1231,6 +1235,51 @@ def _point_to_segment_distance(
     return np.hypot(parallel_dist, np.linalg.norm(perpendicular_vec))
 
 
+def wrap_fractional(
+    coords: np.ndarray | ureg.Quantity,
+    centered: bool = True,
+) -> np.ndarray | ureg.Quantity:
+    """
+    Wrap fractional coordinates into a periodic unit cell.
+
+    Parameters
+    ----------
+    coords : np.ndarray | ureg.Quantity
+        Fractional coordinates.
+    centered : bool, optional
+        If True, wrap to [-0.5, 0.5). If False, wrap to [0, 1).
+
+    Returns
+    -------
+    np.ndarray | ureg.Quantity
+        Wrapped coordinates with same shape and units.
+    """
+    if isinstance(coords, ureg.Quantity):
+        units = coords.units
+        x = np.asarray(coords.magnitude, dtype=float)
+    else:
+        units = None
+        x = np.asarray(coords, dtype=float)
+
+    if centered:
+        x_wrapped = x - np.floor(x + 0.5)
+    else:
+        x_wrapped = x - np.floor(x)
+
+    if units is not None:
+        return x_wrapped * units
+    return x_wrapped
+
+
+def rotate(
+    coords: np.ndarray | ureg.Quantity,
+    R: np.ndarray,
+    *,
+    covariant: bool = False,
+):
+    return
+
+
 def find_little_group(
     kpoints: np.ndarray | ureg.Quantity,
     symmetries: list,
@@ -1255,8 +1304,8 @@ def find_little_group(
         Numerical tolerance for invariance checks. Default 1e-8.
     mod_G : bool, optional
         If True, test invariance modulo reciprocal lattice vectors:
-        (k @ R) = k (mod 1). If False, test direct equality
-        (k @ R − k) = 0 within `tol`. Default is False.
+        (k @ inv(R)) = k (mod 1). If False, test direct equality
+        (k @ inv(R) − k) = 0 within `tol`. Default is False.
 
     Returns
     -------
@@ -1271,7 +1320,7 @@ def find_little_group(
 
     Notes
     -----
-    - Row-vector convention: k' = k @ R.
+    - Row-vector convention: k' = k @ inv(R).
     - If `mod_G=True`, invariance is tested modulo 1 per component (crystal units).
     """
     # Units handling
@@ -1290,7 +1339,7 @@ def find_little_group(
     little_group = []
 
     for k in kpts:
-        inv_ops = []
+        invariant_ops = []
         # Pre-wrap reference if using mod_G
         if mod_G:
             if units != 1 and units != ureg("_2pi/crystal"):
@@ -1298,13 +1347,13 @@ def find_little_group(
                     "mod_G=True requires kpoints in crystal units (2π/crystal). "
                     "Convert your k-points before calling or set mod_G=False."
                 )
-            k_wr = k - np.floor(k + 0.5)
+            k_wr = wrap_fractional(k)
 
         for i, sym in enumerate(symmetries):
             R = np.asarray(sym.R, dtype=float)
             kR = k @ R
             if mod_G:
-                kR_wr = kR - np.floor(kR + 0.5)
+                kR_wr = ut.wrap_fractional(kR)
                 d = kR_wr - k_wr
                 # modulo-1 closeness: subtract nearest integers
                 d = d - np.round(d)
@@ -1313,8 +1362,8 @@ def find_little_group(
             ok = np.all(np.abs(d) <= tol)
 
             if ok:
-                inv_ops.append(i)
-        little_group.append(np.asarray(inv_ops, dtype=int))
+                invariant_ops.append(i)
+        little_group.append(np.asarray(invariant_ops, dtype=int))
     return little_group
 
 

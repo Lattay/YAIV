@@ -526,6 +526,36 @@ def test_symmetry_orbit_kpoints_matches_2x2x2_grid(data_dir, require):
     assert out.kpoints.check(ureg("_2pi/crystal"))
 
 
+def test_wrap_fractional():
+    # --- basic + non-centered ---
+    coords = np.array([[0.6, -0.6, 1.2]])
+    assert np.allclose(ut.wrap_fractional(coords), [[-0.4, 0.4, 0.2]])
+    assert np.allclose(ut.wrap_fractional(coords, centered=False), [[0.6, 0.4, 0.2]])
+
+    # --- multiple points ---
+    coords = np.array([[1.2, -0.3, 0.7], [-1.1, 2.5, -0.5]])
+    expected = np.array([[0.2, -0.3, -0.3], [-0.1, -0.5, -0.5]])
+    assert np.allclose(ut.wrap_fractional(coords), expected)
+
+    # --- idempotency ---
+    coords = np.random.rand(5, 3) - 0.5
+    assert np.allclose(ut.wrap_fractional(coords), coords)
+
+    # --- large values ---
+    coords = np.array([[10.7, -9.3, 15.5]])
+    assert np.allclose(ut.wrap_fractional(coords), [[-0.3, -0.3, -0.5]])
+
+    # --- boundary case ---
+    coords = np.array([[0.5, -0.5, 1.5]])
+    assert np.allclose(ut.wrap_fractional(coords), [[-0.5, -0.5, -0.5]])
+
+    # --- units ---
+    coords = np.array([[0.6, -0.6, 1.2]]) * ureg.crystal
+    wrapped = ut.wrap_fractional(coords)
+    assert np.allclose(wrapped.magnitude, [[-0.4, 0.4, 0.2]])
+    assert wrapped.units == ureg.crystal
+
+
 def test_find_little_group_silicon(data_dir, require):
     fname = data_dir / "qe/results_scf/scf.xml"
     require(fname, f"Missing test data: {fname}")
