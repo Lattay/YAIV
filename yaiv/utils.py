@@ -1369,7 +1369,7 @@ def find_little_group(
 
     if kpts.ndim == 1:
         kpts = np.asarray([kpoints], dtype=float)
-    if kpts.ndim != 2 or kpts.shape[1] != 3:
+    if kpts.ndim != 2:
         raise ValueError("kpoints must be of shape (N, DIM)")
 
     little_group = []
@@ -1419,11 +1419,11 @@ def symmetry_orbit_kpoints(
 
     Parameters
     ----------
-    kpoints : np.ndarray | ureg.Quantity, shape (N, 3)
+    kpoints : np.ndarray | ureg.Quantity, shape (N, DIM)
         Input k-points (rows). If a Quantity, units are preserved. For mod_G=True,
         points are assumed in crystal units (2π/crystal).
     symmetries : list
-        List of symmetry objects, each with attribute R (3×3 rotation matrix).
+        List of symmetry objects, each with attribute R (DIM×DIM rotation matrix).
         The first element must be the identity symmetry.
     tol : float, optional
         Numerical tolerance used for detecting duplicates (after rounding). Default 1e-8.
@@ -1473,26 +1473,28 @@ def symmetry_orbit_kpoints(
 
     if kpts.ndim == 1:
         kpts = np.asarray([kpoints], dtype=float)
-    if kpts.ndim != 2 or kpts.shape[1] != 3:
-        raise ValueError("kpoints must be of shape (N, 3)")
+    if kpts.ndim != 2:
+        raise ValueError("kpoints must be of shape (N, DIM)")
 
     # Expand via symmetries (identity first)
     expanded = []
     idx_pairs = []
     for i, sym in enumerate(symmetries):
         for j, k in enumerate(kpts):
-            expanded.append(k @ sym.R)  # row-vector convention
+            expanded.append(rotate(k, sym.R, covariant=True))
             idx_pairs.append([i, j])
-    expanded = np.asarray(expanded)  # shape (S*N, 3)
+    expanded = np.asarray(expanded)  # shape (S*N, DIM)
     # Wrap to [-0.5,0.5)
     if mod_G:
-        expanded = expanded - np.floor(expanded + 0.5)
+        expanded = wrap_fractional(expanded)
 
     # Order-preserving uniqueness via rounding to tolerance
     rounded = np.round(expanded / tol) * tol
     # Wrap to [-0.5,0.5)
     if mod_G:
-        rounded = rounded - np.floor(rounded + 0.5)
+        rounded = wrap_fractional(
+            rounded,
+        )
 
     # Find unique values and store in keep_idx
     seen = set()
