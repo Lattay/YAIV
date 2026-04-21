@@ -17,6 +17,9 @@ reciprocal_basis(lattice)
 cartesian2cryst(cartesian_coord, cryst_basis)
     Transforms coordinates from Cartesian to crystal basis, with unit handling.
 
+def rotate(coords, R)
+    Rotates vectors using a symmetry rotation matrix (for contravariant and covariant coordintes).
+
 cryst2cartesian(crystal_coord, cryst_basis)
     Transforms coordinates from crystal to Cartesian basis, with unit handling.
 
@@ -100,7 +103,7 @@ from yaiv.defaults.config import ureg, defaults
 __all__ = [
     "invQ",
     "reciprocal_basis",
-    "cartesian2cryst",
+    "rotate" "cartesian2cryst",
     "cryst2cartesian",
     "cartesian2voigt",
     "voigt2cartesian",
@@ -113,8 +116,7 @@ __all__ = [
     "kernel_density_on_grid",
     "amplitude2order_parameter",
     "cumulative_integral",
-    "wrap_fractional"
-    "find_little_group",
+    "wrap_fractional" "find_little_group",
     "symmetry_orbit_kpoints",
     "auto_kgrid",
     "eigen_projection",
@@ -185,6 +187,45 @@ def reciprocal_basis(lattice: np.ndarray | ureg.Quantity) -> ureg.Quantity:
     """
     K_vec = (invQ(lattice) * ureg._2pi).transpose()  # reciprocal vectors in rows
     return K_vec
+
+
+def rotate(
+    coords: np.ndarray | ureg.Quantity,
+    R: np.ndarray,
+    *,
+    covariant: bool = False,
+) -> np.ndarray | ureg.Quantity:
+    """
+    Rotate vectors using a symmetry rotation matrix.
+
+    Parameters
+    ----------
+    coords : np.ndarray | ureg.Quantity
+        Array of vectors (..., N), in row-vector convention.
+    R : np.ndarray, shape (N, N)
+        Rotation matrix (in the same basis as coords).
+    covariant : bool, optional
+        If True, treat vectors as covariant (dual vectors).
+        Otherwise contravariant (default).
+
+    Returns
+    -------
+    np.ndarray | ureg.Quantity
+        Rotated vectors with same shape and units.
+    """
+
+    R = np.asarray(R, dtype=float)
+
+    # --- apply transformation ---
+    # row convention for coords
+    if covariant:
+        # covariant → R^{-T} @ x
+        coords_rot = coords @ np.linalg.inv(R)
+    else:
+        # contravariant → R @ x
+        coords_rot = coords @ R.T
+
+    return coords_rot
 
 
 def cartesian2cryst(
@@ -1269,15 +1310,6 @@ def wrap_fractional(
     if units is not None:
         return x_wrapped * units
     return x_wrapped
-
-
-def rotate(
-    coords: np.ndarray | ureg.Quantity,
-    R: np.ndarray,
-    *,
-    covariant: bool = False,
-):
-    return
 
 
 def find_little_group(
