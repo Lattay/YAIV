@@ -25,6 +25,9 @@ Functions
 electron_num(file)
     Greps the number of electrons from a QE or VASP output file.
 
+alat(file)
+    Extract the lattice parameter (alat) from an input file.
+
 lattice(file, alat=False)
     Extracts the lattice vectors from outputs. Optionally in internal units (alat).
 
@@ -119,6 +122,7 @@ from yaiv import utils as ut
 
 __all__ = [
     "electron_num",
+    "alat",
     "lattice",
     "fermi",
     "total_energy",
@@ -412,12 +416,12 @@ class _OrbitalProjectionContainer:
         """
         keys = np.array(tuple(self._data.keys()), dtype=object)
         # QE keys length 5
-        if self._code=="quantum_espresso":
+        if self._code == "quantum_espresso":
             if len(keys[0]) == 5:
                 query = (ion, l, j, mj, wfc)
             elif len(keys[0]) == 4:
                 query = (ion, l, m, wfc)
-        elif self._code=="vasp":
+        elif self._code == "vasp":
             # POSCAR keys length 4
             query = (ion, l, m, M)
         else:
@@ -600,6 +604,18 @@ class _Qe_xml:
         """
         elec = self.root.find(".//nelec")
         return int(float(elec.text))
+
+    def alat(self) -> ureg.Quantity:
+        """
+        Extract the lattice parameter (alat) from an input file.
+
+        Returns
+        -------
+        alat : ureg.Quantity
+            Lattice parameter `alat` with units.
+        """
+        alat = float(self.root.find(".//atomic_structure").attrib["alat"]) * ureg.bohr
+        return alat
 
     def lattice(self) -> np.ndarray:
         """
@@ -840,6 +856,47 @@ def electron_num(file: str) -> int:
         if "num_elec" not in locals():
             raise NameError("Number of electrons not found.")
     return num_elec
+
+
+def alat(file: str) -> ureg.Quantity:
+    """
+    Extract the lattice parameter (alat) from an input file.
+
+    The function reads a file produced by supported electronic-structure codes
+    and returns the lattice parameter `alat` as a Pint quantity.
+
+    Parameters
+    ----------
+    file : str
+        Path to the input/output file.
+
+    Returns
+    -------
+    ureg.Quantity
+        Lattice parameter `alat` with units.
+
+    Raises
+    ------
+    NotImplementedError
+        If the file type is not supported.
+    NameError
+        If the lattice parameter `alat` cannot be found in the file.
+    """
+    filetype = _filetype(file)
+
+    if filetype == "qe_xml":
+        alat = _Qe_xml(file).alat()
+    elif filetype == "qe_scf_out":
+        with open(file, "r") as lines:
+            for line in lines:
+                if "lattice parameter (alat)" in line:
+                    alat = float(line.split()[-2]) * ureg("bohr")
+    else:
+        raise NotImplementedError(f"Unsupported filetype: {filetype}")
+
+    if "alat" not in locals():
+        raise NameError("alat not found.")
+    return alat
 
 
 def lattice(file: str, alat: bool = False) -> ureg.Quantity:
