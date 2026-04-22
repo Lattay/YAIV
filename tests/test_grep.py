@@ -10,6 +10,10 @@ from yaiv import cell
 # Supported kinds per function (centralized)
 # ----------------------------------------------------------------------
 SUPPORTED_ELECTRON_NUM = {"qe_scf_out", "qe_xml", "outcar", "eigenval"}
+SUPPORTED_ALAT = {
+    "qe_scf_out",
+    "qe_xml",
+}
 SUPPORTED_LATTICE = {
     "qe_scf_in",
     "qe_scf_out",
@@ -25,7 +29,14 @@ SUPPORTED_FERMI = {"qe_xml", "qe_scf_out", "outcar"}
 SUPPORTED_ENERGY = {"qe_xml", "qe_scf_out", "outcar"}
 SUPPORTED_STRESS = {"qe_scf_out", "outcar"}
 SUPPORTED_KPATH = {"qe_bands_in", "matdyn_in", "kpath"}
-SUPPORTED_KPTS_E = {"qe_xml", "qe_scf_out", "outcar", "eigenval", "procar", "qe_proj_out"}
+SUPPORTED_KPTS_E = {
+    "qe_xml",
+    "qe_scf_out",
+    "outcar",
+    "eigenval",
+    "procar",
+    "qe_proj_out",
+}
 SUPPORTED_PROJ = {"procar", "qe_proj_out"}
 SUPPORTED_FREQS = {"qe_freq_out"}
 SUPPORTED_SYMS = {"qe_xml"}
@@ -73,6 +84,19 @@ def test_electron_num(data_dir, require, fname, kind):
     else:
         with pytest.raises(NotImplementedError):
             grep.electron_num(str(f))
+
+
+@pytest.mark.parametrize("fname, kind", FILES, ids=IDS)
+def test_alat(data_dir, require, fname, kind):
+    f = data_dir / fname
+    require(f, f"Missing test data: {fname}")
+
+    if kind in SUPPORTED_ALAT:
+        ne = grep.alat(str(f))
+        assert isinstance(ne, ureg.Quantity)
+    else:
+        with pytest.raises(NotImplementedError):
+            grep.alat(str(f))
 
 
 @pytest.mark.parametrize("fname, kind", FILES, ids=IDS)
@@ -273,6 +297,7 @@ def test_cutoff(data_dir, require, fname, kind):
         with pytest.raises(NotImplementedError):
             grep.cutoff(str(f))
 
+
 @pytest.mark.parametrize("fname, kind", FILES, ids=IDS)
 def test_smearing(data_dir, require, fname, kind):
     f = data_dir / fname
@@ -287,6 +312,7 @@ def test_smearing(data_dir, require, fname, kind):
         with pytest.raises(NotImplementedError):
             grep.smearing(str(f))
 
+
 @pytest.mark.parametrize("fname, kind", FILES, ids=IDS)
 def test_runtime(data_dir, require, fname, kind):
     f = data_dir / fname
@@ -300,6 +326,7 @@ def test_runtime(data_dir, require, fname, kind):
     else:
         with pytest.raises(NotImplementedError):
             grep.runtime(str(f))
+
 
 @pytest.mark.parametrize("fname, kind", FILES, ids=IDS)
 def test_k_grid(data_dir, require, fname, kind):
@@ -326,6 +353,7 @@ def test_ram(data_dir, require, fname, kind):
         with pytest.raises(NotImplementedError):
             grep.ram(str(f))
 
+
 @pytest.mark.parametrize("fname, kind", FILES, ids=IDS)
 def test_atomic_forces(data_dir, require, fname, kind):
     f = data_dir / fname
@@ -337,9 +365,9 @@ def test_atomic_forces(data_dir, require, fname, kind):
         assert isinstance(q.per_atom.magnitude, np.ndarray)
         assert isinstance(q.total, ureg.Quantity)
         assert isinstance(q.total.magnitude, float)
-        assert q.total.units.dimensionality == ureg('Ry/bohr').dimensionality
-        atom_num=len(cell.read_spg(f)[1])
-        assert q.per_atom.shape == (atom_num,3)
+        assert q.total.units.dimensionality == ureg("Ry/bohr").dimensionality
+        atom_num = len(cell.read_spg(f)[1])
+        assert q.per_atom.shape == (atom_num, 3)
     else:
         with pytest.raises(NotImplementedError):
             grep.atomic_forces(str(f))
