@@ -1588,6 +1588,10 @@ def expand_irreducible_bz(
         If identity symmetry does not map kpoints onto the grid within tolerance.
     ValueError
         Not all grid points are matched by symmetry expansion.
+
+    Notes
+    -----
+    - It works in batches of 3000 target-grid k-points in order to avoid overuse of RAM.
     """
 
     # Units handling
@@ -1605,29 +1609,53 @@ def expand_irreducible_bz(
     grid_points = grid_generator(grid, periodic=True)
     expanded, origin_indices, sym_indices = [], [], []
 
+    batch_size = 3000  # safe default
+
     for i, sym in enumerate(symmetries):
         Rk = rotate(kpts, sym.R, covariant=True)
         Rk = wrap_fractional(Rk)
-        diff = Rk[:, None, :] - grid_points[None, :, :]
-        # modulo-1 closeness:
-        diff = diff - np.round(diff)
-        mask = np.all(np.abs(diff) < tol, axis=2)
-        # Identity sanity check:
+
+        matched_Rk = []
+        matched_idRk = []
+        matched_idGP = []
+
+        for start in range(0, len(grid_points), batch_size):
+            end = start + batch_size
+            gp_batch = grid_points[start:end]
+
+            diff = Rk[:, None, :] - gp_batch[None, :, :]
+            # modulo-1 closeness:
+            diff = diff - np.round(diff)
+            mask = np.all(np.abs(diff) < tol, axis=2)
+
+            idRk, idGP_local = np.where(mask)
+            idGP = idGP_local + start  # map back to global indices
+
+            matched_Rk.append(Rk[idRk])
+            matched_idRk.append(idRk)
+            matched_idGP.append(idGP)
+
+        idRk = np.concatenate(matched_idRk)
+        idGP = np.concatenate(matched_idGP)
+
+        # Identity sanity check
         if np.allclose(sym.R, np.eye(len(sym.R))):
-            if np.sum(mask) != len(kpts):
+            if len(idRk) != len(kpts):
                 raise ValueError(
-                    "Identity symmetry check failed: input k-points do not match the target grid within the given tolerance. "
+                    "Identity symmetry check failed: input k-points do not match the target grid within the given tolerance."
                     "Check that kpoints belong to the grid or increase `tol`."
                 )
-        idRk, idGP = np.where(mask)
+
         # append rotated points
         expanded.append(Rk[idRk])
         origin_indices.append(idRk)
         sym_indices.append([i] * len(idRk))
+
         # remove used grid points
         keep = np.ones(len(grid_points), dtype=bool)
         keep[idGP] = False
         grid_points = grid_points[keep]
+
         if len(grid_points) == 0:
             break
 
