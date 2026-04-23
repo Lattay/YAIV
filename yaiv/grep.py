@@ -28,7 +28,7 @@ electron_num(file)
 alat(file)
     Extract the lattice parameter (alat) from an input file.
 
-lattice(file, alat=False)
+lattice(file)
     Extracts the lattice vectors from outputs. Optionally in internal units (alat).
 
 fermi(file)
@@ -614,7 +614,9 @@ class _Qe_xml:
         alat : ureg.Quantity
             Lattice parameter `alat` with units.
         """
-        alat = float(self.root.find(".//atomic_structure").attrib["alat"]) * ureg.bohr
+        alat = float(self.root.find(".//atomic_structure").attrib["alat"]) * ureg(
+            "bohr/alat"
+        )
         return alat
 
     def lattice(self) -> np.ndarray:
@@ -719,7 +721,7 @@ class _Qe_xml:
             ENERGIES += [E]
         return SimpleNamespace(
             energies=ENERGIES * ureg.hartree,
-            kpoints=KPOINTS * (ureg._2pi / ureg.alat),
+            kpoints=KPOINTS * ureg("_2pi/alat") / self.alat(),
             weights=np.array(WEIGHTS),
         )
 
@@ -886,20 +888,34 @@ def alat(file: str) -> ureg.Quantity:
 
     if filetype == "qe_xml":
         alat = _Qe_xml(file).alat()
+        return alat
     elif filetype == "qe_scf_out":
         with open(file, "r") as lines:
             for line in lines:
                 if "lattice parameter (alat)" in line:
-                    alat = float(line.split()[-2]) * ureg("bohr")
+                    alat = float(line.split()[-2]) * ureg("bohr/alat")
+                    return alat
+    elif filetype == "qe_ph_out":
+        with open(file, "r") as lines:
+            for line in lines:
+                if "lattice parameter" in line:
+                    line = line.split()
+                    alat = float(line[4]) * ureg("bohr/alat")
+                    return alat
+    elif filetype == "qe_dyn":
+        with open(file, "r") as lines:
+            for line in lines:
+                if len(line.split()) == 9:
+                    alat = float(line.split()[3]) * ureg("bohr/alat")
+                    return alat
     else:
         raise NotImplementedError(f"Unsupported filetype: {filetype}")
 
     if "alat" not in locals():
         raise NameError("alat not found.")
-    return alat
 
 
-def lattice(file: str, alat: bool = False) -> ureg.Quantity:
+def lattice(file: str) -> ureg.Quantity:
     """
     Greps the lattice vectors from various outputs.
 
@@ -907,14 +923,11 @@ def lattice(file: str, alat: bool = False) -> ureg.Quantity:
     ----------
     file : str
         File from which to extract the lattice.
-    alat : bool, optional
-        Whether to return lattice in internal units (alat). Default is False.
 
     Returns
     -------
     lattice : np.ndarray
         3x3 array of lattice vectors with attached units (ureg.Quantity).
-        Units will be 'alat' if the `alat` flag is True.
 
     Raises
     ------
@@ -928,17 +941,11 @@ def lattice(file: str, alat: bool = False) -> ureg.Quantity:
 
     if filetype == "qe_xml":
         lattice = _Qe_xml(file).lattice()
-        if alat:
-            return lattice / np.linalg.norm(lattice[0]) * ureg.alat
-        else:
-            return lattice
+        return lattice
     elif filetype == "qe_ph_out":
         with open(file, "r") as lines:
             for line in lines:
-                if "lattice parameter" in line:
-                    line = line.split()
-                    ALAT = float(line[4]) * ureg.bohr  # lattice parameter in Bohr
-                elif re.search("crystal axes", line, flags=re.IGNORECASE):
+                if re.search("crystal axes", line, flags=re.IGNORECASE):
                     READ = True
                     lattice = []
                 elif READ:
@@ -949,31 +956,21 @@ def lattice(file: str, alat: bool = False) -> ureg.Quantity:
                     lattice.append(vec)
                     if len(lattice) == 3:
                         break
-        if alat:
-            return lattice * ureg.alat  # lattice in lattice units
-        else:
-            # Convert alat to Å
-            lattice = np.array(lattice) * ALAT.to("angstrom")
-            return lattice
+        lattice = np.array(lattice) * ureg.alat * alat(file)
+        return lattice
 
     elif filetype == "qe_dyn":
         with open(file, "r") as lines:
             for line in lines:
-                if not READ and len(line.split()) == 9:
-                    ALAT = float(line.split()[3]) * ureg("bohr/alat")
-                elif "Basis vectors" in line:
+                if "Basis vectors" in line:
                     READ = True
                     lattice = []
                 elif READ:
                     vec = [float(x) for x in line.split()]
                     lattice.append(vec)
                     if len(lattice) == 3:
-                        lattice = np.array(lattice) * ureg.alat
-                        break
-        if alat:
-            return lattice
-        else:
-            return (lattice * ALAT).to("angstrom")
+                        lattice = np.array(lattice) * ureg.alat * alat(file)
+                        return lattice
 
     elif filetype == "qe_proj_out":
         raise NotImplementedError(
@@ -987,12 +984,7 @@ def lattice(file: str, alat: bool = False) -> ureg.Quantity:
             raise NotImplementedError(
                 "Unsupported filetype: ASE is not handling it correctly"
             )
-        if alat:
-            # Normalize to lattice units
-            a_norm = np.linalg.norm(lattice[0])
-            return (lattice / a_norm) * ureg("alat")
-        else:
-            return lattice * ureg.angstrom
+        return lattice * ureg.angstrom
 
 
 def fermi(file: str) -> ureg.Quantity:
@@ -1356,7 +1348,7 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
                     num_bands = int(line.split("=")[1])
                 elif "number of k points" in line:
                     num_points = int(line.split("=")[1].split()[0])
-                elif " cart. coord." in line:
+                elif " cryst. coord." in line:
                     READ_kpoints = True
                 elif "force convergence" in line:
                     RELAX_calc = True
@@ -1388,10 +1380,7 @@ def kpointsEnergies(file: str) -> SimpleNamespace:
                             E = []
                             OCCUPATIONS = True
             # Recover crystal units
-            lat = lattice(file)
-            lat = lat / np.linalg.norm(lat[0])
-            Klat = ut.reciprocal_basis(lat).magnitude
-            KPOINTS = ut.cartesian2cryst(KPOINTS, Klat) * (ureg._2pi / ureg.crystal)
+            KPOINTS = np.array(KPOINTS) * (ureg._2pi / ureg.crystal)
             ENERGIES *= ureg("eV")
         elif filetype == "qe_proj_out":
             STATES, PROJECTIONS = [], []
@@ -1627,7 +1616,7 @@ def kpointsFrequencies(file: str) -> SimpleNamespace:
             raise NotImplementedError("Unsupported filetype")
     # Give proper units
     FREQS = np.array(FREQS) * ureg("c") / ureg("cm")
-    KPOINTS = np.array(KPOINTS) * (ureg("_2pi") / ureg("alat"))
+    KPOINTS = np.array(KPOINTS) * ureg("_2pi/alat")
     return SimpleNamespace(frequencies=FREQS, kpoints=KPOINTS)
 
 
@@ -1676,7 +1665,7 @@ def dyn_file(file: str) -> SimpleNamespace:
     if filetype != "qe_dyn":
         raise NotImplementedError("Unsupported filetype")
     lat = lattice(file)
-    n_atoms = n_types = freqs = vec = alat = None
+    n_atoms = n_types = freqs = vec = None
     vec, freqs = [], []
     species = []
     atoms = []
@@ -1689,7 +1678,6 @@ def dyn_file(file: str) -> SimpleNamespace:
                 # Get number of species and atoms
                 l = line.split()
                 n_types, n_atoms = int(l[0]), int(l[1])
-                alat = float(l[3]) * ureg("bohr")
             elif n_types != 0 and len(l) == 4:
                 # Get species
                 new = [int(l[0]), l[1][1:], float(l[-1])]
@@ -1720,17 +1708,19 @@ def dyn_file(file: str) -> SimpleNamespace:
                         vec = []
 
     # Attach units and get positions, elmenets and masses.
-    positions = (np.array(atoms)[:, 1:] * alat).to("ang")
+    ALAT = alat(file)
+    positions = np.array(atoms)[:, 1:] * ureg("alat") * ALAT
     indices = np.array(atoms)[:, 0].astype(int) - 1
     elements = [species[x][1] for x in indices]
     masses = np.array([species[x][2] for x in indices]) * ureg._2m_e
     displacements = np.array(displacements)
-    q_point = (q_point * ureg._2pi / alat).to("_2pi/ang")
+    q_point = q_point * ureg("_2pi/alat") / ALAT
     freqs = np.array(freqs) * ureg("c/cm")
 
     return SimpleNamespace(
         q=q_point,
         lattice=lat,
+        alat=ALAT,
         freqs=freqs,
         displacements=displacements,
         positions=positions,
@@ -1774,8 +1764,8 @@ def _find_dyn_file(q_cryst: np.ndarray | ureg.Quantity, results_ph_path: str) ->
         )
 
     # Read lattice and convert to alat units
-    lattice = dyn_file(dyn1[0]).lattice
-    lattice = lattice / np.linalg.norm(lattice[0]) * ureg.alat
+    dyn = dyn_file(dyn1[0])
+    lattice = (dyn.lattice / dyn.alat).to("alat")
     k_basis = ut.reciprocal_basis(lattice)
 
     # Scan all .dyn* files (excluding matdyn if present)
@@ -1865,7 +1855,7 @@ def dyn_q(
     dyn_mat = np.zeros((dim, dim), dtype=complex)
 
     # Lattice and reciprocal basis
-    lattice = system.lattice / np.linalg.norm(system.lattice[0]) * ureg.alat
+    lattice = (system.lattice / system.alat).to("alat")
     k_basis = ut.reciprocal_basis(lattice)
 
     READ_dynmat = False

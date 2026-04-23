@@ -13,6 +13,8 @@ SUPPORTED_ELECTRON_NUM = {"qe_scf_out", "qe_xml", "outcar", "eigenval"}
 SUPPORTED_ALAT = {
     "qe_scf_out",
     "qe_xml",
+    "qe_ph_out",
+    "qe_dyn",
 }
 SUPPORTED_LATTICE = {
     "qe_scf_in",
@@ -92,8 +94,9 @@ def test_alat(data_dir, require, fname, kind):
     require(f, f"Missing test data: {fname}")
 
     if kind in SUPPORTED_ALAT:
-        ne = grep.alat(str(f))
-        assert isinstance(ne, ureg.Quantity)
+        alat = grep.alat(str(f))
+        assert isinstance(alat, ureg.Quantity)
+        assert alat.dimensionality == ureg('bohr/alat').dimensionality
     else:
         with pytest.raises(NotImplementedError):
             grep.alat(str(f))
@@ -108,6 +111,7 @@ def test_lattice(data_dir, require, fname, kind):
         lat = grep.lattice(str(f))
         assert lat.shape == (3, 3)
         assert hasattr(lat, "units")
+        assert lat.dimensionality == ureg.meter.dimensionality
     else:
         with pytest.raises(NotImplementedError):
             grep.lattice(str(f))
@@ -229,10 +233,10 @@ def test_dyn_file(data_dir, require, fname, kind):
 
     if kind == "qe_dyn":
         sys = grep.dyn_file(str(f))
-        assert sys.q.check(ureg._2pi / ureg.angstrom)
-        assert sys.lattice.check(ureg.angstrom)
+        assert sys.q.check(ureg._2pi / ureg.bohr)
+        assert sys.lattice.check(ureg.bohr)
         assert sys.freqs.check(ureg.c / ureg.cm)
-        assert sys.positions.check(ureg.angstrom)
+        assert sys.positions.check(ureg.bohr)
         assert sys.masses.check(ureg._2m_e)
         assert isinstance(sys.elements, list)
         assert sys.displacements.ndim == 3
