@@ -801,11 +801,14 @@ class _Qe_xml:
             K-grid used in the computation.
         """
         lines = self.root.find(".//k_points_IBZ").find(".//monkhorst_pack")
-        kgrid = [
-            int(lines.attrib["nk1"]),
-            int(lines.attrib["nk2"]),
-            int(lines.attrib["nk3"]),
-        ]
+        try:
+            kgrid = [
+                int(lines.attrib["nk1"]),
+                int(lines.attrib["nk2"]),
+                int(lines.attrib["nk3"]),
+            ]
+        except AttributeError:
+            kgrid = None
         return kgrid
 
 
