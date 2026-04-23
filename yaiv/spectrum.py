@@ -107,7 +107,7 @@ class _Has_lattice:
         k_lattice : np.ndarray | ureg.Quantity
             3x3 matrix of reciprocal lattice vectors in [length]⁻¹ units.
         alat : np.ndarray | ureg.Quantity
-            `alat` factor for conversions, dimensions of [lenght/alat].
+            `alat` factor for conversions, dimensions of [length/alat].
         """
         self._lattice = self._k_lattice = None
         if lattice is not None:
@@ -278,7 +278,7 @@ class Spectrum(_Has_lattice, _Has_kpath):
             A namespace with attributes `path`(ndarray) and `labels`(list)
             or just a ndarray.
         alat : np.ndarray | ureg.Quantity
-            `alat` factor for conversions, dimensions of [lenght/alat].
+            `alat` factor for conversions, dimensions of [length/alat].
         """
         self.eigenvalues = eigenvalues
         self.kpoints = kpoints
@@ -378,8 +378,8 @@ class Spectrum(_Has_lattice, _Has_kpath):
         # Apply shift to eigenvalues
         eigen = self.eigenvalues - shift if shift is not None else self.eigenvalues
         kpath = self.get_1Dkpath(patched)
-        lenght = kpath[-1].magnitude if isinstance(kpath, ureg.Quantity) else kpath[-1]
-        x = kpath / lenght
+        length = kpath[-1]
+        x = kpath / length
 
         band_indices = bands if bands is not None else range(eigen.shape[1])
 
