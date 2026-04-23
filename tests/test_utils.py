@@ -578,7 +578,7 @@ def test_symmetry_orbit_kpoints_matches_2x2x2_grid(data_dir, require):
     syms = grep.symmetries(str(fname))
     data = spectrum.ElectronBands(str(fname))
     # Quantity in _2pi/crystal (expected)
-    k_ibz = ut.cartesian2cryst(data.kpoints / data.alat, data.k_lattice)
+    k_ibz = ut.cartesian2cryst(data.kpoints, data.k_lattice)
 
     # Compute symmetry orbit (modulo G)
     out = ut.symmetry_orbit_kpoints(k_ibz, syms, tol=1e-12, mod_G=True)
@@ -627,7 +627,7 @@ def test_expand_irreducible_bz_matches_2x2x2_grid(data_dir, require):
     syms = grep.symmetries(str(fname))
     data = spectrum.ElectronBands(str(fname))
     # Quantity in _2pi/crystal (expected)
-    k_ibz = ut.cartesian2cryst(data.kpoints / data.alat, data.k_lattice)
+    k_ibz = ut.cartesian2cryst(data.kpoints, data.k_lattice)
 
     # Compute symmetry orbit (modulo G)
     out = ut.expand_irreducible_bz(k_ibz, [2, 2, 2], syms)
@@ -695,7 +695,7 @@ def test_find_little_group_silicon(data_dir, require):
     syms = grep.symmetries(str(fname))
     data = spectrum.ElectronBands(str(fname))
     # Quantity in _2pi/crystal (expected)
-    k_ibz = ut.cartesian2cryst(data.kpoints / data.alat, data.k_lattice)
+    k_ibz = ut.cartesian2cryst(data.kpoints, data.k_lattice)
 
     # Compute little_group or original points and points in the orbits
     origin_lg = ut.find_little_group(k_ibz, syms, tol=1e-12)

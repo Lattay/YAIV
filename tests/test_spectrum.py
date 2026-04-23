@@ -65,7 +65,7 @@ def test_ElectronBands_construction(data_dir, require, fname, kind):
             ureg.eV
         )  # energies are in eV in grep.kpointsEnergies
         assert bands.kpoints.check(ureg._2pi / ureg.crystal) or bands.kpoints.check(
-            ureg._2pi / ureg.alat
+            ureg._2pi / ureg.bohr
         )
         assert bands.eigenvalues.magnitude.ndim == 2
         assert bands.kpoints.magnitude.ndim == 2

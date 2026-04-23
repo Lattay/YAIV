@@ -191,7 +191,11 @@ class _Has_kpath:
             if "crystal" in kpoints.units._units and self.k_lattice is not None:
                 kpoints = ut.cryst2cartesian(self.kpoints, self.k_lattice)
                 kpoints = kpoints.to("_2pi/ang")
-            if "alat" in kpoints.units._units and self.k_lattice is not None:
+            if (
+                "alat" in kpoints.units._units
+                and self.k_lattice is not None
+                and self.alat is not None
+            ):
                 kpoints = kpoints / self.alat
                 kpoints = kpoints.to("_2pi/ang")
             units = kpoints.units
