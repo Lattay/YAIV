@@ -415,7 +415,7 @@ def bands(
         window = [-window, window]
     ax.set_ylim(window[0], window[1])
 
-    plt.tight_layout()
+    #plt.tight_layout()
     return ax
 
 
