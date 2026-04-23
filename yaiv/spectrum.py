@@ -88,14 +88,14 @@ class _Has_lattice:
     k_lattice : np.ndarray
         3x3 matrix of reciprocal lattice vectors in 2π[length]⁻¹ units.
     alat : ureg.Quantity
-        `alat` factor for conversions, defined as the norm of the first
-        vector of the lattice.
+        `alat` factor for conversions.
     """
 
     def __init__(
         self,
         lattice: np.ndarray | ureg.Quantity = None,
         k_lattice: np.ndarray | ureg.Quantity = None,
+        alat: np.ndarray | ureg.Quantity = None,
     ):
         """
         Initialize the _Has_lattice object from either the real or reciprocal space lattice.
@@ -106,6 +106,8 @@ class _Has_lattice:
             3x3 matrix of direct lattice vectors in [length] units.
         k_lattice : np.ndarray | ureg.Quantity
             3x3 matrix of reciprocal lattice vectors in [length]⁻¹ units.
+        alat : np.ndarray | ureg.Quantity
+            `alat` factor for conversions, dimensions of [lenght/alat].
         """
         self._lattice = self._k_lattice = None
         if lattice is not None:
@@ -114,6 +116,7 @@ class _Has_lattice:
         elif k_lattice is not None:
             self._k_lattice = k_lattice
             self._lattice = ut.reciprocal_basis(self._k_lattice)
+        self.alat = alat
 
     @property
     def lattice(self):
@@ -122,10 +125,6 @@ class _Has_lattice:
     @property
     def k_lattice(self):
         return self._k_lattice
-
-    @property
-    def alat(self):
-        return np.linalg.norm(self.lattice[0]) / ureg.alat
 
     @lattice.setter
     def lattice(self, value):
@@ -253,6 +252,7 @@ class Spectrum(_Has_lattice, _Has_kpath):
         lattice: np.ndarray | ureg.Quantity = None,
         k_lattice: np.ndarray | ureg.Quantity = None,
         kpath: SimpleNamespace | np.ndarray = None,
+        alat: np.ndarray | ureg.Quantity = None,
     ):
         """
         Initialize Spectrum object.
@@ -273,11 +273,13 @@ class Spectrum(_Has_lattice, _Has_kpath):
         kpath : SimpleNamespace | np.ndarray, optional
             A namespace with attributes `path`(ndarray) and `labels`(list)
             or just a ndarray.
+        alat : np.ndarray | ureg.Quantity
+            `alat` factor for conversions, dimensions of [lenght/alat].
         """
         self.eigenvalues = eigenvalues
         self.kpoints = kpoints
         self.weights = weights
-        _Has_lattice.__init__(self, lattice, k_lattice)
+        _Has_lattice.__init__(self, lattice, k_lattice, alat)
         _Has_kpath.__init__(self, kpath)
         self.DOS = Density()
 
@@ -524,11 +526,16 @@ class Spectrum(_Has_lattice, _Has_kpath):
         s = kwargs.pop("s", pdft.weights_s)
         alpha = kwargs.pop("alpha", 1)
         if alpha_change:
-            alpha = np.clip((P.weights - P.norm.vmin) / (P.norm.vmax - P.norm.vmin), 0, 1)
+            alpha = np.clip(
+                (P.weights - P.norm.vmin) / (P.norm.vmax - P.norm.vmin), 0, 1
+            )
         else:
             alpha = np.ones(P.weights.shape)
         if size_change:
-            s = np.clip((P.weights - P.norm.vmin) / (P.norm.vmax - P.norm.vmin), 0, 1) * s
+            s = (
+                np.clip((P.weights - P.norm.vmin) / (P.norm.vmax - P.norm.vmin), 0, 1)
+                * s
+            )
         else:
             s = np.ones(P.weights.shape) * s
 
@@ -690,6 +697,10 @@ class ElectronBands(Spectrum):
                 lattice = grep.lattice(self.filepath)
             except NotImplementedError:
                 lattice = None
+            try:
+                alat = grep.alat(self.filepath)
+            except NotImplementedError:
+                alat = None
             spec = grep.kpointsEnergies(self.filepath)
             Spectrum.__init__(
                 self,
@@ -697,6 +708,7 @@ class ElectronBands(Spectrum):
                 kpoints=spec.kpoints,
                 weights=spec.weights,
                 lattice=lattice,
+                alat=alat,
             )
         else:
             self.electron_num = self.fermi = None
@@ -730,12 +742,17 @@ class PhononBands(Spectrum):
                 lattice = grep.lattice(self.filepath)
             except NotImplementedError:
                 lattice = None
+            try:
+                alat = grep.alat(self.filepath)
+            except NotImplementedError:
+                alat = None
             spec = grep.kpointsFrequencies(self.filepath)
             Spectrum.__init__(
                 self,
                 eigenvalues=spec.frequencies,
                 kpoints=spec.kpoints,
                 lattice=lattice,
+                alat=alat,
             )
         else:
             Spectrum.__init__(self)
